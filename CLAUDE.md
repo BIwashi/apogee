@@ -113,6 +113,18 @@ The script boots the collector against an in-memory DB, posts a fixture
 batch from `scripts/screenshot_fixtures.json`, and drives Chromium via
 playwright (installed locally into `scripts/node_modules/`).
 
+## Operator Queue
+
+The turn detail page exposes an **Operator Queue** section (above the
+Recap / HITL grid) where an operator can push a message into a live
+Claude Code session via the `InterventionComposer`. The composer,
+`InterventionQueue`, and `InterventionTimeline` components live under
+`web/app/components/` and are composed by `OperatorQueueSection`.
+`Alt+I` on the turn detail page focuses the composer; the section
+header carries the shortcut as a `kbd` hint. See
+[`docs/interventions.md`](docs/interventions.md) for the end-to-end
+walkthrough.
+
 ## PR arc — all 11 shipped
 
 - PR #1 — scaffold + design system (shipped)

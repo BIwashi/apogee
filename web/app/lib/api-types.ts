@@ -541,6 +541,28 @@ export interface InterventionCreateRequest {
 }
 
 /**
+ * isHITLEvent narrows the mixed SSE envelope to the HITL sub-union. The
+ * wire protocol namespaces HITL payloads under `hitl.*`, so the prefix
+ * check is authoritative.
+ */
+export function isHITLEvent(
+  e: AnyApogeeEvent,
+): e is ApogeeEvent<HITLPayload> {
+  return typeof e.type === "string" && e.type.startsWith("hitl.");
+}
+
+/**
+ * isInterventionEvent narrows the mixed SSE envelope to the intervention
+ * sub-union. The six `intervention.*` lifecycle events all share the same
+ * `InterventionPayload` shape.
+ */
+export function isInterventionEvent(
+  e: AnyApogeeEvent,
+): e is ApogeeEvent<InterventionPayload> {
+  return typeof e.type === "string" && e.type.startsWith("intervention.");
+}
+
+/**
  * FilterKey is the union of swim-lane / span-tree filter chips. Persisted in
  * the URL `?filter=` query param so deep links are shareable.
  */
