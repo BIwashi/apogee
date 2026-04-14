@@ -9,6 +9,7 @@ import Card from "../components/Card";
 import KpiStrip from "../components/KpiStrip";
 import RawLogsPanel from "../components/RawLogsPanel";
 import RecentTurnsTable from "../components/RecentTurnsTable";
+import RollupPanel from "../components/RollupPanel";
 import SectionHeader from "../components/SectionHeader";
 import SpanTree from "../components/SpanTree";
 import SwimLane from "../components/SwimLane";
@@ -217,6 +218,9 @@ function OverviewTab({
           <SummaryStat label="MODEL" value={summary?.model || "—"} />
           <SummaryStat label="SOURCE" value={summary?.source_app || "—"} />
         </Card>
+      </section>
+      <section>
+        <RollupPanel sessionId={id} />
       </section>
       <section>
         <SectionHeader title="Fleet KPIs (scoped)" subtitle="Sparklines scoped to this session." />

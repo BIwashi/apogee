@@ -87,6 +87,9 @@ func New(cfg Config, store *duckdb.Store, logger *slog.Logger) *Server {
 	rec.OnTurnClosed = func(turnID string) {
 		summarizerSvc.Enqueue(turnID, summarizer.ReasonTurnClosed)
 	}
+	rec.OnSessionEnded = func(sessionID string) {
+		summarizerSvc.EnqueueRollup(sessionID, summarizer.RollupReasonSessionEnd)
+	}
 
 	// Wire the HITL lifecycle owner. The reconstructor pushes hitl.requested
 	// broadcasts via OnHITLRequested, the service handles auto-expiration
@@ -213,6 +216,8 @@ func (s *Server) buildRouter() chi.Router {
 	r.Get("/v1/sessions/{id}/summary", s.getSessionSummary)
 	r.Get("/v1/sessions/{id}/turns", s.listSessionTurns)
 	r.Get("/v1/sessions/{id}/logs", s.listSessionLogs)
+	r.Get("/v1/sessions/{id}/rollup", s.getSessionRollup)
+	r.Post("/v1/sessions/{id}/rollup", s.postSessionRollup)
 	r.Get("/v1/turns/recent", s.listRecentTurns)
 	r.Get("/v1/turns/active", s.listActiveTurns)
 	r.Get("/v1/turns/{turn_id}", s.getTurn)
@@ -646,6 +651,61 @@ func (s *Server) postTurnRecap(w http.ResponseWriter, r *http.Request) {
 		s.summarizer.Enqueue(id, summarizer.ReasonManual)
 	}
 	writeJSON(w, http.StatusAccepted, map[string]any{"turn_id": id, "queued": true})
+}
+
+// getSessionRollup returns the stored rollup for a session. When the session
+// row exists but no rollup has been generated yet the response is
+// {"rollup": null}. 404 only when the session itself is missing.
+func (s *Server) getSessionRollup(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	sess, err := s.store.GetSession(r.Context(), id)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if sess == nil {
+		writeJSONError(w, http.StatusNotFound, "session not found")
+		return
+	}
+	row, ok, err := s.store.GetSessionRollup(r.Context(), id)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if !ok {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"rollup":       nil,
+			"generated_at": nil,
+			"model":        nil,
+		})
+		return
+	}
+	var rollup json.RawMessage = json.RawMessage(row.RollupJSON)
+	writeJSON(w, http.StatusOK, map[string]any{
+		"rollup":       rollup,
+		"generated_at": row.GeneratedAt,
+		"model":        row.Model,
+	})
+}
+
+// postSessionRollup enqueues a manual rollup for a session. Returns 202
+// immediately; the rollup worker eventually broadcasts a session.updated
+// SSE event when the digest lands.
+func (s *Server) postSessionRollup(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	sess, err := s.store.GetSession(r.Context(), id)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if sess == nil {
+		writeJSONError(w, http.StatusNotFound, "session not found")
+		return
+	}
+	if s.summarizer != nil {
+		s.summarizer.EnqueueRollup(id, summarizer.RollupReasonManual)
+	}
+	writeJSON(w, http.StatusAccepted, map[string]any{"session_id": id, "enqueued": true})
 }
 
 func (s *Server) getFilterOptions(w http.ResponseWriter, r *http.Request) {

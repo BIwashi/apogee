@@ -1,0 +1,395 @@
+package summarizer
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"log/slog"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/BIwashi/apogee/internal/sse"
+	"github.com/BIwashi/apogee/internal/store/duckdb"
+)
+
+// Rollup is the structured per-session digest produced by the rollup worker.
+// Mirrors the TypeScript Rollup type in web/app/lib/api-types.ts.
+type Rollup struct {
+	Headline    string    `json:"headline"`
+	Narrative   string    `json:"narrative"`
+	Highlights  []string  `json:"highlights"`
+	Patterns    []string  `json:"patterns"`
+	OpenThreads []string  `json:"open_threads"`
+	GeneratedAt time.Time `json:"generated_at"`
+	Model       string    `json:"model"`
+	TurnCount   int       `json:"turn_count"`
+}
+
+// rollupJob is the unit of work consumed by RollupWorker.loop.
+type rollupJob struct {
+	SessionID string
+	Reason    string
+}
+
+// Reason strings for rollup jobs. Extend as new triggers land.
+const (
+	RollupReasonManual    = "manual"
+	RollupReasonScheduled = "scheduled"
+	RollupReasonSessionEnd = "session_end"
+)
+
+// rollupStaleness is the minimum age of an existing rollup before the
+// scheduled path is willing to overwrite it. Manual triggers ignore this.
+const rollupStaleness = 30 * time.Minute
+
+// maxRollupTurns is the upper bound on how many turns are loaded into one
+// rollup prompt. Configurable via Config.MaxRollupTurns.
+const defaultMaxRollupTurns = 40
+
+// RollupWorker is the per-session digest goroutine. It is structurally
+// identical to Worker (turn recap) — the tier difference is only the model
+// alias and the prompt contents.
+type RollupWorker struct {
+	cfg    Config
+	runner Runner
+	store  *duckdb.Store
+	hub    *sse.Hub
+	logger *slog.Logger
+	clock  func() time.Time
+
+	queue chan rollupJob
+	wg    sync.WaitGroup
+
+	mu     sync.Mutex
+	closed bool
+}
+
+// NewRollupWorker constructs a RollupWorker.
+func NewRollupWorker(cfg Config, runner Runner, store *duckdb.Store, hub *sse.Hub, logger *slog.Logger) *RollupWorker {
+	if logger == nil {
+		logger = slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{Level: slog.LevelError}))
+	}
+	if cfg.QueueSize <= 0 {
+		cfg.QueueSize = 64
+	}
+	return &RollupWorker{
+		cfg:    cfg,
+		runner: runner,
+		store:  store,
+		hub:    hub,
+		logger: logger,
+		clock:  time.Now,
+		queue:  make(chan rollupJob, cfg.QueueSize),
+	}
+}
+
+// Enqueue drops a session id onto the rollup queue without blocking. A
+// full queue logs at WARN and drops the job.
+func (w *RollupWorker) Enqueue(sessionID, reason string) {
+	if w == nil || sessionID == "" {
+		return
+	}
+	w.mu.Lock()
+	closed := w.closed
+	w.mu.Unlock()
+	if closed {
+		return
+	}
+	job := rollupJob{SessionID: sessionID, Reason: reason}
+	select {
+	case w.queue <- job:
+	default:
+		w.logger.Warn("rollup queue full — dropping job",
+			"session_id", sessionID, "reason", reason)
+	}
+}
+
+// Start spawns a single worker goroutine. Rollups are infrequent enough
+// that one worker is plenty.
+func (w *RollupWorker) Start(ctx context.Context) {
+	w.wg.Add(1)
+	go w.loop(ctx)
+}
+
+// Stop closes the queue and waits for the in-flight job to finish.
+func (w *RollupWorker) Stop() {
+	w.mu.Lock()
+	if w.closed {
+		w.mu.Unlock()
+		return
+	}
+	w.closed = true
+	close(w.queue)
+	w.mu.Unlock()
+	w.wg.Wait()
+}
+
+func (w *RollupWorker) loop(ctx context.Context) {
+	defer w.wg.Done()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case job, ok := <-w.queue:
+			if !ok {
+				return
+			}
+			w.process(ctx, job)
+		}
+	}
+}
+
+// process runs a single rollup job. Errors log at WARN and return without
+// touching the session_rollups row.
+func (w *RollupWorker) process(ctx context.Context, job rollupJob) {
+	sess, err := w.store.GetSession(ctx, job.SessionID)
+	if err != nil {
+		w.logger.Warn("rollup: load session", "session_id", job.SessionID, "err", err)
+		return
+	}
+	if sess == nil {
+		w.logger.Debug("rollup: unknown session", "session_id", job.SessionID)
+		return
+	}
+
+	maxTurns := w.cfg.MaxRollupTurns
+	if maxTurns <= 0 {
+		maxTurns = defaultMaxRollupTurns
+	}
+	turns, err := w.store.ListSessionTurns(ctx, job.SessionID, maxTurns)
+	if err != nil {
+		w.logger.Warn("rollup: load turns", "session_id", job.SessionID, "err", err)
+		return
+	}
+
+	// Count "closed" turns (anything not still running). Need at least 2.
+	var closedTurns []duckdb.Turn
+	for _, t := range turns {
+		if t.Status != "running" {
+			closedTurns = append(closedTurns, t)
+		}
+	}
+	if len(closedTurns) < 2 {
+		w.logger.Debug("rollup: skipping — too few closed turns",
+			"session_id", job.SessionID,
+			"closed_count", len(closedTurns))
+		return
+	}
+
+	// Staleness check for scheduled triggers. Manual / session_end always
+	// regenerate.
+	if job.Reason == RollupReasonScheduled {
+		if existing, ok, err := w.store.GetSessionRollup(ctx, job.SessionID); err == nil && ok {
+			if w.clock().Sub(existing.GeneratedAt) < rollupStaleness {
+				w.logger.Debug("rollup: existing rollup is fresh — skipping",
+					"session_id", job.SessionID)
+				return
+			}
+		}
+	}
+
+	// Sort closed turns oldest first for the prompt (ListSessionTurns
+	// returns attention-priority ordered, not chronological).
+	sortRollupTurns(closedTurns)
+
+	prompt := BuildRollupPrompt(*sess, closedTurns)
+	runCtx := ctx
+	if w.cfg.Timeout > 0 {
+		var cancel context.CancelFunc
+		runCtx, cancel = context.WithTimeout(ctx, w.cfg.Timeout)
+		defer cancel()
+	}
+
+	w.logger.Info("rollup: running",
+		"session_id", job.SessionID,
+		"model", w.cfg.RollupModel,
+		"turn_count", len(closedTurns),
+		"reason", job.Reason)
+
+	output, err := w.runner.Run(runCtx, w.cfg.RollupModel, prompt)
+	if err != nil {
+		if errors.Is(err, context.Canceled) {
+			return
+		}
+		w.logger.Warn("rollup: runner error",
+			"session_id", job.SessionID, "model", w.cfg.RollupModel, "err", err)
+		return
+	}
+
+	rollup, err := ParseRollup(output)
+	if err != nil {
+		w.logger.Warn("rollup: parse error",
+			"session_id", job.SessionID, "err", err,
+			"raw", truncate(output, 1024))
+		return
+	}
+	now := w.clock()
+	rollup.GeneratedAt = now
+	rollup.Model = w.cfg.RollupModel
+	rollup.TurnCount = len(closedTurns)
+
+	blob, err := json.Marshal(rollup)
+	if err != nil {
+		w.logger.Warn("rollup: marshal", "session_id", job.SessionID, "err", err)
+		return
+	}
+
+	row := duckdb.SessionRollup{
+		SessionID:   job.SessionID,
+		GeneratedAt: now,
+		Model:       rollup.Model,
+		FromTurnID:  closedTurns[0].TurnID,
+		ToTurnID:    closedTurns[len(closedTurns)-1].TurnID,
+		TurnCount:   len(closedTurns),
+		RollupJSON:  string(blob),
+	}
+	if err := w.store.UpsertSessionRollup(ctx, row); err != nil {
+		w.logger.Warn("rollup: persist", "session_id", job.SessionID, "err", err)
+		return
+	}
+
+	w.logger.Info("rollup: written",
+		"session_id", job.SessionID,
+		"highlights", len(rollup.Highlights),
+		"open_threads", len(rollup.OpenThreads))
+
+	if w.hub != nil {
+		w.hub.Broadcast(sse.NewSessionEvent(now, *sess))
+	}
+}
+
+// sortRollupTurns sorts in place, oldest first.
+func sortRollupTurns(turns []duckdb.Turn) {
+	// stdlib sort is overkill; n is bounded by maxRollupTurns (40 default)
+	for i := 1; i < len(turns); i++ {
+		for j := i; j > 0 && turns[j].StartedAt.Before(turns[j-1].StartedAt); j-- {
+			turns[j], turns[j-1] = turns[j-1], turns[j]
+		}
+	}
+}
+
+// ParseRollup tolerates the same LLM output quirks Parse handles for the
+// per-turn recap. Validation enforces a non-empty headline and trims long
+// strings.
+func ParseRollup(raw string) (Rollup, error) {
+	cleaned := strings.TrimSpace(raw)
+	cleaned = stripCodeFences(cleaned)
+	cleaned = extractJSONObject(cleaned)
+	if cleaned == "" {
+		return Rollup{}, fmt.Errorf("rollup: empty or unparseable input")
+	}
+	var r Rollup
+	if err := json.Unmarshal([]byte(cleaned), &r); err != nil {
+		return Rollup{}, fmt.Errorf("rollup: unmarshal: %w", err)
+	}
+	r.Headline = strings.TrimSpace(r.Headline)
+	if r.Headline == "" {
+		return Rollup{}, fmt.Errorf("rollup: headline is required")
+	}
+	if len(r.Headline) > 140 {
+		r.Headline = r.Headline[:140]
+	}
+	r.Narrative = strings.TrimSpace(r.Narrative)
+	r.Highlights = truncateStringSlice(r.Highlights, 8, 200)
+	r.Patterns = truncateStringSlice(r.Patterns, 5, 200)
+	r.OpenThreads = truncateStringSlice(r.OpenThreads, 5, 200)
+	return r, nil
+}
+
+// BuildRollupPrompt assembles the LLM input for one rollup. The shape is
+// documented in the package README and PR #11 spec.
+func BuildRollupPrompt(sess duckdb.Session, turns []duckdb.Turn) string {
+	var sb strings.Builder
+	sb.WriteString("You are summarizing a Claude Code session that contains multiple user turns.\n\n")
+	sb.WriteString("## Session metadata\n")
+	sb.WriteString(fmt.Sprintf("session_id: %s\n", sess.SessionID))
+	sb.WriteString(fmt.Sprintf("source_app: %s\n", sess.SourceApp))
+	sb.WriteString(fmt.Sprintf("turn_count: %d\n", len(turns)))
+	if len(turns) > 0 {
+		sb.WriteString(fmt.Sprintf("started_at: %s\n", formatTime(turns[0].StartedAt)))
+		last := turns[len(turns)-1]
+		if last.EndedAt != nil {
+			sb.WriteString(fmt.Sprintf("last_seen_at: %s\n", formatTime(*last.EndedAt)))
+		} else {
+			sb.WriteString(fmt.Sprintf("last_seen_at: %s\n", formatTime(last.StartedAt)))
+		}
+	}
+	sb.WriteString("\n## Ordered turn recaps\n")
+	for i, t := range turns {
+		writeTurnLine(&sb, i+1, t)
+	}
+	sb.WriteString("\n## Instruction\n")
+	sb.WriteString(rollupInstructionBlock)
+	return sb.String()
+}
+
+const rollupInstructionBlock = `
+Produce a single JSON object matching exactly:
+
+type Rollup = {
+  headline: string;       // one sentence, max 140 chars
+  narrative: string;      // 1-3 paragraphs plain text, no markdown
+  highlights: string[];   // 3-8 short bullets
+  patterns: string[];     // recurring work patterns or errors, 0-5
+  open_threads: string[]; // unfinished tasks / known issues, 0-5
+};
+
+Rules:
+- Be concrete. Prefer file names, tool names, and error messages over abstractions.
+- "narrative" reads like a handoff note a teammate can skim in 15 seconds.
+- "open_threads" is zero items if the session wrapped up cleanly.
+
+Output ONLY the JSON object.
+`
+
+// writeTurnLine renders one entry in the ordered turn recaps section. The
+// stored recap (when present) is unpacked so the rollup model gets the
+// distilled headline / key_steps / failure cause instead of having to
+// reconstruct them from raw spans.
+func writeTurnLine(sb *strings.Builder, idx int, t duckdb.Turn) {
+	dur := "-"
+	if t.DurationMs != nil {
+		dur = fmt.Sprintf("%dms", *t.DurationMs)
+	}
+	headline := t.Headline
+	var keySteps []string
+	var failureCause string
+	if t.RecapJSON != "" {
+		var recap Recap
+		if err := json.Unmarshal([]byte(t.RecapJSON), &recap); err == nil {
+			if recap.Headline != "" {
+				headline = recap.Headline
+			}
+			keySteps = recap.KeySteps
+			if recap.FailureCause != nil {
+				failureCause = *recap.FailureCause
+			}
+		}
+	}
+	if headline == "" {
+		headline = oneLine(t.PromptText)
+		if len(headline) > 100 {
+			headline = headline[:100] + "…"
+		}
+	}
+	sb.WriteString(fmt.Sprintf("[%d] %s %s %s %s\n",
+		idx,
+		formatTime(t.StartedAt),
+		dur,
+		t.Status,
+		headline,
+	))
+	if len(keySteps) > 0 {
+		sb.WriteString("    key_steps: ")
+		sb.WriteString(strings.Join(keySteps, "; "))
+		sb.WriteString("\n")
+	}
+	if failureCause != "" {
+		sb.WriteString("    failure_cause: ")
+		sb.WriteString(failureCause)
+		sb.WriteString("\n")
+	}
+}

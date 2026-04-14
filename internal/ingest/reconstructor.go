@@ -117,6 +117,11 @@ type Reconstructor struct {
 	// back-pressure the ingest hot path. Callbacks must not block.
 	OnTurnClosed func(turnID string)
 
+	// OnSessionEnded, when non-nil, fires once the SessionEnd hook has been
+	// applied and the sessions row marked ended. Used by the rollup worker
+	// to enqueue a final per-session digest. Must not block.
+	OnSessionEnded func(sessionID string)
+
 	// OnHITLRequested, when non-nil, is invoked after the reconstructor
 	// inserts a fresh hitl_events row for an inbound permission request.
 	// Wire this to the hitl.Service so the SSE hub broadcasts a
@@ -358,6 +363,11 @@ func (r *Reconstructor) handleSessionEnd(ctx context.Context, st *sessionState, 
 	}
 	r.broadcastSession(ctx, ev.SessionID)
 	delete(r.sessions, ev.SessionID)
+	if r.OnSessionEnded != nil {
+		// Invoke without the reconstructor lock held — callbacks enqueue
+		// follow-up work and must never back-pressure ingest.
+		go r.OnSessionEnded(ev.SessionID)
+	}
 	return nil
 }
 

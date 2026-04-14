@@ -146,6 +146,20 @@ CREATE INDEX IF NOT EXISTS idx_hitl_turn ON hitl_events(turn_id);
 CREATE INDEX IF NOT EXISTS idx_hitl_status ON hitl_events(status);
 CREATE INDEX IF NOT EXISTS idx_hitl_kind ON hitl_events(kind);
 
+-- Session rollups: long-range narrative digests produced by the summarizer's
+-- second tier (Sonnet). One row per session — replaced in place by the
+-- UpsertSessionRollup path when a new rollup lands.
+CREATE TABLE IF NOT EXISTS session_rollups (
+  session_id      VARCHAR PRIMARY KEY,
+  generated_at    TIMESTAMP NOT NULL,
+  model           VARCHAR NOT NULL,
+  from_turn_id    VARCHAR,
+  to_turn_id      VARCHAR,
+  turn_count      INTEGER NOT NULL,
+  rollup_json     VARCHAR NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_rollups_generated ON session_rollups(generated_at DESC);
+
 -- Metric points: OTel metric data. Write-optimized columnar.
 CREATE SEQUENCE IF NOT EXISTS metric_points_id_seq;
 CREATE TABLE IF NOT EXISTS metric_points (

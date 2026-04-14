@@ -3,6 +3,7 @@ package summarizer
 import (
 	"context"
 	"log/slog"
+	"time"
 
 	"github.com/BIwashi/apogee/internal/sse"
 	"github.com/BIwashi/apogee/internal/store/duckdb"
@@ -10,17 +11,22 @@ import (
 
 // Service is the top-level handle the collector wires into its HTTP
 // server. One Service per apogee process. Service owns the Runner and
-// Worker lifecycles.
+// Worker lifecycles for both tiers (per-turn recap and per-session rollup).
 type Service struct {
-	cfg    Config
-	runner Runner
-	worker *Worker
-	logger *slog.Logger
+	cfg     Config
+	runner  Runner
+	worker  *Worker
+	rollup  *RollupWorker
+	store   *duckdb.Store
+	hub     *sse.Hub
+	logger  *slog.Logger
+	stopSch context.CancelFunc
 }
 
-// NewService wires the Config-derived Runner (a CLIRunner) into a Worker.
-// Callers may override the runner via NewServiceWithRunner — useful for
-// tests that need deterministic output.
+// NewService wires the Config-derived Runner (a CLIRunner) into both the
+// turn recap worker and the session rollup worker. Callers may override the
+// runner via NewServiceWithRunner — useful for tests that need deterministic
+// output.
 func NewService(cfg Config, store *duckdb.Store, hub *sse.Hub, logger *slog.Logger) *Service {
 	runner := NewCLIRunner(cfg.CLIPath, cfg.Timeout, logger)
 	return NewServiceWithRunner(cfg, runner, store, hub, logger)
@@ -29,40 +35,112 @@ func NewService(cfg Config, store *duckdb.Store, hub *sse.Hub, logger *slog.Logg
 // NewServiceWithRunner is NewService with an explicit runner.
 func NewServiceWithRunner(cfg Config, runner Runner, store *duckdb.Store, hub *sse.Hub, logger *slog.Logger) *Service {
 	worker := NewWorker(cfg, runner, store, hub, logger)
-	return &Service{cfg: cfg, runner: runner, worker: worker, logger: logger}
+	rollup := NewRollupWorker(cfg, runner, store, hub, logger)
+	return &Service{
+		cfg:    cfg,
+		runner: runner,
+		worker: worker,
+		rollup: rollup,
+		store:  store,
+		hub:    hub,
+		logger: logger,
+	}
 }
 
 // Config returns the service's immutable configuration snapshot.
 func (s *Service) Config() Config { return s.cfg }
 
-// Worker exposes the underlying worker for advanced tests.
+// Worker exposes the underlying turn recap worker for advanced tests.
 func (s *Service) Worker() *Worker { return s.worker }
 
-// Start spawns the worker goroutines. No-op when Enabled is false.
+// Rollup exposes the underlying rollup worker for advanced tests.
+func (s *Service) Rollup() *RollupWorker { return s.rollup }
+
+// Start spawns both worker pools and the rollup scheduler. No-op when
+// Enabled is false.
 func (s *Service) Start(ctx context.Context) {
 	if s == nil || !s.cfg.Enabled {
 		return
 	}
 	s.logger.Info("summarizer: starting",
-		"model", s.cfg.RecapModel,
+		"recap_model", s.cfg.RecapModel,
+		"rollup_model", s.cfg.RollupModel,
 		"concurrency", s.cfg.Concurrency,
 		"cli", s.cfg.CLIPath,
 	)
 	s.worker.Start(ctx)
+	s.rollup.Start(ctx)
+
+	if s.cfg.RollupSchedulerEnabled {
+		schedCtx, cancel := context.WithCancel(ctx)
+		s.stopSch = cancel
+		go s.runRollupScheduler(schedCtx)
+	}
 }
 
-// Stop drains the queue and waits for inflight jobs.
+// Stop drains the queues and waits for inflight jobs.
 func (s *Service) Stop() {
 	if s == nil || !s.cfg.Enabled {
 		return
 	}
+	if s.stopSch != nil {
+		s.stopSch()
+	}
 	s.worker.Stop()
+	s.rollup.Stop()
 }
 
-// Enqueue is the public API the reconstructor hook uses. Non-blocking.
+// Enqueue is the public API the reconstructor hook uses for per-turn recaps.
+// Non-blocking.
 func (s *Service) Enqueue(turnID, reason string) {
 	if s == nil || !s.cfg.Enabled {
 		return
 	}
 	s.worker.Enqueue(turnID, reason)
+}
+
+// EnqueueRollup is the public API for per-session digests. Non-blocking.
+func (s *Service) EnqueueRollup(sessionID, reason string) {
+	if s == nil || !s.cfg.Enabled {
+		return
+	}
+	s.rollup.Enqueue(sessionID, reason)
+}
+
+// rollupSchedulerInterval is the wall-clock cadence at which the background
+// scheduler scans for sessions needing a fresh rollup.
+const rollupSchedulerInterval = time.Hour
+
+// rollupSchedulerBatch caps how many sessions one tick will enqueue.
+const rollupSchedulerBatch = 5
+
+// runRollupScheduler is the background loop that picks up to N stale
+// sessions per tick and enqueues them for a rollup. It runs forever until
+// ctx is cancelled.
+func (s *Service) runRollupScheduler(ctx context.Context) {
+	ticker := time.NewTicker(rollupSchedulerInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			s.scheduleRollupBatch(ctx)
+		}
+	}
+}
+
+func (s *Service) scheduleRollupBatch(ctx context.Context) {
+	candidates, err := s.store.ListRollupCandidates(ctx, 2, rollupStaleness, rollupSchedulerBatch)
+	if err != nil {
+		s.logger.Warn("rollup scheduler: list candidates", "err", err)
+		return
+	}
+	if len(candidates) == 0 {
+		return
+	}
+	s.logger.Info("rollup scheduler: enqueueing batch", "count", len(candidates))
+	for _, c := range candidates {
+		s.EnqueueRollup(c.SessionID, RollupReasonScheduled)
+	}
 }
