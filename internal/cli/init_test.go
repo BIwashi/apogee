@@ -8,16 +8,17 @@ import (
 	"testing"
 )
 
+const testHookCommand = "/fake/apogee hook"
+
 func newTestConfig(t *testing.T) InitConfig {
 	t.Helper()
 	target := filepath.Join(t.TempDir(), "project", ".claude")
-	hooksDir := t.TempDir()
 	return InitConfig{
-		Target:    target,
-		SourceApp: "test-app",
-		ServerURL: "http://localhost:4100/v1/events",
-		Scope:     ScopeProject,
-		HooksDir:  hooksDir,
+		Target:      target,
+		SourceApp:   "test-app",
+		ServerURL:   "http://localhost:4100/v1/events",
+		Scope:       ScopeProject,
+		HookCommand: testHookCommand,
 	}
 }
 
@@ -32,6 +33,29 @@ func readSettings(t *testing.T, path string) map[string]any {
 		t.Fatalf("parse %s: %v", path, err)
 	}
 	return out
+}
+
+func commandForEvent(t *testing.T, settings map[string]any, event string) string {
+	t.Helper()
+	hooksRaw, ok := settings["hooks"].(map[string]any)
+	if !ok {
+		t.Fatalf("hooks section missing: %T", settings["hooks"])
+	}
+	entries, ok := hooksRaw[event].([]any)
+	if !ok {
+		t.Fatalf("event %s not installed: %T", event, hooksRaw[event])
+	}
+	if len(entries) == 0 {
+		t.Fatalf("event %s has zero entries", event)
+	}
+	first, _ := entries[0].(map[string]any)
+	inner, _ := first["hooks"].([]any)
+	if len(inner) == 0 {
+		t.Fatalf("event %s has zero inner hooks", event)
+	}
+	h, _ := inner[0].(map[string]any)
+	cmd, _ := h["command"].(string)
+	return cmd
 }
 
 func TestInitWritesSettingsJSON(t *testing.T) {
@@ -72,26 +96,46 @@ func TestInitWritesSettingsJSON(t *testing.T) {
 			t.Errorf("event %s: type=%v", event, h["type"])
 		}
 		cmd, _ := h["command"].(string)
-		if !strings.Contains(cmd, "send_event.py") {
-			t.Errorf("event %s: command missing send_event.py: %s", event, cmd)
+		if !strings.HasPrefix(cmd, testHookCommand+" ") {
+			t.Errorf("event %s: command missing hook prefix: %s", event, cmd)
 		}
-		if !strings.Contains(cmd, "--event-type "+event) {
-			t.Errorf("event %s: command missing --event-type %s: %s", event, event, cmd)
+		if !strings.Contains(cmd, "--event "+event) {
+			t.Errorf("event %s: command missing --event %s: %s", event, event, cmd)
+		}
+		if strings.Contains(cmd, "--event-type") {
+			t.Errorf("event %s: command still uses legacy --event-type flag: %s", event, cmd)
+		}
+		if strings.Contains(cmd, "send_event.py") {
+			t.Errorf("event %s: command still references Python send_event.py: %s", event, cmd)
+		}
+		if strings.Contains(cmd, "python3") {
+			t.Errorf("event %s: command still references python3: %s", event, cmd)
 		}
 		if !strings.Contains(cmd, "--source-app test-app") {
 			t.Errorf("event %s: command missing source-app: %s", event, cmd)
 		}
+		if !strings.Contains(cmd, "--server-url http://localhost:4100/v1/events") {
+			t.Errorf("event %s: command missing server-url: %s", event, cmd)
+		}
 	}
 }
 
-func TestInitExtractsEmbeddedHooksWhenMissing(t *testing.T) {
+func TestInitDefaultHookCommandResolvesExecutable(t *testing.T) {
+	// When HookCommand is empty, Init should default to
+	// ``<os.Executable> hook``. For the go test binary this is the test
+	// executable path — we just assert the suffix is ``hook`` and the
+	// prefix is non-empty.
 	cfg := newTestConfig(t)
-	// HooksDir is an empty temp dir; Init should extract into it.
-	if _, err := Init(cfg); err != nil {
+	cfg.HookCommand = ""
+	result, err := Init(cfg)
+	if err != nil {
 		t.Fatalf("Init: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(cfg.HooksDir, "send_event.py")); err != nil {
-		t.Errorf("send_event.py was not extracted: %v", err)
+	if result.HookCommand == "" {
+		t.Fatal("HookCommand should default to <os.Executable> hook")
+	}
+	if !strings.HasSuffix(result.HookCommand, " hook") {
+		t.Errorf("default HookCommand should end with ' hook', got %q", result.HookCommand)
 	}
 }
 
@@ -175,17 +219,93 @@ func TestInitForceOverwritesApogeeEntry(t *testing.T) {
 	}
 
 	settings := readSettings(t, cfg.SettingsPath())
-	hooksRaw := settings["hooks"].(map[string]any)
-	entries := hooksRaw["PreToolUse"].([]any)
-	if len(entries) != 1 {
-		t.Fatalf("expected 1 PreToolUse entry after force, got %d", len(entries))
-	}
-	cmd := entries[0].(map[string]any)["hooks"].([]any)[0].(map[string]any)["command"].(string)
+	cmd := commandForEvent(t, settings, "PreToolUse")
 	if !strings.Contains(cmd, "--source-app renamed-app") {
 		t.Errorf("command not updated with new source-app: %s", cmd)
 	}
 	if strings.Contains(cmd, "--source-app test-app") {
 		t.Errorf("command still references old source-app: %s", cmd)
+	}
+}
+
+func TestInitLegacyPythonDetectionHintsForce(t *testing.T) {
+	cfg := newTestConfig(t)
+	if err := os.MkdirAll(cfg.Target, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// Seed a v0.1.x-style Python hook entry.
+	preset := map[string]any{
+		"hooks": map[string]any{
+			"PreToolUse": []any{
+				map[string]any{
+					"hooks": []any{
+						map[string]any{
+							"type":    "command",
+							"command": "python3 /tmp/hooks/send_event.py --event-type PreToolUse",
+						},
+					},
+				},
+			},
+		},
+	}
+	b, _ := json.MarshalIndent(preset, "", "  ")
+	if err := os.WriteFile(cfg.SettingsPath(), b, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	result, err := Init(cfg)
+	if err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+	if result.LegacyFound == 0 {
+		t.Errorf("expected LegacyFound > 0, got 0")
+	}
+	// Without --force the legacy entry survives and the new entry is
+	// appended alongside it.
+	settings := readSettings(t, cfg.SettingsPath())
+	entries := settings["hooks"].(map[string]any)["PreToolUse"].([]any)
+	if len(entries) != 2 {
+		t.Errorf("expected legacy + new entry, got %d", len(entries))
+	}
+}
+
+func TestInitForceStripsLegacyPythonEntries(t *testing.T) {
+	cfg := newTestConfig(t)
+	if err := os.MkdirAll(cfg.Target, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	preset := map[string]any{
+		"hooks": map[string]any{
+			"PreToolUse": []any{
+				map[string]any{
+					"hooks": []any{
+						map[string]any{
+							"type":    "command",
+							"command": "python3 /tmp/hooks/send_event.py --event-type PreToolUse",
+						},
+					},
+				},
+			},
+		},
+	}
+	b, _ := json.MarshalIndent(preset, "", "  ")
+	if err := os.WriteFile(cfg.SettingsPath(), b, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg.Force = true
+	if _, err := Init(cfg); err != nil {
+		t.Fatalf("Init force: %v", err)
+	}
+	settings := readSettings(t, cfg.SettingsPath())
+	entries := settings["hooks"].(map[string]any)["PreToolUse"].([]any)
+	if len(entries) != 1 {
+		t.Fatalf("expected exactly 1 entry after force (legacy stripped), got %d", len(entries))
+	}
+	cmd := commandForEvent(t, settings, "PreToolUse")
+	if strings.Contains(cmd, "python3") {
+		t.Errorf("force run should strip python3 entries; got %s", cmd)
+	}
+	if !strings.HasPrefix(cmd, testHookCommand+" ") {
+		t.Errorf("force run did not install new hook command; got %s", cmd)
 	}
 }
 
@@ -231,15 +351,15 @@ func TestResolveTargetUserScope(t *testing.T) {
 }
 
 func TestDeriveSourceAppFromTarget(t *testing.T) {
-	got := deriveSourceApp("/tmp/my-project/.claude")
+	got := deriveSourceAppFromTarget("/tmp/my-project/.claude")
 	if got != "my-project" {
-		t.Errorf("deriveSourceApp: got %q, want %q", got, "my-project")
+		t.Errorf("deriveSourceAppFromTarget: got %q, want %q", got, "my-project")
 	}
 }
 
 func TestInitEmptySourceAppOmitsFlag(t *testing.T) {
 	cfg := newTestConfig(t)
-	cfg.SourceApp = "" // dynamic — send_event.py derives at runtime
+	cfg.SourceApp = "" // dynamic — apogee hook derives at runtime
 	result, err := Init(cfg)
 	if err != nil {
 		t.Fatalf("Init: %v", err)
@@ -259,8 +379,8 @@ func TestInitEmptySourceAppOmitsFlag(t *testing.T) {
 		if strings.Contains(cmd, "--source-app") {
 			t.Errorf("event %s: command should not contain --source-app when dynamic: %s", event, cmd)
 		}
-		if !strings.Contains(cmd, "--event-type "+event) {
-			t.Errorf("event %s: command missing --event-type: %s", event, cmd)
+		if !strings.Contains(cmd, "--event "+event) {
+			t.Errorf("event %s: command missing --event: %s", event, cmd)
 		}
 	}
 }
@@ -272,8 +392,7 @@ func TestInitPinnedSourceAppWritesFlag(t *testing.T) {
 		t.Fatalf("Init: %v", err)
 	}
 	settings := readSettings(t, cfg.SettingsPath())
-	hooksRaw := settings["hooks"].(map[string]any)
-	cmd := hooksRaw["PreToolUse"].([]any)[0].(map[string]any)["hooks"].([]any)[0].(map[string]any)["command"].(string)
+	cmd := commandForEvent(t, settings, "PreToolUse")
 	if !strings.Contains(cmd, "--source-app pinned-name") {
 		t.Errorf("pinned SourceApp missing from command: %s", cmd)
 	}
@@ -293,8 +412,7 @@ func TestInitDynamicAndPinnedCoexistOnForce(t *testing.T) {
 		t.Fatalf("force init: %v", err)
 	}
 	settings := readSettings(t, cfg.SettingsPath())
-	hooksRaw := settings["hooks"].(map[string]any)
-	entries := hooksRaw["PreToolUse"].([]any)
+	entries := settings["hooks"].(map[string]any)["PreToolUse"].([]any)
 	if len(entries) != 1 {
 		t.Fatalf("expected exactly 1 entry after force, got %d", len(entries))
 	}

@@ -74,7 +74,7 @@ Apogee's hook pipeline is end-to-end Go-typed. To add a new event:
 3. **Store schema** — extend `internal/store/duckdb/schema.sql` if the event needs new columns. Add migrations to `internal/store/duckdb/migrate.go` (`applyColumnAdditions`).
 4. **Web types** — add the event constant to `web/app/lib/api-types.ts` and surface it in the relevant component.
 5. **Tests** — `internal/ingest/reconstructor_test.go` has table-driven coverage for hook lifecycles. Add a row.
-6. **Hook library** — if the new event is fired by Claude Code itself, make sure the Python hooks in `hooks/apogee_hook/` know about it.
+6. **Hook subcommand** — if the new event is fired by Claude Code itself, make sure the Go `apogee hook` entry point in `internal/cli/hook.go` knows about it (the `flatHookFields` list) and that `HookEvents` in `internal/cli/init.go` lists it so `apogee init` wires it into settings.json.
 
 ## How to add a new semconv attribute
 

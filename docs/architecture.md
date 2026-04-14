@@ -128,7 +128,7 @@ EventSource for SSE. Pages planned:
 Claude Code
    │  PreToolUse
    ▼
-Python hook (~/.claude/hooks/pre_tool_use.py)
+apogee hook subcommand (`apogee hook --event PreToolUse ...`)
    │  POST /ingest  { "type": "PreToolUse", ... }
    ▼
 apogee collector (HTTP)

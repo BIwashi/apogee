@@ -38,21 +38,14 @@ func runDoctor(out io.Writer) error {
 		fmt.Fprintf(out, "  OK    %s writable\n", apogeeDir)
 	}
 
-	// 2. python3 availability
-	if path, err := exec.LookPath("python3"); err != nil {
-		fmt.Fprintln(out, "  WARN  python3 not found in PATH (hooks will fail until you install Python 3)")
-	} else {
-		fmt.Fprintf(out, "  OK    python3 at %s\n", path)
-	}
-
-	// 3. claude CLI (used by the summarizer)
+	// 2. claude CLI (used by the summarizer)
 	if path, err := exec.LookPath("claude"); err != nil {
 		fmt.Fprintln(out, "  WARN  claude CLI not found (summarizer will be disabled)")
 	} else {
 		fmt.Fprintf(out, "  OK    claude at %s\n", path)
 	}
 
-	// 4. default DuckDB path
+	// 3. default DuckDB path
 	dbPath := filepath.Join(apogeeDir, "apogee.duckdb")
 	if apogeeDir == "" {
 		fmt.Fprintln(out, "  WARN  default db path not resolvable")
@@ -62,7 +55,7 @@ func runDoctor(out io.Writer) error {
 		fmt.Fprintf(out, "  OK    default db path %s\n", dbPath)
 	}
 
-	// 5. config file note (not an error when absent — defaults apply)
+	// 4. config file note (not an error when absent — defaults apply)
 	cfgPath := filepath.Join(apogeeDir, "config.toml")
 	if _, err := os.Stat(cfgPath); err == nil {
 		fmt.Fprintf(out, "  OK    config at %s\n", cfgPath)

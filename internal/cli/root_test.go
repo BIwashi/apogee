@@ -11,7 +11,7 @@ func TestRootCmdSubcommandTree(t *testing.T) {
 	want := map[string]bool{
 		"serve":   false,
 		"init":    false,
-		"hooks":   false,
+		"hook":    false,
 		"version": false,
 		"doctor":  false,
 	}
@@ -27,20 +27,12 @@ func TestRootCmdSubcommandTree(t *testing.T) {
 	}
 }
 
-func TestRootCmdHooksExtract(t *testing.T) {
+func TestRootCmdHooksSubcommandRemoved(t *testing.T) {
 	root := NewRootCmd(&bytes.Buffer{}, &bytes.Buffer{})
-	hooks, _, err := root.Find([]string{"hooks"})
-	if err != nil {
-		t.Fatalf("find hooks: %v", err)
-	}
-	var sawExtract bool
-	for _, c := range hooks.Commands() {
-		if c.Name() == "extract" {
-			sawExtract = true
+	for _, c := range root.Commands() {
+		if c.Name() == "hooks" {
+			t.Errorf("`hooks` subcommand should be removed; found %q", c.Name())
 		}
-	}
-	if !sawExtract {
-		t.Errorf("hooks command is missing the extract verb")
 	}
 }
 
@@ -52,7 +44,7 @@ func TestRootCmdHelpLists(t *testing.T) {
 		t.Fatalf("help: %v", err)
 	}
 	out := stdout.String()
-	for _, name := range []string{"serve", "init", "hooks", "version", "doctor"} {
+	for _, name := range []string{"serve", "init", "hook", "version", "doctor"} {
 		if !strings.Contains(out, name) {
 			t.Errorf("help output missing %q: %s", name, out)
 		}

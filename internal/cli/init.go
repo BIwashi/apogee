@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -53,8 +52,8 @@ type InitConfig struct {
 	// corresponding ``settings.json``.
 	Target string
 	// SourceApp, when set, pins the label stamped onto every event.
-	// Leave empty to let ``send_event.py`` derive the label dynamically
-	// at hook invocation time from $APOGEE_SOURCE_APP, the git toplevel
+	// Leave empty to let `apogee hook` derive the label dynamically at
+	// hook invocation time from $APOGEE_SOURCE_APP, the git toplevel
 	// basename, or $PWD basename — in that order. Dynamic derivation is
 	// the default so one user-scope install can observe every project
 	// on the machine with the right per-project label.
@@ -63,13 +62,33 @@ type InitConfig struct {
 	ServerURL string
 	// Scope selects project vs. user install.
 	Scope Scope
-	// HooksDir is the directory `send_event.py` lives in. When empty, RunInit
-	// extracts the embedded hooks to ``~/.apogee/hooks/<version>/``.
-	HooksDir string
+	// HookCommand is the literal prefix (binary path + "hook" subcommand)
+	// written into settings.json. Defaults to ``<os.Executable> hook`` so
+	// Claude Code re-invokes the exact apogee binary that ran init. Tests
+	// inject a stable path so assertions do not depend on the real
+	// executable location.
+	HookCommand string
 	// DryRun skips the actual write and prints the plan instead.
 	DryRun bool
 	// Force overwrites existing apogee hook entries without prompting.
 	Force bool
+}
+
+// DefaultHookCommand is the default command prefix written into
+// settings.json. It is the currently-running apogee binary's absolute
+// path followed by ``hook``. When os.Executable() is not resolvable
+// (unusual), the function falls back to the literal ``apogee hook``
+// so the generated settings.json still has a working command once the
+// binary is on PATH.
+func DefaultHookCommand() string {
+	exe, err := os.Executable()
+	if err != nil || exe == "" {
+		return "apogee hook"
+	}
+	if abs, err := filepath.Abs(exe); err == nil && abs != "" {
+		exe = abs
+	}
+	return exe + " hook"
 }
 
 // SettingsPath returns the absolute path to settings.json for this config.
@@ -82,18 +101,25 @@ type InitResult struct {
 	SettingsPath string
 	// SourceApp is the label that will be stamped on events. When empty,
 	// the commands written to settings.json omit the ``--source-app``
-	// flag and ``send_event.py`` derives it at runtime.
+	// flag and `apogee hook` derives it at runtime.
 	SourceApp string
-	HooksDir  string
-	ServerURL string
-	Added     []string
-	Skipped   []string
-	Settings  map[string]any
+	// HookCommand is the resolved command prefix written into
+	// settings.json (typically ``<binary> hook``).
+	HookCommand string
+	ServerURL   string
+	Added       []string
+	Skipped     []string
+	// LegacyFound is the count of existing settings.json entries that
+	// point at the old ``python3 send_event.py`` prefix. These are NOT
+	// auto-migrated; the plan output hints at ``--force`` to replace them.
+	LegacyFound int
+	Settings    map[string]any
 }
 
-// RunInit is the `apogee init` entry point. It parses flags, resolves paths,
-// optionally extracts the embedded hooks, rewrites settings.json, and prints
-// a plan.
+// RunInit is the `apogee init` entry point. It parses flags, resolves
+// paths, rewrites settings.json, and prints a plan. It no longer has any
+// Python or hook-extraction side effects — the binary itself is the
+// hook, so the only output is the edited settings.json.
 func RunInit(args []string, stdout, stderr io.Writer) error {
 	flags := flag.NewFlagSet("init", flag.ContinueOnError)
 	flags.SetOutput(stderr)
@@ -102,7 +128,6 @@ func RunInit(args []string, stdout, stderr io.Writer) error {
 	sourceApp := flags.String("source-app", "", "Pin the source_app label. Leave empty (the default) to let the hook derive it at runtime from $APOGEE_SOURCE_APP, git toplevel, or $PWD.")
 	serverURL := flags.String("server-url", DefaultServerURL, "Collector URL")
 	scope := flags.String("scope", "user", "Install scope: user | project. Defaults to user so one install covers every Claude Code project on this machine.")
-	hooksDir := flags.String("hooks-dir", "", "Directory containing send_event.py (default: extract embedded hooks to ~/.apogee/hooks/<version>/)")
 	dryRun := flags.Bool("dry-run", false, "Print what would change without writing")
 	force := flags.Bool("force", false, "Overwrite existing apogee hooks without prompting")
 
@@ -114,10 +139,9 @@ func RunInit(args []string, stdout, stderr io.Writer) error {
 		fmt.Fprintln(stderr, "the machine, and each event is labelled with the repo name of the")
 		fmt.Fprintln(stderr, "directory the session was started from.")
 		fmt.Fprintln(stderr)
-		fmt.Fprintln(stderr, "send_event.py lookup order:")
-		fmt.Fprintln(stderr, "  1. --hooks-dir <dir>/send_event.py")
-		fmt.Fprintln(stderr, "  2. $APOGEE_HOOKS_DIR/send_event.py")
-		fmt.Fprintln(stderr, "  3. extract the embedded copy to ~/.apogee/hooks/<version>/")
+		fmt.Fprintln(stderr, "The command written into settings.json is the absolute path of the")
+		fmt.Fprintln(stderr, "currently-running apogee binary plus ``hook --event <X>``. No Python")
+		fmt.Fprintln(stderr, "is involved, and no files are extracted outside settings.json itself.")
 		fmt.Fprintln(stderr)
 		fmt.Fprintln(stderr, "Flags:")
 		flags.PrintDefaults()
@@ -129,7 +153,6 @@ func RunInit(args []string, stdout, stderr io.Writer) error {
 	cfg := InitConfig{
 		SourceApp: *sourceApp,
 		ServerURL: *serverURL,
-		HooksDir:  *hooksDir,
 		DryRun:    *dryRun,
 		Force:     *force,
 	}
@@ -149,26 +172,8 @@ func RunInit(args []string, stdout, stderr io.Writer) error {
 	}
 	cfg.Target = resolvedTarget
 
-	// SourceApp stays empty by default — the Python hook derives it at
+	// SourceApp stays empty by default — `apogee hook` derives it at
 	// runtime so one install can span every project on this machine.
-
-	if cfg.HooksDir == "" {
-		cfg.HooksDir = os.Getenv("APOGEE_HOOKS_DIR")
-	}
-	if cfg.HooksDir == "" {
-		d, err := DefaultHooksDir()
-		if err != nil {
-			return err
-		}
-		cfg.HooksDir = d
-	}
-	expandedHooksDir, err := expandHome(cfg.HooksDir)
-	if err != nil {
-		return err
-	}
-	cfg.HooksDir = expandedHooksDir
-
-	warnIfMissingPython(stderr)
 
 	result, err := Init(cfg)
 	if err != nil {
@@ -177,6 +182,12 @@ func RunInit(args []string, stdout, stderr io.Writer) error {
 	printInitPlan(stdout, cfg, result)
 	return nil
 }
+
+// legacyPythonPrefix is the detection prefix used to find v0.1.x hook
+// entries that still call the old Python ``send_event.py`` script.
+// These rows are NOT auto-migrated — the plan output hints at
+// ``--force`` to replace them in place.
+const legacyPythonPrefix = "python3 "
 
 // Init performs the init logic against an already-resolved InitConfig. It is
 // the unit-testable entry point.
@@ -187,16 +198,8 @@ func Init(cfg InitConfig) (*InitResult, error) {
 	if cfg.ServerURL == "" {
 		cfg.ServerURL = DefaultServerURL
 	}
-
-	// Make sure send_event.py is available at cfg.HooksDir. When it is not,
-	// we extract the embedded copy. In --dry-run we still extract so the
-	// path reported in the plan is truthful (we always extract to the same
-	// versioned path, so the cost is bounded and idempotent).
-	sendEvent := filepath.Join(cfg.HooksDir, "send_event.py")
-	if _, err := os.Stat(sendEvent); err != nil {
-		if _, err := ExtractHooks(cfg.HooksDir, false); err != nil {
-			return nil, fmt.Errorf("init: extract hooks: %w", err)
-		}
+	if cfg.HookCommand == "" {
+		cfg.HookCommand = DefaultHookCommand()
 	}
 
 	// Load the existing settings.json if present.
@@ -218,13 +221,16 @@ func Init(cfg InitConfig) (*InitResult, error) {
 	result := &InitResult{
 		SettingsPath: settingsPath,
 		SourceApp:    cfg.SourceApp,
-		HooksDir:     cfg.HooksDir,
+		HookCommand:  cfg.HookCommand,
 		ServerURL:    cfg.ServerURL,
 	}
 
-	commandPrefix := fmt.Sprintf("python3 %s", sendEvent)
+	commandPrefix := cfg.HookCommand
 	for _, event := range HookEvents {
 		entries := listOf(hooksSection[event])
+		// Count any legacy Python entries so the plan can hint at --force.
+		result.LegacyFound += countEntriesWithPrefix(entries, legacyPythonPrefix)
+
 		already := hasApogeeEntry(entries, commandPrefix)
 		if already && !cfg.Force {
 			result.Skipped = append(result.Skipped, event)
@@ -232,10 +238,13 @@ func Init(cfg InitConfig) (*InitResult, error) {
 		}
 		if cfg.Force {
 			entries = removeApogeeEntries(entries, commandPrefix)
+			// --force also strips legacy Python rows so the rewrite is
+			// truly a replacement, not an accumulation.
+			entries = removeApogeeEntries(entries, legacyPythonPrefix)
 		}
 		parts := []string{
 			commandPrefix,
-			"--event-type", event,
+			"--event", event,
 			"--server-url", cfg.ServerURL,
 		}
 		if cfg.SourceApp != "" {
@@ -273,6 +282,37 @@ func Init(cfg InitConfig) (*InitResult, error) {
 		return nil, fmt.Errorf("init: write %s: %w", settingsPath, err)
 	}
 	return result, nil
+}
+
+// countEntriesWithPrefix returns the number of hook commands under
+// entries whose command starts with prefix. Used to count legacy
+// ``python3 send_event.py`` rows so init can warn about them.
+func countEntriesWithPrefix(entries []any, prefix string) int {
+	n := 0
+	for _, entry := range entries {
+		m, ok := entry.(map[string]any)
+		if !ok {
+			continue
+		}
+		inner, ok := m["hooks"].([]any)
+		if !ok {
+			continue
+		}
+		for _, h := range inner {
+			hm, ok := h.(map[string]any)
+			if !ok {
+				continue
+			}
+			cmd, ok := hm["command"].(string)
+			if !ok {
+				continue
+			}
+			if strings.HasPrefix(cmd, prefix) {
+				n++
+			}
+		}
+	}
+	return n
 }
 
 // ResolveTarget expands a target path according to the scope. For the user
@@ -414,16 +454,12 @@ func marshalStable(v any) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// deriveSourceApp converts a ``.claude`` directory path into a plausible
-// source_app label: the basename of the parent directory, or ``apogee`` as a
-// last resort.
-//
-// Kept for backward compatibility and explicit overrides (``apogee init
-// --source-app $(apogee derive)`` style workflows). The default init flow
-// leaves ``SourceApp`` empty so the Python hook derives it at runtime; this
-// helper is only invoked by callers that want to pin a label based on the
-// current target directory.
-func deriveSourceApp(target string) string {
+// deriveSourceAppFromTarget converts a ``.claude`` directory path into a
+// plausible source_app label: the basename of the parent directory, or
+// ``apogee`` as a last resort. Kept for callers that want to pin a label
+// based on the current target directory; the default init flow leaves
+// SourceApp empty so `apogee hook` derives it at runtime.
+func deriveSourceAppFromTarget(target string) string {
 	parent := filepath.Dir(target)
 	if parent == "" || parent == "/" || parent == "." {
 		return "apogee"
@@ -443,16 +479,6 @@ func sanitiseLabel(s string) string {
 	return s
 }
 
-// warnIfMissingPython runs ``python3 --version`` and prints a soft warning
-// to stderr if it fails. We do not abort the init — the user may have a
-// different Python binary in PATH at Claude Code runtime.
-func warnIfMissingPython(stderr io.Writer) {
-	cmd := exec.Command("python3", "--version")
-	if err := cmd.Run(); err != nil {
-		fmt.Fprintln(stderr, "apogee init: warning: `python3` not found in PATH; hooks will fail at runtime until you install Python 3.")
-	}
-}
-
 // printInitPlan prints a human-readable summary of an InitResult in the
 // diff-style format documented in the PR description.
 func printInitPlan(w io.Writer, cfg InitConfig, r *InitResult) {
@@ -462,10 +488,10 @@ func printInitPlan(w io.Writer, cfg InitConfig, r *InitResult) {
 	if r.SourceApp != "" {
 		fmt.Fprintf(w, "  Source app: %s (pinned)\n", r.SourceApp)
 	} else {
-		fmt.Fprintln(w, "  Source app: auto — derived by send_event.py at runtime")
+		fmt.Fprintln(w, "  Source app: auto — derived by `apogee hook` at runtime")
 		fmt.Fprintln(w, "              ($APOGEE_SOURCE_APP → git toplevel → $PWD)")
 	}
-	fmt.Fprintf(w, "  Hooks dir: %s\n", r.HooksDir)
+	fmt.Fprintf(w, "  Hook command: %s\n", r.HookCommand)
 	fmt.Fprintln(w)
 
 	fmt.Fprintln(w, "  Hook events to install:")
@@ -482,6 +508,10 @@ func printInitPlan(w io.Writer, cfg InitConfig, r *InitResult) {
 		for _, e := range skipped {
 			fmt.Fprintf(w, "    = %s\n", e)
 		}
+	}
+	if r.LegacyFound > 0 && !cfg.Force {
+		fmt.Fprintln(w)
+		fmt.Fprintf(w, "  Notice: found %d legacy Python hook entries; pass --force to replace them.\n", r.LegacyFound)
 	}
 	fmt.Fprintln(w)
 	fmt.Fprintf(w, "  Collector URL: %s\n", r.ServerURL)

@@ -47,7 +47,7 @@ this very binary.`,
 
 	root.AddCommand(NewServeCmd())
 	root.AddCommand(newInitCmd(stdout, stderr))
-	root.AddCommand(newHooksCmd(stdout, stderr))
+	root.AddCommand(NewHookCmd())
 	root.AddCommand(NewVersionCmd(stdout))
 	root.AddCommand(NewDoctorCmd(stdout))
 
@@ -82,27 +82,6 @@ func newInitCmd(stdout, stderr io.Writer) *cobra.Command {
 		},
 	}
 	return cmd
-}
-
-// newHooksCmd builds the `apogee hooks` umbrella and attaches its verbs.
-func newHooksCmd(stdout, stderr io.Writer) *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "hooks",
-		Short: "Manage the embedded hook library",
-	}
-	cmd.AddCommand(newHooksExtractCmd(stdout, stderr))
-	return cmd
-}
-
-func newHooksExtractCmd(stdout, stderr io.Writer) *cobra.Command {
-	return &cobra.Command{
-		Use:                "extract [flags]",
-		Short:              "Write the embedded Python hook library to disk",
-		DisableFlagParsing: true,
-		RunE: func(_ *cobra.Command, args []string) error {
-			return swallowFlagHelp(RunHooksExtract(args, stdout, stderr))
-		},
-	}
 }
 
 // swallowFlagHelp translates the stdlib flag.ErrHelp sentinel (returned when
