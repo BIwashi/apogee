@@ -64,6 +64,20 @@ which is a cgo binding. A working C toolchain is required:
 `CGO_ENABLED=1` must be set when running `go build`, `go test`, or `go run`
 (this is the default for native builds).
 
+## Hooks subsystem
+
+The Python hook library lives in [`hooks/`](hooks/) and is embedded into the
+Go binary via `//go:embed all:hooks` (declared in `hooksfs.go` at the repo
+root). `apogee init` extracts those files into
+`~/.apogee/hooks/<version>/` and rewrites the target `.claude/settings.json`
+to point all 12 hook events at `send_event.py`. The hook library is stdlib
+only: no `uv`, no third-party packages. Network failures must never break
+Claude Code — `apogee_hook.send_event` logs to stderr and returns on error.
+See [`hooks/README.md`](hooks/README.md) for the wire contract.
+
+Run the Python unit tests with `python3 -m unittest discover hooks/tests` and
+the end-to-end shell smoke test with `hooks/smoke_test.sh`.
+
 ## Pull request workflow
 
 - One feature branch per PR, named `feat/<slug>` or `fix/<slug>`.
