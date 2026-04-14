@@ -1,0 +1,157 @@
+@import "tailwindcss";
+
+/* ─────────────────────────────────────────────────────────────
+ * apogee design system — ported from aperion with additions for
+ * Claude Code hook observability. See docs/design-tokens.md for
+ * the full specification.
+ * ───────────────────────────────────────────────────────────── */
+
+@font-face {
+  font-family: "Artemis Inter";
+  src: url("/fonts/Artemis_Inter.otf") format("opentype");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  /* ── Artemis Core ────────────────────────── */
+  --artemis-red: #FC3D21;
+  --artemis-blue: #0B3D91;
+  --artemis-earth: #27AAE1;
+  --artemis-shadow: #58595B;
+  --artemis-space: #A7A9AC;
+  --artemis-white: #FFFFFF;
+  --artemis-black: #000000;
+
+  /* ── Dark UI Surfaces ────────────────────── */
+  --bg-deepspace: #06080f;
+  --bg-surface: #0c1018;
+  --bg-raised: #141a24;
+  --bg-overlay: #1c2333;
+  --border: #1e2a3a;
+  --border-bright: #2a3a50;
+
+  /* ── Semantic Status ─────────────────────── */
+  --status-critical: #FC3D21;
+  --status-warning: #E08B27;
+  --status-success: #27E0A1;
+  --status-info: #27AAE1;
+  --status-muted: #58595B;
+
+  /* ── Accent gradient ─────────────────────── */
+  --accent-gradient: linear-gradient(
+    135deg,
+    #0B3D91 0%,
+    #27AAE1 50%,
+    #FC3D21 100%
+  );
+
+  /* ── Typography ──────────────────────────── */
+  --font-display: "Artemis Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans",
+    Helvetica, Arial, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
+
+  /* ── Legacy compat (aperion parity) ──────── */
+  --background: var(--bg-deepspace);
+  --foreground: #e8eaed;
+  --accent: var(--artemis-earth);
+  --accent-dim: var(--artemis-blue);
+  --surface: var(--bg-surface);
+  --surface-raised: var(--bg-raised);
+  --text-muted: var(--artemis-space);
+}
+
+html,
+body {
+  background: var(--bg-deepspace);
+  color: var(--foreground);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Artemis display headings ──────────────── */
+.font-display {
+  font-family: var(--font-display);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-weight: 700;
+}
+
+.font-mono {
+  font-family: var(--font-mono);
+}
+
+/* ── Status utilities ──────────────────────── */
+.status-critical { color: var(--status-critical); }
+.status-warning  { color: var(--status-warning); }
+.status-success  { color: var(--status-success); }
+.status-info     { color: var(--status-info); }
+.status-muted    { color: var(--status-muted); }
+
+.badge-critical {
+  background: rgb(252 61 33 / 0.15);
+  color: var(--status-critical);
+  border: 1px solid rgb(252 61 33 / 0.3);
+}
+.badge-warning {
+  background: rgb(224 139 39 / 0.15);
+  color: var(--status-warning);
+  border: 1px solid rgb(224 139 39 / 0.3);
+}
+.badge-success {
+  background: rgb(39 224 161 / 0.15);
+  color: var(--status-success);
+  border: 1px solid rgb(39 224 161 / 0.3);
+}
+.badge-info {
+  background: rgb(39 170 225 / 0.15);
+  color: var(--status-info);
+  border: 1px solid rgb(39 170 225 / 0.3);
+}
+.badge-muted {
+  background: rgb(88 89 91 / 0.18);
+  color: var(--artemis-space);
+  border: 1px solid rgb(88 89 91 / 0.35);
+}
+
+/* ── Accent gradient text (hero only) ──────── */
+.accent-gradient-text {
+  background: var(--accent-gradient);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.accent-gradient-bar {
+  background: var(--accent-gradient);
+}
+
+/* ── Surface card primitive ────────────────── */
+.surface-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.surface-card-raised {
+  background: var(--bg-raised);
+  border: 1px solid var(--border-bright);
+  border-radius: 10px;
+}
+
+/* ── Scrollbar ─────────────────────────────── */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--artemis-shadow);
+}
