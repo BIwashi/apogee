@@ -250,6 +250,16 @@ npm run build
 go run ./cmd/apogee serve --addr :4100 --db .local/apogee.duckdb
 ```
 
+The collector by itself is just a server — the dashboard will stay empty until a Claude Code session is wired to report events into it. After the collector is up, install the hooks once at user scope using the **local** binary (not the brew-installed one) so every Claude Code session on this machine streams into your dev collector:
+
+```sh
+# After the collector is running, install hooks once at user scope.
+make build                    # produces ./bin/apogee
+./bin/apogee init             # writes ~/.claude/settings.json
+```
+
+After that, `claude` started in any project reports into the local collector and the dashboard lights up.
+
 Or use the Makefile:
 
 ```sh
@@ -258,6 +268,10 @@ make run-collector    # runs the collector against .local/apogee.duckdb
 make test             # go vet + race tests
 make dev              # collector and Next.js dev server together
 ```
+
+`make dev` already starts both the collector and the Next.js dev server, so `make dev` + `./bin/apogee init` is the minimal setup for a new contributor.
+
+> If `make dev` fails with *"address already in use"* on `:4100`, an old collector is still bound to the port. Find it with `lsof -nP -iTCP:4100 -sTCP:LISTEN` and stop it with `pkill -f "apogee serve"`.
 
 To regenerate the screenshots committed under `assets/screenshots/`:
 
