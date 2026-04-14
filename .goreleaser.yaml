@@ -24,11 +24,31 @@ builds:
       - -X github.com/BIwashi/apogee/internal/version.Version={{.Version}}
       - -X github.com/BIwashi/apogee/internal/version.Commit={{.ShortCommit}}
       - -X github.com/BIwashi/apogee/internal/version.BuildDate={{.Date}}
+    overrides:
+      - goos: darwin
+        goarch: amd64
+        env:
+          - CC=clang -arch x86_64
+          - CXX=clang++ -arch x86_64
+      - goos: linux
+        goarch: amd64
+        env:
+          - CC=zig cc -target x86_64-linux-gnu
+          - CXX=zig c++ -target x86_64-linux-gnu
+      - goos: linux
+        goarch: arm64
+        env:
+          - CC=zig cc -target aarch64-linux-gnu
+          - CXX=zig c++ -target aarch64-linux-gnu
 
 archives:
   - formats: [tar.gz]
     name_template: >-
       {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+    files:
+      - LICENSE
+      - README.md
+      - CHANGELOG.md
 
 checksum:
   name_template: "checksums.txt"
@@ -43,19 +63,46 @@ changelog:
       - "^docs:"
       - "^test:"
       - "^chore:"
+      - "^ci:"
+
+release:
+  github:
+    owner: BIwashi
+    name: apogee
+  draft: false
+  prerelease: auto
+  header: |
+    apogee {{ .Tag }} — Claude Code multi-agent observability.
+
+    Install via Homebrew:
+
+    ```
+    brew install BIwashi/tap/apogee
+    apogee serve &
+    apogee init --source-app my-project
+    ```
+
+    Or via `go install`:
+
+    ```
+    go install github.com/BIwashi/apogee/cmd/apogee@{{ .Tag }}
+    ```
 
 brews:
   - name: apogee
     repository:
       owner: BIwashi
       name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    directory: Formula
     commit_author:
       name: apogee-release-bot
-      email: apogee@biwashi.dev
+      email: 49979368+BIwashi@users.noreply.github.com
+    commit_msg_template: "brew: release apogee {{ .Tag }}"
     homepage: "https://github.com/BIwashi/apogee"
     description: "Multi-agent observability dashboard for Claude Code."
     license: "Apache-2.0"
     install: |
       bin.install "apogee"
     test: |
-      system "#{bin}/apogee", "version"
+      assert_match "apogee v", shell_output("#{bin}/apogee version")
