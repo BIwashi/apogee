@@ -40,6 +40,12 @@ type Turn struct {
 	// engine's full signal slice. Empty string when the engine has not run
 	// against this turn yet.
 	AttentionSignalsJSON string `json:"attention_signals_json,omitempty"`
+	// RecapJSON is the LLM summariser's structured recap for this turn,
+	// serialised as JSON. Empty string when the summariser has not run yet.
+	// The shape matches summarizer.Recap.
+	RecapJSON        string     `json:"recap_json,omitempty"`
+	RecapGeneratedAt *time.Time `json:"recap_generated_at,omitempty"`
+	RecapModel       string     `json:"recap_model,omitempty"`
 }
 
 // InsertTurn creates a new turn row. The caller is expected to have already
@@ -296,7 +302,8 @@ SELECT
   input_tokens, output_tokens,
   headline, outcome_summary,
   attention_state, attention_reason, attention_score, attention_tone,
-  phase, phase_confidence, phase_since, attention_signals_json
+  phase, phase_confidence, phase_since, attention_signals_json,
+  recap_json, recap_generated_at, recap_model
 FROM turns
 `
 
@@ -326,6 +333,9 @@ func scanTurn(r rowScanner) (*Turn, error) {
 		phaseConfidence sql.NullFloat64
 		phaseSince      sql.NullTime
 		attentionSignal sql.NullString
+		recapJSON       sql.NullString
+		recapGenerated  sql.NullTime
+		recapModel      sql.NullString
 	)
 	if err := r.Scan(
 		&t.TurnID, &t.TraceID, &t.SessionID, &t.SourceApp, &t.StartedAt, &endedAt, &durationMs,
@@ -335,6 +345,7 @@ func scanTurn(r rowScanner) (*Turn, error) {
 		&headline, &outcomeSummary,
 		&attentionState, &attentionReas, &attentionScore, &attentionTone,
 		&phase, &phaseConfidence, &phaseSince, &attentionSignal,
+		&recapJSON, &recapGenerated, &recapModel,
 	); err != nil {
 		return nil, err
 	}
@@ -401,7 +412,78 @@ func scanTurn(r rowScanner) (*Turn, error) {
 	if attentionSignal.Valid {
 		t.AttentionSignalsJSON = attentionSignal.String
 	}
+	if recapJSON.Valid {
+		t.RecapJSON = recapJSON.String
+	}
+	if recapGenerated.Valid {
+		v := recapGenerated.Time
+		t.RecapGeneratedAt = &v
+	}
+	if recapModel.Valid {
+		t.RecapModel = recapModel.String
+	}
 	return &t, nil
+}
+
+// UpdateTurnRecap stores the summariser's structured recap on the turn row.
+// recapJSON is the already-serialised JSON blob (kept opaque so the store
+// does not import the summarizer package). generatedAt and model are written
+// into their own columns so handlers can surface them without re-parsing.
+func (s *Store) UpdateTurnRecap(ctx context.Context, turnID, recapJSON, model string, generatedAt time.Time) error {
+	const q = `
+UPDATE turns SET
+  recap_json         = ?,
+  recap_generated_at = ?,
+  recap_model        = ?
+WHERE turn_id = ?
+`
+	_, err := s.db.ExecContext(ctx, q,
+		nullString(recapJSON),
+		generatedAt,
+		nullString(model),
+		turnID,
+	)
+	if err != nil {
+		return fmt.Errorf("update turn recap: %w", err)
+	}
+	return nil
+}
+
+// TurnRecap is the storage-layer projection of a recap row. RecapJSON is the
+// raw JSON blob; callers unmarshal it into their own typed shape.
+type TurnRecap struct {
+	RecapJSON   string
+	GeneratedAt time.Time
+	Model       string
+}
+
+// GetTurnRecap returns the recap blob for a turn, or (_, false, nil) if the
+// turn has no recap yet. Returns (_, false, sql.ErrNoRows) only if the turn
+// itself is missing — callers typically probe with GetTurn first.
+func (s *Store) GetTurnRecap(ctx context.Context, turnID string) (TurnRecap, bool, error) {
+	const q = `SELECT recap_json, recap_generated_at, recap_model FROM turns WHERE turn_id = ?`
+	var (
+		recapJSON sql.NullString
+		generated sql.NullTime
+		model     sql.NullString
+	)
+	if err := s.db.QueryRowContext(ctx, q, turnID).Scan(&recapJSON, &generated, &model); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return TurnRecap{}, false, nil
+		}
+		return TurnRecap{}, false, fmt.Errorf("get turn recap: %w", err)
+	}
+	if !recapJSON.Valid || recapJSON.String == "" {
+		return TurnRecap{}, false, nil
+	}
+	out := TurnRecap{RecapJSON: recapJSON.String}
+	if generated.Valid {
+		out.GeneratedAt = generated.Time
+	}
+	if model.Valid {
+		out.Model = model.String
+	}
+	return out, true, nil
 }
 
 func nullableTime(t *time.Time) any {

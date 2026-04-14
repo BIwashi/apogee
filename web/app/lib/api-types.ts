@@ -61,6 +61,42 @@ export type Phase =
   | "running"
   | "idle";
 
+/**
+ * RecapOutcome mirrors internal/summarizer.RecapOutcome. Tile order also
+ * implies UI severity tone (success > partial > aborted > failure).
+ */
+export type RecapOutcome = "success" | "partial" | "failure" | "aborted";
+
+export interface RecapPhase {
+  name: string;
+  start_span_index: number;
+  end_span_index: number;
+  summary: string;
+}
+
+/**
+ * Recap mirrors internal/summarizer.Recap. Populated by the Haiku-powered
+ * summariser worker after every turn closes.
+ */
+export interface Recap {
+  headline: string;
+  outcome: RecapOutcome;
+  phases: RecapPhase[];
+  key_steps: string[];
+  failure_cause: string | null;
+  notable_events: string[];
+  generated_at: string;
+  model: string;
+  prompt_tokens?: number;
+  output_tokens?: number;
+}
+
+export interface RecapResponse {
+  recap: Recap | null;
+  generated_at?: string;
+  model?: string;
+}
+
 export interface Turn {
   turn_id: string;
   trace_id: string;
