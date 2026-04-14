@@ -53,6 +53,17 @@ Artemis Inter is the only display font.
 See [`docs/architecture.md`](docs/architecture.md) for the end-to-end sketch
 (hooks → collector → DuckDB → SSE → web UI, with an OTel side channel).
 
+## Building
+
+The collector links against DuckDB through `github.com/marcboeker/go-duckdb/v2`,
+which is a cgo binding. A working C toolchain is required:
+
+- macOS: install Xcode Command Line Tools (`xcode-select --install`).
+- Linux: install `build-essential` (or the equivalent `gcc` + `libc` headers).
+
+`CGO_ENABLED=1` must be set when running `go build`, `go test`, or `go run`
+(this is the default for native builds).
+
 ## Pull request workflow
 
 - One feature branch per PR, named `feat/<slug>` or `fix/<slug>`.
@@ -61,8 +72,30 @@ See [`docs/architecture.md`](docs/architecture.md) for the end-to-end sketch
 - Squash-merge into `main`. CI on the `go` and `web` jobs must be green.
 - Never commit `.duckdb` files, `.env*`, or anything under `/data/`.
 
+## Data model
+
+apogee treats **one Claude Code user turn as one OpenTelemetry trace**. The
+trace starts at `UserPromptSubmit` and ends at `Stop`. Every tool call,
+subagent run, and HITL request inside the turn is a child span. Subagent tool
+calls are parented to the subagent span, which is parented to the turn root.
+
+Storage is DuckDB, with OTel-shaped tables for `spans`, `logs`, and
+`metric_points`, plus denormalized `sessions` and `turns` tables for fast
+dashboard rendering. Attention state is derived and written back onto the
+`turns` row (populated by PR #4).
+
 ## What is in scope for each PR
 
-The scaffold (this PR) adds no business logic. Collector ingest, SSE fan-out,
-session detail, HITL, OpenTelemetry wiring, frontend embedding, and the CLI
-land in subsequent PRs in that order. Keep additions small and reviewable.
+PRs land in order. Each PR is small and reviewable. Current status:
+
+- PR #1 — scaffold + design system (merged)
+- PR #2 — collector core: DuckDB + trace reconstructor + ingest HTTP
+- PR #3 — SSE fan-out + live dashboard skeleton
+- PR #4 — attention engine + KPI strip
+- PR #5 — turn detail + swim lane + filter chips
+- PR #6 — LLM summarizer (Haiku via claude CLI subprocess)
+- PR #7 — HITL as structured record
+- PR #8 — OTel registry + OTLP integration
+- PR #9 — Python hook library + install UX
+- PR #10 — embed frontend + CLI + distribution
+- PR #11 — polish: README, screenshots, session rollup
