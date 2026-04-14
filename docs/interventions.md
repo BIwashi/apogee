@@ -109,26 +109,33 @@ Validation:
 
 ## Hook-side contract
 
-The Python hook library under `hooks/apogee_intervention.py` owns the
-client half:
+The Go-native `apogee hook` subcommand (implemented in
+`internal/cli/hook.go`) owns the client half. The binary itself is the
+Claude Code hook entry point — `.claude/settings.json` contains lines
+like `apogee hook --event PreToolUse --server-url http://localhost:4100/v1/events`,
+and `apogee init` writes them there pointing at the absolute path of
+the running apogee binary.
 
-1. On `PreToolUse` and `UserPromptSubmit`, `send_event.py` calls
-   `apogee_intervention.handle_hook(...)` *before* POSTing the hook event
-   to `/v1/events`.
-2. The helper calls `POST /v1/sessions/<sid>/interventions/claim` with the
-   hook event and (optional) turn id.
-3. On 204 the helper returns `None` and the hook stays in pass-through mode
-   — echo stdin to stdout and POST the hook event normally.
+1. On `PreToolUse` and `UserPromptSubmit`, the hook subcommand tries to
+   claim an operator intervention *before* POSTing the hook event to
+   `/v1/events`.
+2. It calls `POST /v1/sessions/<sid>/interventions/claim` with the
+   hook event and (optional) turn id. The base URL is the `--server-url`
+   value with the trailing `/v1/events` suffix stripped.
+3. On 204 the hook stays in pass-through mode — echo stdin to stdout and
+   POST the hook event normally.
 4. On 200 it formats the Claude Code decision JSON — either `{"decision":
-   "block","reason":"..."}` (PreToolUse) or
-   `{"hookSpecificOutput":{"additionalContext":"..."}}` (UserPromptSubmit)
-   — and writes it to stdout in place of the stdin echo.
+   "block","reason":"..."}` (PreToolUse, mode `interrupt` or `both`) or
+   `{"hookSpecificOutput":{"additionalContext":"..."}}` (UserPromptSubmit,
+   mode `context` or `both`) — and writes it to stdout in place of the
+   stdin echo.
 5. It then calls `POST /v1/interventions/<id>/delivered` so the collector
    flips the row to `delivered` and broadcasts
    `intervention.delivered` over SSE.
 
 Every network call is best-effort. Errors are logged to stderr and
-swallowed so Claude Code's hook pipeline is never broken.
+swallowed so Claude Code's hook pipeline is never broken, and the hook
+subcommand always exits 0 (a failing hook would break Claude Code).
 
 ## SSE events
 

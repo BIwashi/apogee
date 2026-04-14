@@ -42,8 +42,8 @@ Running multi-agent Claude Code workflows means losing sight of what each agent 
 | HITL queue | Permission requests as first-class records with operator decisions |
 | Operator interventions | Push text into a live Claude Code session; next `PreToolUse` or `UserPromptSubmit` hook delivers it as `{"decision":"block","reason":...}` or additional context |
 | OpenTelemetry | OTLP gRPC/HTTP export, full claude_code.* semconv registry |
-| Hooks library | Stdlib-only Python hooks shipped via `apogee init` |
-| CLI | `serve`, `init`, `doctor`, `version` — one binary, no Node runtime |
+| Hooks entry point | `apogee hook --event X` — the binary itself is the hook, zero Python dependency |
+| CLI | `serve`, `init`, `hook`, `doctor`, `version` — one binary, no Node or Python runtime |
 
 <p align="center">
   <img src="assets/screenshots/session-detail.png" alt="session detail" width="49%">
@@ -59,7 +59,7 @@ Running multi-agent Claude Code workflows means losing sight of what each agent 
 ```
 ┌────────────────────────┐      ┌─────────────────────────────────────────────┐
 │  Claude Code hooks     │      │  apogee collector  (single Go binary)        │
-│  .claude/hooks/*.py    │─POST─│                                              │
+│  `apogee hook --event` │─POST─│                                              │
 │  12 hook events        │ JSON │  ┌─ ingest ────────────────────────────┐    │
 └────────────────────────┘      │  │ reconstructor: hook → OTel spans    │    │
                                 │  │ per-session agent stack + pending   │    │
@@ -125,7 +125,7 @@ Backing storage is DuckDB with OTel-shaped tables for `spans`, `logs`, `metric_p
 | LLM summarizer (Haiku per turn, Sonnet per session) | shipped |
 | HITL as structured record | shipped |
 | OpenTelemetry semconv registry + OTLP export | shipped |
-| Python hook library + install UX | shipped |
+| Go-native hook subcommand + install UX | shipped |
 | Embedded frontend + CLI distribution | shipped |
 | README + screenshots + session rollup polish | shipped |
 
@@ -222,7 +222,7 @@ assets/branding/    apogee banner, logo, and icon
 assets/screenshots/ committed dashboard screenshots
 scripts/            screenshot capture (playwright) and fixtures
 semconv/            OpenTelemetry semantic conventions for claude_code.*
-hooks/              Python reference hooks (stdlib-only)
+                    (no hooks/ directory — `apogee hook` is the entry point)
 docs/               architecture + design-token + semconv specs
 .github/workflows/  CI (Go vet/build/test, web typecheck/lint/build)
 ```

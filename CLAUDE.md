@@ -15,7 +15,6 @@ web/                Next.js 16 dashboard (App Router, Tailwind v4)
   app/lib/          Typed API client, SWR helpers, design tokens
   public/fonts/     Artemis Inter display font
 semconv/            OpenTelemetry semantic conventions for claude_code.*
-hooks/              Python reference hooks that post to the collector
 docs/               Architecture and design-token specification
 .github/workflows/  CI (go vet/build/test, web typecheck/lint/build)
 ```
@@ -66,17 +65,19 @@ which is a cgo binding. A working C toolchain is required:
 
 ## Hooks subsystem
 
-The Python hook library lives in [`hooks/`](hooks/) and is embedded into the
-Go binary via `//go:embed all:hooks` (declared in `hooksfs.go` at the repo
-root). `apogee init` extracts those files into
-`~/.apogee/hooks/<version>/` and rewrites the target `.claude/settings.json`
-to point all 12 hook events at `send_event.py`. The hook library is stdlib
-only: no `uv`, no third-party packages. Network failures must never break
-Claude Code — `apogee_hook.send_event` logs to stderr and returns on error.
-See [`hooks/README.md`](hooks/README.md) for the wire contract.
+The Claude Code hook is the `apogee` binary itself: `.claude/settings.json`
+points every hook event at `apogee hook --event <X> --server-url ...`,
+implemented in [`internal/cli/hook.go`](internal/cli/hook.go). `apogee
+init` writes the absolute path of the running binary plus `hook` into
+settings.json, so there is no Python runtime dependency, no extraction
+step, and no embedded filesystem. Network failures must never break
+Claude Code — every error logs to stderr and the subcommand exits 0.
+See [`docs/interventions.md`](docs/interventions.md) for the
+intervention-delivery contract.
 
-Run the Python unit tests with `python3 -m unittest discover hooks/tests` and
-the end-to-end shell smoke test with `hooks/smoke_test.sh`.
+Unit tests live alongside the implementation under
+[`internal/cli/hook_test.go`](internal/cli/hook_test.go); run with
+`go test ./internal/cli/... -race -count=1`.
 
 ## Pull request workflow
 
