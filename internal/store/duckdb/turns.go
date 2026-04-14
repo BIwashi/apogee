@@ -135,16 +135,76 @@ ORDER BY
   started_at DESC
 `
 
+// TurnFilter captures the optional query-string filters shared by turns,
+// attention counts, and metrics endpoints. All fields are optional and zero
+// values are interpreted as "no filter".
+type TurnFilter struct {
+	SessionID string
+	SourceApp string
+	Since     *time.Time
+	Until     *time.Time
+}
+
+// appendTurnFilterClauses appends WHERE fragments and argument values for the
+// non-zero fields of f. The caller is responsible for combining the returned
+// fragments with AND and for placing them in the right spot inside the query.
+// Pass alreadyHasWhere = true when the caller's query already has a leading
+// WHERE clause so the helper joins with AND instead.
+func appendTurnFilterClauses(f TurnFilter, alreadyHasWhere bool) (string, []any) {
+	var clauses []string
+	var args []any
+	if f.SessionID != "" {
+		clauses = append(clauses, `session_id = ?`)
+		args = append(args, f.SessionID)
+	}
+	if f.SourceApp != "" {
+		clauses = append(clauses, `source_app = ?`)
+		args = append(args, f.SourceApp)
+	}
+	if f.Since != nil {
+		clauses = append(clauses, `started_at >= ?`)
+		args = append(args, *f.Since)
+	}
+	if f.Until != nil {
+		clauses = append(clauses, `started_at <= ?`)
+		args = append(args, *f.Until)
+	}
+	if len(clauses) == 0 {
+		return "", nil
+	}
+	joiner := " WHERE "
+	if alreadyHasWhere {
+		joiner = " AND "
+	}
+	sql := joiner
+	for i, c := range clauses {
+		if i > 0 {
+			sql += " AND "
+		}
+		sql += c
+	}
+	return sql, args
+}
+
 // ListRecentTurns returns up to limit turns. Rows are sorted by attention
 // priority then recency. Default limit is 100, max 500.
 func (s *Store) ListRecentTurns(ctx context.Context, limit int) ([]Turn, error) {
+	return s.ListRecentTurnsFiltered(ctx, TurnFilter{}, limit)
+}
+
+// ListRecentTurnsFiltered applies optional filters (session_id, source_app,
+// since/until) before sorting. See ListRecentTurns for the default shape.
+func (s *Store) ListRecentTurnsFiltered(ctx context.Context, f TurnFilter, limit int) ([]Turn, error) {
 	if limit <= 0 {
 		limit = 100
 	}
 	if limit > 500 {
 		limit = 500
 	}
-	rows, err := s.db.QueryContext(ctx, selectTurn+attentionOrder+` LIMIT ?`, limit)
+	where, args := appendTurnFilterClauses(f, false)
+	q := selectTurn + where + attentionOrder + ` LIMIT ?`
+	args = append(args, limit)
+	rows, err := s.db.QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list recent turns: %w", err)
 	}
@@ -163,11 +223,18 @@ func (s *Store) ListRecentTurns(ctx context.Context, limit int) ([]Turn, error) 
 // ListActiveTurns returns every turn with status='running' sorted by
 // attention priority then started_at desc.
 func (s *Store) ListActiveTurns(ctx context.Context, limit int) ([]Turn, error) {
+	return s.ListActiveTurnsFiltered(ctx, TurnFilter{}, limit)
+}
+
+// ListActiveTurnsFiltered is the filtered variant of ListActiveTurns.
+func (s *Store) ListActiveTurnsFiltered(ctx context.Context, f TurnFilter, limit int) ([]Turn, error) {
 	if limit <= 0 {
 		limit = 200
 	}
-	rows, err := s.db.QueryContext(ctx,
-		selectTurn+` WHERE status = 'running' `+attentionOrder+` LIMIT ?`, limit)
+	where, args := appendTurnFilterClauses(f, true)
+	q := selectTurn + ` WHERE status = 'running' ` + where + attentionOrder + ` LIMIT ?`
+	args = append(args, limit)
+	rows, err := s.db.QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list active turns: %w", err)
 	}
@@ -197,12 +264,25 @@ type AttentionCounts struct {
 // includeEnded is true the query considers every row in the turns table
 // instead of filtering by status.
 func (s *Store) CountAttention(ctx context.Context, includeEnded bool) (AttentionCounts, error) {
+	return s.CountAttentionFiltered(ctx, TurnFilter{}, includeEnded)
+}
+
+// CountAttentionFiltered applies optional session_id/source_app/since filters
+// before aggregating. Filters are applied before the GROUP BY so the per-
+// bucket counts reflect only the scoped rows.
+func (s *Store) CountAttentionFiltered(ctx context.Context, f TurnFilter, includeEnded bool) (AttentionCounts, error) {
 	q := `SELECT COALESCE(attention_state, 'healthy') AS state, COUNT(*) FROM turns`
+	var args []any
+	hasWhere := false
 	if !includeEnded {
 		q += ` WHERE status = 'running'`
+		hasWhere = true
 	}
+	where, wargs := appendTurnFilterClauses(f, hasWhere)
+	q += where
+	args = append(args, wargs...)
 	q += ` GROUP BY 1`
-	rows, err := s.db.QueryContext(ctx, q)
+	rows, err := s.db.QueryContext(ctx, q, args...)
 	if err != nil {
 		return AttentionCounts{}, fmt.Errorf("count attention: %w", err)
 	}
@@ -237,6 +317,39 @@ func (s *Store) CountRunningTurns(ctx context.Context) (int64, error) {
 		return 0, fmt.Errorf("count running turns: %w", err)
 	}
 	return n, nil
+}
+
+// CountRunningTurnsBySession returns the number of running turns grouped by
+// session id. Used by the metrics collector for per-session gauges.
+func (s *Store) CountRunningTurnsBySession(ctx context.Context, sessionIDs []string) (map[string]int64, error) {
+	out := make(map[string]int64, len(sessionIDs))
+	if len(sessionIDs) == 0 {
+		return out, nil
+	}
+	placeholders := ""
+	args := make([]any, 0, len(sessionIDs))
+	for i, id := range sessionIDs {
+		if i > 0 {
+			placeholders += ","
+		}
+		placeholders += "?"
+		args = append(args, id)
+	}
+	q := `SELECT session_id, COUNT(*) FROM turns WHERE status = 'running' AND session_id IN (` + placeholders + `) GROUP BY 1`
+	rows, err := s.db.QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, fmt.Errorf("count running turns by session: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id string
+		var n int64
+		if err := rows.Scan(&id, &n); err != nil {
+			return nil, err
+		}
+		out[id] = n
+	}
+	return out, rows.Err()
 }
 
 // UpdateTurnAttention writes the engine's classification onto a turn row.

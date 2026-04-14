@@ -172,11 +172,48 @@ export interface Span {
   events?: unknown[];
 }
 
+export interface TimeRangeOption {
+  label: string;
+  seconds: number;
+}
+
 export interface FilterOptions {
   source_apps: string[];
+  session_ids: string[];
   hook_events: string[];
   tool_names: string[];
-  agent_ids: string[];
+  time_ranges: TimeRangeOption[];
+}
+
+export interface SessionSearchHit {
+  session_id: string;
+  source_app: string;
+  last_seen_at: string;
+  turn_count: number;
+  latest_headline?: string;
+  latest_prompt_snippet?: string;
+  attention_state?: string;
+}
+
+export interface SessionSearchResponse {
+  sessions: SessionSearchHit[];
+}
+
+export interface SessionSummary {
+  session_id: string;
+  source_app: string;
+  started_at: string;
+  last_seen_at: string;
+  ended_at?: string;
+  model?: string;
+  machine_id?: string;
+  turn_count: number;
+  running_count: number;
+  completed_count: number;
+  errored_count: number;
+  latest_headline?: string;
+  latest_turn_id?: string;
+  attention_state?: string;
 }
 
 /** SSE wire type constants. Must match internal/sse/event.go. */

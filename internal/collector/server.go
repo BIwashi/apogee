@@ -147,7 +147,9 @@ func (s *Server) buildRouter() chi.Router {
 	r.Get("/v1/healthz", s.healthz)
 	r.Post("/v1/events", handler.ReceiveEvent)
 	r.Get("/v1/sessions/recent", s.listRecentSessions)
+	r.Get("/v1/sessions/search", s.searchSessions)
 	r.Get("/v1/sessions/{id}", s.getSession)
+	r.Get("/v1/sessions/{id}/summary", s.getSessionSummary)
 	r.Get("/v1/sessions/{id}/turns", s.listSessionTurns)
 	r.Get("/v1/sessions/{id}/logs", s.listSessionLogs)
 	r.Get("/v1/turns/recent", s.listRecentTurns)
@@ -210,9 +212,32 @@ func (s *Server) listSessionTurns(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"turns": out})
 }
 
+// parseTurnFilter extracts the canonical filter query params shared by the
+// recent/active turns, attention counts, and metrics series endpoints. All
+// fields are optional.
+func parseTurnFilter(r *http.Request) duckdb.TurnFilter {
+	q := r.URL.Query()
+	f := duckdb.TurnFilter{
+		SessionID: q.Get("session_id"),
+		SourceApp: q.Get("source_app"),
+	}
+	if raw := q.Get("since"); raw != "" {
+		if t, err := time.Parse(time.RFC3339, raw); err == nil {
+			f.Since = &t
+		}
+	}
+	if raw := q.Get("until"); raw != "" {
+		if t, err := time.Parse(time.RFC3339, raw); err == nil {
+			f.Until = &t
+		}
+	}
+	return f
+}
+
 func (s *Server) listRecentTurns(w http.ResponseWriter, r *http.Request) {
 	limit := parseLimit(r, 100, 500)
-	out, err := s.store.ListRecentTurns(r.Context(), limit)
+	filter := parseTurnFilter(r)
+	out, err := s.store.ListRecentTurnsFiltered(r.Context(), filter, limit)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -225,7 +250,8 @@ func (s *Server) listRecentTurns(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) listActiveTurns(w http.ResponseWriter, r *http.Request) {
 	limit := parseLimit(r, 200, 500)
-	out, err := s.store.ListActiveTurns(r.Context(), limit)
+	filter := parseTurnFilter(r)
+	out, err := s.store.ListActiveTurnsFiltered(r.Context(), filter, limit)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -238,12 +264,38 @@ func (s *Server) listActiveTurns(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) getAttentionCounts(w http.ResponseWriter, r *http.Request) {
 	includeEnded := r.URL.Query().Get("include") == "ended"
-	counts, err := s.store.CountAttention(r.Context(), includeEnded)
+	filter := parseTurnFilter(r)
+	counts, err := s.store.CountAttentionFiltered(r.Context(), filter, includeEnded)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	writeJSON(w, http.StatusOK, counts)
+}
+
+func (s *Server) searchSessions(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	limit := parseLimit(r, 50, 200)
+	hits, err := s.store.SearchSessions(r.Context(), q.Get("q"), limit)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"sessions": hits})
+}
+
+func (s *Server) getSessionSummary(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	sum, err := s.store.GetSessionSummary(r.Context(), id)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if sum == nil {
+		writeJSONError(w, http.StatusNotFound, "session not found")
+		return
+	}
+	writeJSON(w, http.StatusOK, sum)
 }
 
 func (s *Server) getMetricsSeries(w http.ResponseWriter, r *http.Request) {
@@ -260,10 +312,12 @@ func (s *Server) getMetricsSeries(w http.ResponseWriter, r *http.Request) {
 		kind = "gauge"
 	}
 	points, err := s.store.GetMetricSeries(r.Context(), duckdb.MetricSeriesOptions{
-		Name:   name,
-		Window: window,
-		Step:   step,
-		Kind:   kind,
+		Name:      name,
+		Window:    window,
+		Step:      step,
+		Kind:      kind,
+		SessionID: q.Get("session_id"),
+		SourceApp: q.Get("source_app"),
 	})
 	if err != nil {
 		writeJSONError(w, http.StatusBadRequest, err.Error())

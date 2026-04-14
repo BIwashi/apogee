@@ -131,6 +131,223 @@ func (s *Store) ListRecentSessions(ctx context.Context, limit int) ([]Session, e
 	return out, rows.Err()
 }
 
+// SessionSearchHit is one row in the /v1/sessions/search response. It is
+// enriched with the latest turn's headline / prompt snippet so the command
+// palette can render a single-line label per session.
+type SessionSearchHit struct {
+	SessionID            string    `json:"session_id"`
+	SourceApp            string    `json:"source_app"`
+	LastSeenAt           time.Time `json:"last_seen_at"`
+	TurnCount            int       `json:"turn_count"`
+	LatestHeadline       string    `json:"latest_headline,omitempty"`
+	LatestPromptSnippet  string    `json:"latest_prompt_snippet,omitempty"`
+	AttentionState       string    `json:"attention_state,omitempty"`
+}
+
+// SearchSessions returns up to limit sessions matching q. Empty q returns
+// the most-recent sessions unfiltered.
+func (s *Store) SearchSessions(ctx context.Context, q string, limit int) ([]SessionSearchHit, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	if limit > 200 {
+		limit = 200
+	}
+	// The inner latest_turn CTE picks the newest turn per session so the
+	// headline + prompt + attention state come from the most-recent row.
+	query := `
+WITH latest_turn AS (
+  SELECT t.session_id,
+         t.headline,
+         t.prompt_text,
+         t.attention_state,
+         t.started_at,
+         ROW_NUMBER() OVER (PARTITION BY t.session_id ORDER BY t.started_at DESC) AS rn
+  FROM turns t
+)
+SELECT s.session_id,
+       s.source_app,
+       s.last_seen_at,
+       s.turn_count,
+       COALESCE(lt.headline, ''),
+       COALESCE(lt.prompt_text, ''),
+       COALESCE(lt.attention_state, '')
+FROM sessions s
+LEFT JOIN latest_turn lt ON lt.session_id = s.session_id AND lt.rn = 1
+`
+	args := []any{}
+	if q != "" {
+		query += `
+WHERE s.session_id LIKE ?
+   OR s.source_app LIKE ?
+   OR COALESCE(lt.prompt_text, '') LIKE ?
+   OR COALESCE(lt.headline, '') LIKE ?
+`
+		like := "%" + q + "%"
+		prefix := q + "%"
+		args = append(args, prefix, like, like, like)
+	}
+	query += ` ORDER BY s.last_seen_at DESC LIMIT ?`
+	args = append(args, limit)
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("search sessions: %w", err)
+	}
+	defer rows.Close()
+	out := []SessionSearchHit{}
+	for rows.Next() {
+		var h SessionSearchHit
+		var headline, prompt, attn string
+		if err := rows.Scan(&h.SessionID, &h.SourceApp, &h.LastSeenAt, &h.TurnCount, &headline, &prompt, &attn); err != nil {
+			return nil, fmt.Errorf("scan search hit: %w", err)
+		}
+		h.LatestHeadline = headline
+		if prompt != "" {
+			snippet := prompt
+			if len(snippet) > 120 {
+				snippet = snippet[:120]
+			}
+			h.LatestPromptSnippet = snippet
+		}
+		h.AttentionState = attn
+		out = append(out, h)
+	}
+	return out, rows.Err()
+}
+
+// SessionSummary is the denormalized header surfaced by
+// GET /v1/sessions/:id/summary.
+type SessionSummary struct {
+	SessionID        string     `json:"session_id"`
+	SourceApp        string     `json:"source_app"`
+	StartedAt        time.Time  `json:"started_at"`
+	LastSeenAt       time.Time  `json:"last_seen_at"`
+	EndedAt          *time.Time `json:"ended_at,omitempty"`
+	Model            string     `json:"model,omitempty"`
+	MachineID        string     `json:"machine_id,omitempty"`
+	TurnCount        int        `json:"turn_count"`
+	RunningCount     int        `json:"running_count"`
+	CompletedCount   int        `json:"completed_count"`
+	ErroredCount     int        `json:"errored_count"`
+	LatestHeadline   string     `json:"latest_headline,omitempty"`
+	LatestTurnID     string     `json:"latest_turn_id,omitempty"`
+	AttentionState   string     `json:"attention_state,omitempty"`
+}
+
+// attentionPriority maps the four engine states onto a compare-friendly
+// integer. Lower is more urgent.
+func attentionPriority(state string) int {
+	switch state {
+	case "intervene_now":
+		return 0
+	case "watch":
+		return 1
+	case "watchlist":
+		return 2
+	case "healthy":
+		return 3
+	}
+	return 4
+}
+
+// GetSessionSummary rolls up the turns belonging to sessionID into a single
+// header row. Returns (nil, nil) when the session does not exist.
+func (s *Store) GetSessionSummary(ctx context.Context, sessionID string) (*SessionSummary, error) {
+	sess, err := s.GetSession(ctx, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	if sess == nil {
+		return nil, nil
+	}
+	out := &SessionSummary{
+		SessionID:  sess.SessionID,
+		SourceApp:  sess.SourceApp,
+		StartedAt:  sess.StartedAt,
+		LastSeenAt: sess.LastSeenAt,
+		EndedAt:    sess.EndedAt,
+		Model:      sess.Model,
+		MachineID:  sess.MachineID,
+		TurnCount:  sess.TurnCount,
+	}
+
+	// Status breakdown.
+	rows, err := s.db.QueryContext(ctx, `SELECT COALESCE(status, '') AS st, COUNT(*) FROM turns WHERE session_id = ? GROUP BY 1`, sessionID)
+	if err != nil {
+		return nil, fmt.Errorf("session summary counts: %w", err)
+	}
+	for rows.Next() {
+		var st string
+		var c int
+		if err := rows.Scan(&st, &c); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		switch st {
+		case "running":
+			out.RunningCount = c
+		case "completed":
+			out.CompletedCount = c
+		case "errored":
+			out.ErroredCount = c
+		}
+	}
+	rows.Close()
+
+	// Highest-priority attention state across all turns.
+	attnRows, err := s.db.QueryContext(ctx, `SELECT DISTINCT attention_state FROM turns WHERE session_id = ? AND attention_state IS NOT NULL`, sessionID)
+	if err != nil {
+		return nil, fmt.Errorf("session summary attention: %w", err)
+	}
+	bestPri := 99
+	for attnRows.Next() {
+		var st sql.NullString
+		if err := attnRows.Scan(&st); err != nil {
+			attnRows.Close()
+			return nil, err
+		}
+		if !st.Valid || st.String == "" {
+			continue
+		}
+		p := attentionPriority(st.String)
+		if p < bestPri {
+			bestPri = p
+			out.AttentionState = st.String
+		}
+	}
+	attnRows.Close()
+
+	// Latest turn headline and id.
+	var headline, latestTurnID sql.NullString
+	err = s.db.QueryRowContext(ctx, `
+SELECT turn_id, COALESCE(headline, '')
+FROM turns
+WHERE session_id = ?
+ORDER BY started_at DESC
+LIMIT 1
+`, sessionID).Scan(&latestTurnID, &headline)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return nil, fmt.Errorf("session summary latest turn: %w", err)
+	}
+	if latestTurnID.Valid {
+		out.LatestTurnID = latestTurnID.String
+	}
+	if headline.Valid {
+		out.LatestHeadline = headline.String
+	}
+	return out, nil
+}
+
+// RecentSessionsWithActivity returns up to n session IDs ordered by
+// last_seen_at DESC. Used by the metrics collector to bound its per-session
+// label write cost.
+func (s *Store) RecentSessionsWithActivity(ctx context.Context, n int) ([]Session, error) {
+	if n <= 0 {
+		n = 20
+	}
+	return s.ListRecentSessions(ctx, n)
+}
+
 func nullString(v string) any {
 	if v == "" {
 		return nil

@@ -51,13 +51,17 @@ type MetricSeriesPoint struct {
 
 // MetricSeriesOptions constrains a GetMetricSeries query. Name is required;
 // Window and Step default to 5 minutes and 10 seconds respectively when
-// zero.
+// zero. SessionID/SourceApp narrow the series to metric points that carry a
+// matching label — the match is performed against labels_json with a LIKE
+// filter so callers do not need to maintain a second index.
 type MetricSeriesOptions struct {
-	Name   string
-	Window time.Duration
-	Step   time.Duration
-	Kind   string // "gauge" or "counter"; controls fill strategy
-	Now    time.Time
+	Name      string
+	Window    time.Duration
+	Step      time.Duration
+	Kind      string // "gauge" or "counter"; controls fill strategy
+	Now       time.Time
+	SessionID string
+	SourceApp string
 }
 
 // GetMetricSeries returns evenly-spaced buckets over [now-window, now]. For
@@ -85,14 +89,37 @@ SELECT time_bucket(INTERVAL (? || ' seconds'), timestamp) AS bucket,
        AVG(value) AS value
 FROM metric_points
 WHERE name = ? AND timestamp >= ? AND timestamp <= ?
-GROUP BY 1
-ORDER BY 1 ASC
 `
+	args := []any{}
 	stepSeconds := int64(opts.Step / time.Second)
 	if stepSeconds <= 0 {
 		stepSeconds = 10
 	}
-	rows, err := s.db.QueryContext(ctx, q, stepSeconds, opts.Name, start, now)
+	args = append(args, stepSeconds, opts.Name, start, now)
+	// Scope by label. Use LIKE against labels_json to avoid a second index;
+	// the JSON encoder always quotes the key and value so the fragment is
+	// unambiguous. For a scoped query we also require the labels map to
+	// contain the key so we do not accidentally match the fleet-wide row.
+	if opts.SessionID != "" {
+		q += ` AND labels_json LIKE ?`
+		args = append(args, `%"session_id":"`+opts.SessionID+`"%`)
+	}
+	if opts.SourceApp != "" {
+		q += ` AND labels_json LIKE ?`
+		args = append(args, `%"source_app":"`+opts.SourceApp+`"%`)
+	}
+	// Fleet query (no scope) excludes per-session rows so the aggregate
+	// does not double count. Rows written by the collector at tick time
+	// use session_id/source_app keys, so checking for their absence is a
+	// cheap proxy for "fleet-wide".
+	if opts.SessionID == "" && opts.SourceApp == "" {
+		q += ` AND labels_json NOT LIKE '%"session_id":%'`
+	}
+	q += `
+GROUP BY 1
+ORDER BY 1 ASC
+`
+	rows, err := s.db.QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, fmt.Errorf("metric series query: %w", err)
 	}

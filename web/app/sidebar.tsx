@@ -9,10 +9,13 @@ import {
   Palette,
   PanelLeftClose,
   PanelLeftOpen,
+  Search,
   Settings,
   Users,
   type LucideIcon,
 } from "lucide-react";
+
+import SessionCommandPalette from "./components/SessionCommandPalette";
 
 /**
  * Sidebar — the primary navigation shell. apogee ships five top-level
@@ -25,16 +28,26 @@ interface NavItem {
   label: string;
   icon: LucideIcon;
   disabled?: boolean;
+  /** Optional action for non-link entries (e.g. Search opens the palette). */
+  action?: "palette";
+  /** Match this route for nested paths too. */
+  matchPrefix?: string;
 }
 
 const NAV: NavItem[] = [
   { href: "/", label: "Overview", icon: LayoutGrid },
-  { href: "/timeline", label: "Timeline", icon: Activity, disabled: true },
-  { href: "/sessions", label: "Sessions", icon: GitBranch },
+  { href: "/timeline", label: "Timeline", icon: Activity },
+  { href: "#search", label: "Search", icon: Search, action: "palette" },
+  { href: "/sessions", label: "Sessions", icon: GitBranch, matchPrefix: "/sessions" },
   { href: "/agents", label: "Agents", icon: Users, disabled: true },
   { href: "/settings", label: "Settings", icon: Settings, disabled: true },
   { href: "/styleguide", label: "Styleguide", icon: Palette },
 ];
+
+function isActive(pathname: string, item: NavItem): boolean {
+  if (item.matchPrefix) return pathname === item.matchPrefix || pathname.startsWith(`${item.matchPrefix}/`);
+  return pathname === item.href;
+}
 
 const MOBILE_QUERY = "(max-width: 768px)";
 
@@ -63,6 +76,10 @@ export default function Sidebar({ children }: { children: React.ReactNode }) {
   const [userCollapsed, setUserCollapsed] = useState<boolean | null>(null);
   const collapsed = userCollapsed ?? isMobile;
   const pathname = usePathname();
+  // Local palette state for the Search sidebar entry. The ribbon owns its
+  // own keyboard-bound palette; this one is click-only so the two never
+  // fight over focus.
+  const [paletteOpen, setPaletteOpen] = useState(false);
 
   return (
     <div className="flex">
@@ -99,10 +116,11 @@ export default function Sidebar({ children }: { children: React.ReactNode }) {
 
         {/* Nav */}
         <ul className="mt-2 flex-1 space-y-0.5 px-2">
-          {NAV.map(({ href, label, icon: Icon, disabled }) => {
-            const active = pathname === href;
+          {NAV.map((item) => {
+            const { href, label, icon: Icon, disabled, action } = item;
+            const active = isActive(pathname, item);
             const base =
-              "flex items-center gap-2.5 rounded px-3 py-1.5 text-[13px] transition-colors";
+              "flex items-center gap-2.5 rounded px-3 py-1.5 text-[13px] transition-colors w-full";
             const tone = disabled
               ? "cursor-not-allowed text-[var(--text-muted)] opacity-50"
               : active
@@ -124,6 +142,15 @@ export default function Sidebar({ children }: { children: React.ReactNode }) {
                   >
                     {body}
                   </span>
+                ) : action === "palette" ? (
+                  <button
+                    type="button"
+                    onClick={() => setPaletteOpen(true)}
+                    className={`${base} ${tone}`}
+                    title={collapsed ? label : "Open session palette (⌘K)"}
+                  >
+                    {body}
+                  </button>
                 ) : (
                   <a
                     href={href}
@@ -137,6 +164,10 @@ export default function Sidebar({ children }: { children: React.ReactNode }) {
             );
           })}
         </ul>
+        <SessionCommandPalette
+          open={paletteOpen}
+          onClose={() => setPaletteOpen(false)}
+        />
 
         {/* Footer — build version stub */}
         {!collapsed && (

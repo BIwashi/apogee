@@ -149,6 +149,107 @@ func (s *Store) CountPendingHITL(ctx context.Context) (int64, error) {
 	return n, nil
 }
 
+// CountToolSpansBySession returns the running total of tool spans grouped by
+// session. Used by the metrics collector to emit per-session counter deltas.
+func (s *Store) CountToolSpansBySession(ctx context.Context, sessionIDs []string) (map[string]int64, error) {
+	out := make(map[string]int64, len(sessionIDs))
+	if len(sessionIDs) == 0 {
+		return out, nil
+	}
+	// Build the IN clause with ? placeholders. DuckDB supports arrays but
+	// per-driver quoting varies, so stick with the portable form.
+	placeholders := ""
+	args := make([]any, 0, len(sessionIDs))
+	for i, id := range sessionIDs {
+		if i > 0 {
+			placeholders += ","
+		}
+		placeholders += "?"
+		args = append(args, id)
+	}
+	q := `SELECT session_id, COUNT(*) FROM spans WHERE tool_name IS NOT NULL AND tool_name <> '' AND session_id IN (` + placeholders + `) GROUP BY 1`
+	rows, err := s.db.QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, fmt.Errorf("count tool spans by session: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id string
+		var n int64
+		if err := rows.Scan(&id, &n); err != nil {
+			return nil, err
+		}
+		out[id] = n
+	}
+	return out, rows.Err()
+}
+
+// CountErrorSpansBySession returns the running total of error spans grouped
+// by session.
+func (s *Store) CountErrorSpansBySession(ctx context.Context, sessionIDs []string) (map[string]int64, error) {
+	out := make(map[string]int64, len(sessionIDs))
+	if len(sessionIDs) == 0 {
+		return out, nil
+	}
+	placeholders := ""
+	args := make([]any, 0, len(sessionIDs))
+	for i, id := range sessionIDs {
+		if i > 0 {
+			placeholders += ","
+		}
+		placeholders += "?"
+		args = append(args, id)
+	}
+	q := `SELECT session_id, COUNT(*) FROM spans WHERE tool_name IS NOT NULL AND tool_name <> '' AND status_code = 'ERROR' AND session_id IN (` + placeholders + `) GROUP BY 1`
+	rows, err := s.db.QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, fmt.Errorf("count error spans by session: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id string
+		var n int64
+		if err := rows.Scan(&id, &n); err != nil {
+			return nil, err
+		}
+		out[id] = n
+	}
+	return out, rows.Err()
+}
+
+// CountPendingHITLBySession returns the number of open HITL permission spans
+// grouped by session.
+func (s *Store) CountPendingHITLBySession(ctx context.Context, sessionIDs []string) (map[string]int64, error) {
+	out := make(map[string]int64, len(sessionIDs))
+	if len(sessionIDs) == 0 {
+		return out, nil
+	}
+	placeholders := ""
+	args := make([]any, 0, len(sessionIDs))
+	for i, id := range sessionIDs {
+		if i > 0 {
+			placeholders += ","
+		}
+		placeholders += "?"
+		args = append(args, id)
+	}
+	q := `SELECT session_id, COUNT(*) FROM spans WHERE name = 'claude_code.hitl.permission' AND end_time IS NULL AND session_id IN (` + placeholders + `) GROUP BY 1`
+	rows, err := s.db.QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, fmt.Errorf("count pending hitl by session: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id string
+		var n int64
+		if err := rows.Scan(&id, &n); err != nil {
+			return nil, err
+		}
+		out[id] = n
+	}
+	return out, rows.Err()
+}
+
 // ListRecentSpans returns up to limit spans ordered by start_time DESC. This
 // is the broad debug feed.
 func (s *Store) ListRecentSpans(ctx context.Context, limit int) ([]SpanRow, error) {

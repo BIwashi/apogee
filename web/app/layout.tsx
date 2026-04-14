@@ -3,6 +3,8 @@ import { Suspense } from "react";
 
 import "./globals.css";
 import Sidebar from "./sidebar";
+import TopRibbon from "./components/TopRibbon";
+import { RefreshProvider } from "./lib/refresh";
 
 export const metadata: Metadata = {
   title: "apogee — Claude Code observability",
@@ -19,7 +21,10 @@ export default function RootLayout({
     <html lang="en" className="dark">
       <body className="min-h-screen bg-[var(--bg-deepspace)] text-gray-100">
         <Suspense fallback={<div className="min-h-screen bg-[var(--bg-deepspace)]" />}>
-          <Sidebar>{children}</Sidebar>
+          <RefreshProvider>
+            <TopRibbon />
+            <Sidebar>{children}</Sidebar>
+          </RefreshProvider>
         </Suspense>
       </body>
     </html>
