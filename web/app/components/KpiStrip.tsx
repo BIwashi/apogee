@@ -24,19 +24,39 @@ const CONFIG: KpiConfig[] = [
   { metric: "apogee.hitl.pending", label: "HITL PENDING", kind: "gauge" },
 ];
 
-function useSeries(metric: string, kind: "gauge" | "counter") {
-  const { data } = useApi<MetricSeries>(
-    `/v1/metrics/series?name=${encodeURIComponent(metric)}&window=5m&step=10s&kind=${kind}`,
-    { refreshInterval: 5_000 },
-  );
+function useSeries(
+  metric: string,
+  kind: "gauge" | "counter",
+  scope: { sessionId?: string | null; sourceApp?: string | null },
+) {
+  const params = new URLSearchParams();
+  params.set("name", metric);
+  params.set("window", "5m");
+  params.set("step", "10s");
+  params.set("kind", kind);
+  if (scope.sessionId) params.set("session_id", scope.sessionId);
+  if (scope.sourceApp) params.set("source_app", scope.sourceApp);
+  const { data } = useApi<MetricSeries>(`/v1/metrics/series?${params.toString()}`, {
+    refreshInterval: 5_000,
+  });
   return data?.points ?? [];
 }
 
-export default function KpiStrip() {
+interface KpiStripProps {
+  sessionId?: string | null;
+  sourceApp?: string | null;
+}
+
+export default function KpiStrip({ sessionId, sourceApp }: KpiStripProps = {}) {
   return (
     <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
       {CONFIG.map((cfg) => (
-        <KpiTile key={cfg.metric} config={cfg} />
+        <KpiTile
+          key={cfg.metric}
+          config={cfg}
+          sessionId={sessionId}
+          sourceApp={sourceApp}
+        />
       ))}
     </div>
   );
@@ -44,10 +64,12 @@ export default function KpiStrip() {
 
 interface KpiTileProps {
   config: KpiConfig;
+  sessionId?: string | null;
+  sourceApp?: string | null;
 }
 
-function KpiTile({ config }: KpiTileProps) {
-  const points = useSeries(config.metric, config.kind);
+function KpiTile({ config, sessionId, sourceApp }: KpiTileProps) {
+  const points = useSeries(config.metric, config.kind, { sessionId, sourceApp });
   return (
     <KpiSparkline
       points={points}

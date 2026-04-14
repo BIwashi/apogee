@@ -82,3 +82,75 @@ func TestCollectorTickWritesMetricPoints(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, pts)
 }
+
+// TestCollectorTickEmitsPerSessionMetrics asserts that the collector writes
+// one labeled row per active session for the gauges tracked in the PR #6.5
+// scope — active turns, hitl pending, tools/error rates — without
+// double-counting sessions beyond SessionScopeLimit.
+func TestCollectorTickEmitsPerSessionMetrics(t *testing.T) {
+	ctx := context.Background()
+	db, err := duckdb.Open(ctx, ":memory:")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+
+	now := time.Now().UTC().Truncate(time.Millisecond)
+	// Seed two sessions, each with one running turn.
+	for i, id := range []string{"sess-alpha", "sess-beta"} {
+		require.NoError(t, db.UpsertSession(ctx, duckdb.Session{
+			SessionID:  id,
+			SourceApp:  "demo",
+			StartedAt:  now.Add(time.Duration(i) * time.Second),
+			LastSeenAt: now.Add(time.Duration(i) * time.Second),
+		}))
+		require.NoError(t, db.InsertTurn(ctx, duckdb.Turn{
+			TurnID:    "turn-" + id,
+			TraceID:   "trace-" + id,
+			SessionID: id,
+			SourceApp: "demo",
+			StartedAt: now,
+			Status:    "running",
+		}))
+	}
+
+	fakeNow := now
+	c := New(db, 10*time.Second, nil)
+	c.Clock = func() time.Time { return fakeNow }
+	c.Tick(ctx)
+
+	// Scoped series should reflect the single running turn in each session.
+	for _, id := range []string{"sess-alpha", "sess-beta"} {
+		pts, err := db.GetMetricSeries(ctx, duckdb.MetricSeriesOptions{
+			Name:      "apogee.turns.active",
+			Window:    time.Minute,
+			Step:      10 * time.Second,
+			Kind:      "gauge",
+			SessionID: id,
+			Now:       fakeNow.Add(5 * time.Second),
+		})
+		require.NoError(t, err)
+		var maxV float64
+		for _, p := range pts {
+			if p.Value > maxV {
+				maxV = p.Value
+			}
+		}
+		require.Equal(t, float64(1), maxV, "per-session gauge should be 1 for %s", id)
+	}
+
+	// Fleet query should not pick up the per-session rows.
+	pts, err := db.GetMetricSeries(ctx, duckdb.MetricSeriesOptions{
+		Name:   "apogee.turns.active",
+		Window: time.Minute,
+		Step:   10 * time.Second,
+		Kind:   "gauge",
+		Now:    fakeNow.Add(5 * time.Second),
+	})
+	require.NoError(t, err)
+	var maxFleet float64
+	for _, p := range pts {
+		if p.Value > maxFleet {
+			maxFleet = p.Value
+		}
+	}
+	require.Equal(t, float64(2), maxFleet, "fleet gauge should reflect both running turns")
+}

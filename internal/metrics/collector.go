@@ -17,6 +17,12 @@ import (
 // Interval cadence until its context is cancelled.
 const DefaultInterval = 5 * time.Second
 
+// SessionScopeLimit caps the number of sessions for which the collector
+// writes per-session labeled metric rows per tick. The cap keeps the
+// per-tick write cost bounded even when the fleet has thousands of
+// historical sessions.
+const SessionScopeLimit = 20
+
 // Collector samples fleet-wide metrics at a fixed cadence. The zero value is
 // not usable; construct with New.
 type Collector struct {
@@ -29,6 +35,12 @@ type Collector struct {
 	lastToolCount  int64
 	lastErrorCount int64
 	lastSampleAt   time.Time
+
+	// Per-session counter baselines keyed by session_id. Rebuilt on every
+	// tick from the top-N active sessions so stale sessions drop out of
+	// the map naturally.
+	lastSessionTool  map[string]int64
+	lastSessionError map[string]int64
 
 	ticks atomic.Uint64
 }
@@ -43,10 +55,12 @@ func New(db *duckdb.Store, interval time.Duration, logger *slog.Logger) *Collect
 		logger = slog.Default()
 	}
 	return &Collector{
-		DB:       db,
-		Interval: interval,
-		Clock:    time.Now,
-		Logger:   logger,
+		DB:               db,
+		Interval:         interval,
+		Clock:            time.Now,
+		Logger:           logger,
+		lastSessionTool:  make(map[string]int64),
+		lastSessionError: make(map[string]int64),
 	}
 }
 
@@ -144,7 +158,87 @@ func (c *Collector) Tick(ctx context.Context) {
 		_ = c.insert(ctx, "apogee.errors.rate", "counter", float64(errorDelta), nil, now)
 	}
 
+	// ── per-session scoped metrics ───────────────────────
+	// Bound write cost: only emit rows for the top N most-recently active
+	// sessions. Older sessions naturally drop off the list and their
+	// counters roll off with the window.
+	sessions, err := c.DB.RecentSessionsWithActivity(ctx, SessionScopeLimit)
+	if err == nil && len(sessions) > 0 {
+		ids := make([]string, 0, len(sessions))
+		appBySession := make(map[string]string, len(sessions))
+		for _, sess := range sessions {
+			ids = append(ids, sess.SessionID)
+			appBySession[sess.SessionID] = sess.SourceApp
+		}
+		c.emitPerSession(ctx, now, ids, appBySession)
+	} else if err != nil {
+		c.Logger.Debug("metrics: recent sessions", "err", err)
+	}
+
 	c.lastSampleAt = now
+}
+
+// emitPerSession writes one gauge row per session for the four tracked
+// metrics. Labels carry both session_id and source_app so fleet queries can
+// filter them out cheaply.
+func (c *Collector) emitPerSession(ctx context.Context, now time.Time, ids []string, appBySession map[string]string) {
+	// Gauge: running turns per session.
+	running, err := c.DB.CountRunningTurnsBySession(ctx, ids)
+	if err != nil {
+		c.Logger.Debug("metrics: running turns by session", "err", err)
+	}
+	hitl, err := c.DB.CountPendingHITLBySession(ctx, ids)
+	if err != nil {
+		c.Logger.Debug("metrics: hitl by session", "err", err)
+	}
+	toolTotals, err := c.DB.CountToolSpansBySession(ctx, ids)
+	if err != nil {
+		c.Logger.Debug("metrics: tool spans by session", "err", err)
+	}
+	errorTotals, err := c.DB.CountErrorSpansBySession(ctx, ids)
+	if err != nil {
+		c.Logger.Debug("metrics: error spans by session", "err", err)
+	}
+
+	// Rebuild the baseline maps so evicted sessions drop out. We keep the
+	// previous tick's totals in oldTool/oldError and compute a positive
+	// delta.
+	oldTool := c.lastSessionTool
+	oldError := c.lastSessionError
+	c.lastSessionTool = make(map[string]int64, len(ids))
+	c.lastSessionError = make(map[string]int64, len(ids))
+
+	for _, id := range ids {
+		labels := map[string]string{
+			"session_id": id,
+			"source_app": appBySession[id],
+		}
+
+		_ = c.insert(ctx, "apogee.turns.active", "gauge", float64(running[id]), labels, now)
+		_ = c.insert(ctx, "apogee.hitl.pending", "gauge", float64(hitl[id]), labels, now)
+
+		toolTotal := toolTotals[id]
+		errorTotal := errorTotals[id]
+
+		var toolDelta, errorDelta int64
+		if prev, ok := oldTool[id]; ok && !c.lastSampleAt.IsZero() {
+			toolDelta = toolTotal - prev
+			if toolDelta < 0 {
+				toolDelta = 0
+			}
+		}
+		if prev, ok := oldError[id]; ok && !c.lastSampleAt.IsZero() {
+			errorDelta = errorTotal - prev
+			if errorDelta < 0 {
+				errorDelta = 0
+			}
+		}
+		c.lastSessionTool[id] = toolTotal
+		c.lastSessionError[id] = errorTotal
+
+		_ = c.insert(ctx, "apogee.tools.rate", "counter", float64(toolDelta), labels, now)
+		_ = c.insert(ctx, "apogee.errors.rate", "counter", float64(errorDelta), labels, now)
+	}
 }
 
 // Ticks returns the number of Tick calls the collector has made. Exposed for
