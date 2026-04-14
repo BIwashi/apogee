@@ -44,6 +44,10 @@ type sessionState struct {
 
 	Stacks       map[string][]*agentFrame
 	PendingTools map[string]*otel.Span // tool_use_id -> open tool span
+	// PendingHITL is the set of open HITL spans for this turn keyed by
+	// span_id. Tracked separately from Stacks so HITL requests do not
+	// hijack the parent frame for subsequent tool calls.
+	PendingHITL map[string]*otel.Span
 
 	ToolCallCount int
 	SubagentCount int
@@ -87,6 +91,13 @@ type Reconstructor struct {
 	// enqueue follow-up work (the LLM summariser, for example) do not
 	// back-pressure the ingest hot path. Callbacks must not block.
 	OnTurnClosed func(turnID string)
+
+	// OnHITLRequested, when non-nil, is invoked after the reconstructor
+	// inserts a fresh hitl_events row for an inbound permission request.
+	// Wire this to the hitl.Service so the SSE hub broadcasts a
+	// hitl.requested event without the reconstructor depending on the
+	// service package directly.
+	OnHITLRequested func(ev duckdb.HITLEvent)
 }
 
 // NewReconstructor returns a Reconstructor backed by the given store. logger
@@ -219,10 +230,15 @@ func (r *Reconstructor) rescoreAttention(ctx context.Context, turnID string, evT
 		r.logger.Debug("rescore: load spans", "err", err)
 		return
 	}
+	hitlRows, err := r.store.ListHITLByTurn(ctx, turnID)
+	if err != nil {
+		r.logger.Debug("rescore: load hitl", "err", err)
+	}
 
 	decision := r.Engine.Score(attention.Input{
 		Turn:  *turn,
 		Spans: spans,
+		HITL:  hitlRows,
 		Now:   now,
 	})
 
@@ -281,6 +297,7 @@ func (r *Reconstructor) getOrCreateSession(ev *HookEvent) *sessionState {
 			LastSeen:     ev.Time(),
 			Stacks:       map[string][]*agentFrame{},
 			PendingTools: map[string]*otel.Span{},
+			PendingHITL:  map[string]*otel.Span{},
 		}
 		r.sessions[ev.SessionID] = st
 	}
@@ -379,6 +396,7 @@ func (r *Reconstructor) handleUserPromptSubmit(ctx context.Context, st *sessionS
 		mainAgentKey: {{Span: root, StartedAt: ev.Time()}},
 	}
 	st.PendingTools = map[string]*otel.Span{}
+	st.PendingHITL = map[string]*otel.Span{}
 
 	turn := duckdb.Turn{
 		TurnID:     turnID,
@@ -531,6 +549,13 @@ func (r *Reconstructor) handlePermissionRequest(ctx context.Context, st *session
 	if parent == nil {
 		return nil
 	}
+
+	hitlID := otel.NewHITLID()
+	question := pluckHITLQuestion(ev)
+	hitlContext := buildHITLContext(ev)
+	contextJSON := encodeJSONString(hitlContext)
+	suggestionsJSON := encodeJSONString(ev.PermissionSuggestions)
+
 	span := &otel.Span{
 		TraceID:      st.TraceID,
 		SpanID:       otel.NewSpanID(),
@@ -545,6 +570,7 @@ func (r *Reconstructor) handlePermissionRequest(ctx context.Context, st *session
 		AgentID:      coalesce(ev.AgentID, "main"),
 		HookEvent:    ev.HookEventType,
 		Attributes: map[string]any{
+			"claude_code.hitl.id":          hitlID,
 			"claude_code.hitl.kind":        "permission",
 			"claude_code.hitl.suggestions": ev.PermissionSuggestions,
 			"claude_code.tool.name":        ev.ToolName,
@@ -553,8 +579,282 @@ func (r *Reconstructor) handlePermissionRequest(ctx context.Context, st *session
 	if err := r.store.InsertSpan(ctx, span); err != nil {
 		return err
 	}
+	// Track this open HITL span in a dedicated map so closeTurn can find
+	// it and so RespondHITL can close it via SpanID. We deliberately do
+	// not push HITL spans onto the agent stack — doing so would re-parent
+	// subsequent tool calls to the HITL request.
+	if st.PendingHITL == nil {
+		st.PendingHITL = map[string]*otel.Span{}
+	}
+	st.PendingHITL[string(span.SpanID)] = span
+
 	r.broadcastSpan(sse.EventTypeSpanInserted, span)
+
+	hitlEv := duckdb.HITLEvent{
+		HitlID:          hitlID,
+		SpanID:          string(span.SpanID),
+		TraceID:         string(st.TraceID),
+		SessionID:       ev.SessionID,
+		TurnID:          st.TurnID,
+		Kind:            "permission",
+		Status:          duckdb.HITLStatusPending,
+		RequestedAt:     ev.Time(),
+		Question:        question,
+		SuggestionsJSON: suggestionsJSON,
+		ContextJSON:     contextJSON,
+	}
+	if err := r.store.InsertHITL(ctx, hitlEv); err != nil {
+		r.logger.Error("insert hitl", "err", err, "hitl_id", hitlID)
+		return nil
+	}
+	if r.OnHITLRequested != nil {
+		// Re-fetch so the broadcast carries the row id assigned by the DB
+		// sequence. Failure here is non-fatal — degrade to the in-memory
+		// shape we already have.
+		stored, ok, err := r.store.GetHITL(ctx, hitlID)
+		if err == nil && ok {
+			r.OnHITLRequested(stored)
+		} else {
+			r.OnHITLRequested(hitlEv)
+		}
+	}
 	return nil
+}
+
+// CloseHITLSpan finalises an open HITL span when its corresponding row has
+// transitioned to responded/expired. It stamps a status code derived from
+// the decision and records the response details as span attributes so
+// downstream consumers (span tree, OTel export) see the resolution.
+//
+// Safe to call from the HTTP handler goroutine — it acquires the
+// reconstructor mutex internally.
+func (r *Reconstructor) CloseHITLSpan(ctx context.Context, ev duckdb.HITLEvent) {
+	if r == nil || r.store == nil {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	// The HITL span lives under a session/turn we may not be actively
+	// holding state for any more. Locate it via the stored span id and
+	// load its current state from the DB so we don't lose attributes.
+	spans, err := r.store.GetSpansByTurn(ctx, ev.TurnID)
+	if err != nil {
+		r.logger.Debug("close hitl span: load", "err", err)
+		return
+	}
+	var found *duckdb.SpanRow
+	for i := range spans {
+		if spans[i].SpanID == ev.SpanID {
+			found = &spans[i]
+			break
+		}
+	}
+	if found == nil {
+		return
+	}
+	if found.EndTime != nil {
+		// Already closed (turn ended first). Still update attributes via
+		// in-memory state if we have it; for now, skip.
+		return
+	}
+	end := time.Time{}
+	if ev.RespondedAt.Valid {
+		end = ev.RespondedAt.Time
+	} else {
+		end = r.clock()
+	}
+	statusCode := otel.StatusOK
+	statusMessage := ""
+	if ev.Decision.Valid {
+		switch ev.Decision.String {
+		case "deny":
+			statusCode = otel.StatusError
+			statusMessage = "denied"
+		case "timeout":
+			statusCode = otel.StatusError
+			statusMessage = "timeout"
+		}
+	}
+	if ev.Status == duckdb.HITLStatusExpired {
+		statusCode = otel.StatusError
+		statusMessage = "expired"
+	}
+
+	// Build a synthetic otel.Span carrying just the columns UpdateSpan
+	// touches, plus a merged attribute bag.
+	attrs := map[string]any{}
+	if found.Attributes != nil {
+		for k, v := range found.Attributes {
+			attrs[k] = v
+		}
+	}
+	attrs["claude_code.hitl.status"] = ev.Status
+	if ev.Decision.Valid {
+		attrs["claude_code.hitl.decision"] = ev.Decision.String
+	}
+	if ev.ReasonCategory.Valid {
+		attrs["claude_code.hitl.reason_category"] = ev.ReasonCategory.String
+	}
+	if ev.OperatorNote.Valid {
+		attrs["claude_code.hitl.operator_note"] = ev.OperatorNote.String
+	}
+	if ev.ResumeMode.Valid {
+		attrs["claude_code.hitl.resume_mode"] = ev.ResumeMode.String
+	}
+
+	sp := &otel.Span{
+		TraceID:       otel.TraceID(found.TraceID),
+		SpanID:        otel.SpanID(found.SpanID),
+		StartTime:     found.StartTime,
+		EndTime:       &end,
+		StatusCode:    statusCode,
+		StatusMessage: statusMessage,
+		Attributes:    attrs,
+		Events:        spanEventsFromAny(found.Events),
+	}
+	if err := r.store.UpdateSpan(ctx, sp); err != nil {
+		r.logger.Debug("close hitl span: update", "err", err)
+		return
+	}
+	r.broadcastSpan(sse.EventTypeSpanUpdated, sp)
+	// Drop the in-memory pending entry so the next closeTurn does not
+	// re-process this span.
+	for _, st := range r.sessions {
+		if _, ok := st.PendingHITL[ev.SpanID]; ok {
+			delete(st.PendingHITL, ev.SpanID)
+		}
+	}
+	// Also nudge the turn row so the dashboard re-renders.
+	r.broadcastTurn(ctx, ev.TurnID, sse.EventTypeTurnUpdated)
+}
+
+// spanEventsFromAny converts the loose []any shape we get back from the
+// store into the typed otel.SpanEvent slice that UpdateSpan re-serialises.
+// Best-effort: events that fail to unmarshal are dropped.
+func spanEventsFromAny(in []any) []otel.SpanEvent {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]otel.SpanEvent, 0, len(in))
+	for _, raw := range in {
+		obj, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		ev := otel.SpanEvent{}
+		if name, ok := obj["name"].(string); ok {
+			ev.Name = name
+		}
+		if attrs, ok := obj["attributes"].(map[string]any); ok {
+			ev.Attributes = attrs
+		}
+		if ts, ok := obj["time"].(string); ok {
+			if t, err := time.Parse(time.RFC3339Nano, ts); err == nil {
+				ev.Time = t
+			}
+		}
+		out = append(out, ev)
+	}
+	return out
+}
+
+// pluckHITLQuestion extracts a natural-language question from a hook
+// event payload. Several payload shapes carry this field under different
+// keys; we probe in priority order.
+func pluckHITLQuestion(ev *HookEvent) string {
+	if ev == nil {
+		return ""
+	}
+	for _, key := range []string{"question", "message", "prompt", "summary"} {
+		if v := pluckString(ev.Payload, key); v != "" {
+			return v
+		}
+	}
+	if ev.Summary != "" {
+		return ev.Summary
+	}
+	if ev.Reason != "" {
+		return ev.Reason
+	}
+	return "Permission requested for " + ev.ToolName
+}
+
+// buildHITLContext sniffs the payload for the typed context fields the
+// dashboard renders alongside a pending HITL row.
+func buildHITLContext(ev *HookEvent) map[string]any {
+	out := map[string]any{}
+	if ev == nil {
+		return out
+	}
+	if ev.ToolName != "" {
+		out["tool_name"] = ev.ToolName
+	}
+	if len(ev.Payload) > 0 {
+		var obj map[string]any
+		if err := jsonUnmarshal(ev.Payload, &obj); err == nil {
+			if input, ok := obj["tool_input"]; ok {
+				out["tool_input_summary"] = summariseToolInput(input)
+				if ev.ToolName == "Bash" {
+					if asMap, ok := input.(map[string]any); ok {
+						if cmd, ok := asMap["command"].(string); ok && cmd != "" {
+							out["command_preview"] = truncate(cmd, 240)
+						}
+					}
+				}
+			}
+			if file, ok := obj["target_file"].(string); ok && file != "" {
+				out["target_file"] = file
+			} else if file, ok := obj["file_path"].(string); ok && file != "" {
+				out["target_file"] = file
+			} else if input, ok := obj["tool_input"].(map[string]any); ok {
+				if file, ok := input["file_path"].(string); ok && file != "" {
+					out["target_file"] = file
+				}
+			}
+		}
+	}
+	return out
+}
+
+// summariseToolInput turns an arbitrary tool input shape into a short
+// string the UI can render in a chip. Maps are formatted as key=value
+// pairs; everything else is JSON-encoded and truncated.
+func summariseToolInput(v any) string {
+	if v == nil {
+		return ""
+	}
+	if s, ok := v.(string); ok {
+		return truncate(s, 200)
+	}
+	b, err := json.Marshal(v)
+	if err != nil {
+		return ""
+	}
+	return truncate(string(b), 200)
+}
+
+func truncate(s string, max int) string {
+	if max <= 0 || len(s) <= max {
+		return s
+	}
+	if max <= 1 {
+		return s[:max]
+	}
+	return s[:max-1] + "…"
+}
+
+// encodeJSONString marshals v to its JSON form, returning "" on error so
+// the caller can fall through to the column default.
+func encodeJSONString(v any) string {
+	if v == nil {
+		return ""
+	}
+	b, err := json.Marshal(v)
+	if err != nil {
+		return ""
+	}
+	return string(b)
 }
 
 func (r *Reconstructor) handleNotification(ctx context.Context, st *sessionState, ev *HookEvent) error {
@@ -669,7 +969,7 @@ func (r *Reconstructor) handleStop(ctx context.Context, st *sessionState, ev *Ho
 // closeTurn finalises every open span belonging to the active turn and writes
 // the terminal turn row.
 func (r *Reconstructor) closeTurn(ctx context.Context, st *sessionState, end time.Time, status string) {
-	// Close any still-open tool / subagent / hitl spans.
+	// Close any still-open tool / subagent spans on the agent stacks.
 	for key, frames := range st.Stacks {
 		for _, f := range frames {
 			if f.Span == st.TurnRoot {
@@ -679,9 +979,7 @@ func (r *Reconstructor) closeTurn(ctx context.Context, st *sessionState, end tim
 				continue
 			}
 			f.Span.EndTime = &end
-			if f.Span.Name == "claude_code.hitl.permission" {
-				// Leave HITL as UNSET so the UI can render it as pending.
-			} else if f.Span.StatusCode == otel.StatusUnset {
+			if f.Span.StatusCode == otel.StatusUnset {
 				f.Span.StatusCode = otel.StatusOK
 			}
 			if err := r.store.UpdateSpan(ctx, f.Span); err != nil {
@@ -691,6 +989,28 @@ func (r *Reconstructor) closeTurn(ctx context.Context, st *sessionState, end tim
 			r.broadcastSpan(sse.EventTypeSpanUpdated, f.Span)
 		}
 		delete(st.Stacks, key)
+	}
+	// Close any still-pending HITL spans. These inherit ERROR status with
+	// "expired" message and their typed hitl_events twin is moved to
+	// status=expired so listings stay consistent.
+	for spanID, sp := range st.PendingHITL {
+		if sp.EndTime != nil {
+			continue
+		}
+		sp.EndTime = &end
+		sp.StatusCode = otel.StatusError
+		sp.StatusMessage = "expired"
+		if hitlID, ok := sp.Attributes["claude_code.hitl.id"].(string); ok && hitlID != "" {
+			if err := r.store.ExpireHITL(ctx, hitlID, end); err != nil {
+				r.logger.Debug("close turn: expire hitl", "err", err)
+			}
+		}
+		if err := r.store.UpdateSpan(ctx, sp); err != nil {
+			r.logger.Error("close hitl span", "err", err)
+			continue
+		}
+		r.broadcastSpan(sse.EventTypeSpanUpdated, sp)
+		delete(st.PendingHITL, spanID)
 	}
 	// Close the turn root.
 	st.TurnRoot.EndTime = &end
@@ -720,6 +1040,7 @@ func (r *Reconstructor) closeTurn(ctx context.Context, st *sessionState, end tim
 	st.TurnID = ""
 	st.TraceID = ""
 	st.PendingTools = map[string]*otel.Span{}
+	st.PendingHITL = map[string]*otel.Span{}
 	st.Stacks = map[string][]*agentFrame{}
 }
 

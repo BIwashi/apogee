@@ -39,6 +39,16 @@ func NewSpanID() SpanID {
 	return SpanID(hex.EncodeToString(b[:]))
 }
 
+// NewHITLID returns a fresh HITL request id of the form "hitl-<8 hex>".
+// The prefix keeps the id self-describing in logs and audit trails.
+func NewHITLID() string {
+	var b [4]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return "hitl-" + hex.EncodeToString(fallbackBytes(4))
+	}
+	return "hitl-" + hex.EncodeToString(b[:])
+}
+
 // NewTurnID returns a UUIDv7-like identifier suitable for the apogee turn id.
 // We don't pull in google/uuid for this single use; the format is
 // 8-4-4-4-12 hex characters with a millisecond timestamp prefix so ids sort

@@ -249,6 +249,53 @@ func TestPermissionRequestSpanLeftOpen(t *testing.T) {
 	require.NotNil(t, hitl)
 	require.Equal(t, "UNSET", hitl.StatusCode)
 	require.Nil(t, hitl.EndTime)
+	// Structured HITL row should also exist with status=pending and the
+	// permission_suggestions copied verbatim.
+	hitlID, _ := hitl.Attributes["claude_code.hitl.id"].(string)
+	require.NotEmpty(t, hitlID)
+	row, ok, err := store.GetHITL(ctx, hitlID)
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.Equal(t, duckdb.HITLStatusPending, row.Status)
+	require.Equal(t, "permission", row.Kind)
+	require.Contains(t, row.SuggestionsJSON, "allow once")
+}
+
+func TestPermissionRequestBroadcastsViaCallback(t *testing.T) {
+	ctx := context.Background()
+	rec, _ := newTestRec(t)
+	var captured duckdb.HITLEvent
+	rec.OnHITLRequested = func(ev duckdb.HITLEvent) {
+		captured = ev
+	}
+
+	t0 := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)
+	require.NoError(t, rec.Apply(ctx, ev("UserPromptSubmit", "s-1", t0)))
+	require.NoError(t, rec.Apply(ctx, ev("PermissionRequest", "s-1", t0.Add(time.Second), func(e *HookEvent) {
+		e.ToolName = "Bash"
+		e.Payload = []byte(`{"tool_input":{"command":"rm -rf /"},"question":"Allow rm -rf /?"}`)
+	})))
+	require.NotEmpty(t, captured.HitlID)
+	require.Equal(t, duckdb.HITLStatusPending, captured.Status)
+	require.Equal(t, "Allow rm -rf /?", captured.Question)
+	require.Contains(t, captured.ContextJSON, "rm -rf /")
+}
+
+func TestCloseTurnExpiresPendingHITL(t *testing.T) {
+	ctx := context.Background()
+	rec, store := newTestRec(t)
+
+	t0 := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)
+	require.NoError(t, rec.Apply(ctx, ev("UserPromptSubmit", "s-1", t0)))
+	require.NoError(t, rec.Apply(ctx, ev("PermissionRequest", "s-1", t0.Add(time.Second), func(e *HookEvent) {
+		e.ToolName = "Bash"
+	})))
+	require.NoError(t, rec.Apply(ctx, ev("Stop", "s-1", t0.Add(2*time.Second))))
+
+	rows, err := store.ListRecentHITL(ctx, duckdb.HITLFilter{}, 10)
+	require.NoError(t, err)
+	require.Len(t, rows, 1)
+	require.Equal(t, duckdb.HITLStatusExpired, rows[0].Status)
 }
 
 func TestMCPToolNameParsing(t *testing.T) {

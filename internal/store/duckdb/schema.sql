@@ -117,6 +117,35 @@ CREATE INDEX IF NOT EXISTS idx_logs_trace ON logs(trace_id);
 CREATE INDEX IF NOT EXISTS idx_logs_hook ON logs(hook_event);
 CREATE INDEX IF NOT EXISTS idx_logs_timestamp ON logs(timestamp DESC);
 
+-- HITL events: structured Human-In-The-Loop request/response records. One
+-- row per permission/tool_approval/prompt/choice request. The lifecycle
+-- moves status from pending -> responded|timeout|expired|error.
+CREATE SEQUENCE IF NOT EXISTS hitl_events_id_seq;
+CREATE TABLE IF NOT EXISTS hitl_events (
+  id                BIGINT PRIMARY KEY DEFAULT nextval('hitl_events_id_seq'),
+  hitl_id           VARCHAR NOT NULL UNIQUE,
+  span_id           VARCHAR NOT NULL,
+  trace_id          VARCHAR NOT NULL,
+  session_id        VARCHAR NOT NULL,
+  turn_id           VARCHAR NOT NULL,
+  kind              VARCHAR NOT NULL,
+  status            VARCHAR NOT NULL,
+  requested_at      TIMESTAMP NOT NULL,
+  responded_at      TIMESTAMP,
+  question          VARCHAR NOT NULL,
+  suggestions_json  VARCHAR NOT NULL DEFAULT '[]',
+  context_json      VARCHAR NOT NULL DEFAULT '{}',
+  decision          VARCHAR,
+  reason_category   VARCHAR,
+  operator_note     VARCHAR,
+  resume_mode       VARCHAR,
+  operator_id       VARCHAR
+);
+CREATE INDEX IF NOT EXISTS idx_hitl_session_time ON hitl_events(session_id, requested_at DESC);
+CREATE INDEX IF NOT EXISTS idx_hitl_turn ON hitl_events(turn_id);
+CREATE INDEX IF NOT EXISTS idx_hitl_status ON hitl_events(status);
+CREATE INDEX IF NOT EXISTS idx_hitl_kind ON hitl_events(kind);
+
 -- Metric points: OTel metric data. Write-optimized columnar.
 CREATE SEQUENCE IF NOT EXISTS metric_points_id_seq;
 CREATE TABLE IF NOT EXISTS metric_points (

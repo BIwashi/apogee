@@ -193,6 +193,95 @@ func TestIntegrationSSEStream(t *testing.T) {
 	require.True(t, found, "expected session.updated broadcast on stream")
 }
 
+func TestIntegrationHITLLifecycle(t *testing.T) {
+	_, ts := newTestServer(t)
+	samples := loadSamples(t)
+
+	// Post the entire sample set so SessionStart and UserPromptSubmit run
+	// before PermissionRequest. The reconstructor wires the hitl_events
+	// row inline.
+	for _, ev := range samples {
+		if ev.HookEventType == "Stop" {
+			continue // leave the turn open so the HITL row stays pending
+		}
+		body, err := json.Marshal(ev)
+		require.NoError(t, err)
+		resp, err := http.Post(ts.URL+"/v1/events", "application/json", bytes.NewBuffer(body))
+		require.NoError(t, err)
+		require.Equal(t, http.StatusAccepted, resp.StatusCode, ev.HookEventType)
+		resp.Body.Close()
+	}
+
+	// Discover the session id from the sample stream so we can hit the
+	// session-scoped pending endpoint.
+	var sessionID string
+	for _, ev := range samples {
+		if ev.HookEventType == "PermissionRequest" {
+			sessionID = ev.SessionID
+			break
+		}
+	}
+	require.NotEmpty(t, sessionID)
+
+	// Pending HITL list for the session — should contain exactly one row.
+	pendingURL := ts.URL + "/v1/sessions/" + sessionID + "/hitl/pending"
+	var pending struct {
+		HITL []sse.HITLSnapshot `json:"hitl"`
+	}
+	resp, err := http.Get(pendingURL)
+	require.NoError(t, err)
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&pending))
+	resp.Body.Close()
+	require.Len(t, pending.HITL, 1)
+	hitlID := pending.HITL[0].HitlID
+	require.NotEmpty(t, hitlID)
+
+	// Respond.
+	respBody, _ := json.Marshal(duckdb.HITLResponse{
+		Decision:       "allow",
+		ReasonCategory: "scope",
+		OperatorNote:   "ok",
+		ResumeMode:     "continue",
+	})
+	resp, err = http.Post(ts.URL+"/v1/hitl/"+hitlID+"/respond", "application/json", bytes.NewReader(respBody))
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	resp.Body.Close()
+
+	// Pending list is now empty.
+	resp, err = http.Get(pendingURL)
+	require.NoError(t, err)
+	pending.HITL = nil
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&pending))
+	resp.Body.Close()
+	require.Len(t, pending.HITL, 0)
+
+	// Filtered list — status=responded — returns the row.
+	resp, err = http.Get(ts.URL + "/v1/hitl?session_id=" + sessionID + "&status=responded")
+	require.NoError(t, err)
+	var listOut struct {
+		HITL []sse.HITLSnapshot `json:"hitl"`
+	}
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&listOut))
+	resp.Body.Close()
+	require.Len(t, listOut.HITL, 1)
+	require.Equal(t, "responded", listOut.HITL[0].Status)
+	require.NotNil(t, listOut.HITL[0].Decision)
+	require.Equal(t, "allow", *listOut.HITL[0].Decision)
+
+	// Second respond should yield 409.
+	resp, err = http.Post(ts.URL+"/v1/hitl/"+hitlID+"/respond", "application/json", bytes.NewReader(respBody))
+	require.NoError(t, err)
+	require.Equal(t, http.StatusConflict, resp.StatusCode)
+	resp.Body.Close()
+
+	// Missing id yields 404.
+	resp, err = http.Post(ts.URL+"/v1/hitl/missing/respond", "application/json", bytes.NewReader(respBody))
+	require.NoError(t, err)
+	require.Equal(t, http.StatusNotFound, resp.StatusCode)
+	resp.Body.Close()
+}
+
 func TestIntegrationEventsBatchAccepted(t *testing.T) {
 	_, ts := newTestServer(t)
 	samples := loadSamples(t)[:3]

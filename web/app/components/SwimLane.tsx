@@ -4,6 +4,7 @@ import { useMemo } from "react";
 
 import type {
   FilterKey,
+  HITLEvent,
   PhaseSegment,
   Span,
   Turn,
@@ -30,6 +31,7 @@ interface SwimLaneProps {
   spans: Span[];
   phases: PhaseSegment[];
   highlightedFilter?: FilterKey;
+  hitlEvents?: HITLEvent[];
 }
 
 const ROW_HEIGHT = 18;
@@ -152,12 +154,31 @@ function dimForFilter(span: Span, filter: FilterKey | undefined): number {
   }
 }
 
+function hitlMarkerColor(event: HITLEvent | undefined): string {
+  if (!event) return "var(--status-warning)";
+  if (event.status === "pending") return "var(--status-warning)";
+  if (event.status === "expired" || event.status === "timeout") {
+    return "var(--status-muted)";
+  }
+  if (event.decision === "deny") return "var(--status-critical)";
+  if (event.decision === "allow") return "var(--status-success)";
+  return "var(--artemis-earth)";
+}
+
 export default function SwimLane({
   turn,
   spans,
   phases,
   highlightedFilter,
+  hitlEvents,
 }: SwimLaneProps) {
+  const hitlBySpan = useMemo(() => {
+    const map = new Map<string, HITLEvent>();
+    for (const ev of hitlEvents ?? []) {
+      if (ev.span_id) map.set(ev.span_id, ev);
+    }
+    return map;
+  }, [hitlEvents]);
   const laneStart = LABEL_WIDTH + PADDING;
   const laneWidth = VIEWBOX_WIDTH - laneStart - PADDING;
   const windowStart = parseTime(turn.started_at) ?? 0;
@@ -265,12 +286,33 @@ export default function SwimLane({
       laneStart,
       laneWidth,
     );
+    const event = hitlBySpan.get(span.span_id);
     return {
       key: span.span_id,
       x,
       opacity: dimForFilter(span, highlightedFilter),
+      color: hitlMarkerColor(event),
     };
   });
+
+  // Cluster markers within ~16px of each other so the swim lane shows a
+  // numeric badge instead of overlapping triangles.
+  const hitlClusters = useMemo(() => {
+    if (hitlMarkers.length === 0) return [] as { x: number; count: number }[];
+    const sorted = [...hitlMarkers].sort((a, b) => a.x - b.x);
+    const clusters: { x: number; count: number }[] = [];
+    let current = { x: sorted[0].x, count: 1 };
+    for (let i = 1; i < sorted.length; i++) {
+      if (sorted[i].x - current.x < 16) {
+        current.count++;
+      } else {
+        clusters.push(current);
+        current = { x: sorted[i].x, count: 1 };
+      }
+    }
+    clusters.push(current);
+    return clusters.filter((c) => c.count > 1);
+  }, [hitlMarkers]);
 
   return (
     <svg
@@ -398,13 +440,25 @@ export default function SwimLane({
           <polygon
             key={marker.key}
             points={`${marker.x - 5},${bottom} ${marker.x + 5},${bottom} ${marker.x},${top}`}
-            fill="var(--status-warning)"
+            fill={marker.color}
             opacity={marker.opacity}
           >
             <title>HITL permission</title>
           </polygon>
         );
       })}
+      {hitlClusters.map((cluster, idx) => (
+        <text
+          key={`hitl-cluster-${idx}`}
+          x={cluster.x + 7}
+          y={rowY(4) + ROW_HEIGHT - 4}
+          fill="var(--text-primary)"
+          fontSize={9}
+          fontFamily="var(--font-mono, ui-monospace)"
+        >
+          ×{cluster.count}
+        </text>
+      ))}
 
       <defs>
         <linearGradient id="swim-accent" x1="0%" y1="0%" x2="100%" y2="100%">
