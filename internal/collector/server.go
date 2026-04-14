@@ -22,6 +22,7 @@ import (
 	"github.com/BIwashi/apogee/internal/store/duckdb"
 	"github.com/BIwashi/apogee/internal/summarizer"
 	"github.com/BIwashi/apogee/internal/telemetry"
+	"github.com/BIwashi/apogee/internal/webassets"
 )
 
 // Server is the apogee collector HTTP server. It owns the chi router, the
@@ -96,6 +97,12 @@ func New(cfg Config, store *duckdb.Store, logger *slog.Logger) *Server {
 	}
 	rec.OnHITLRequested = func(ev duckdb.HITLEvent) {
 		hitlSvc.BroadcastRequested(ev)
+	}
+
+	if webassets.IsPlaceholder() {
+		logger.Warn(
+			"webassets: embedded dashboard is the placeholder stub — run `make web-build` or install a release binary for the full UI",
+		)
 	}
 
 	s := &Server{
@@ -223,6 +230,22 @@ func (s *Server) buildRouter() chi.Router {
 	r.Post("/v1/hitl/{hitl_id}/respond", s.respondHITL)
 	r.Get("/v1/sessions/{id}/hitl/pending", s.listPendingHITLBySession)
 	r.Get("/v1/turns/{turn_id}/hitl", s.listHITLByTurn)
+
+	// Embedded Next.js static export. The SPA handler is mounted as the
+	// 404 fallback so every /v1/* route above takes precedence. Anything
+	// else — `/`, `/sessions/`, `/session/`, `/turn/`, `/_next/static/*` —
+	// is served from the embedded FS, with SPA fallback to `index.html`
+	// for routes that do not map to a file.
+	spa := spaHandler(webassets.Assets())
+	r.NotFound(func(w http.ResponseWriter, req *http.Request) {
+		// Guard against API paths accidentally falling through. Returning
+		// JSON 404 for /v1/* keeps the API contract clean.
+		if strings.HasPrefix(req.URL.Path, "/v1/") {
+			writeJSONError(w, http.StatusNotFound, "not found")
+			return
+		}
+		spa.ServeHTTP(w, req)
+	})
 	return r
 }
 

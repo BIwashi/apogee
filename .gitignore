@@ -5,6 +5,11 @@
 *.out
 coverage.*
 
+# Embedded webassets: keep the checked-in placeholder index.html, ignore any
+# built artefacts that `make web-build` drops here.
+/internal/webassets/dist/*
+!/internal/webassets/dist/index.html
+
 # Node / Next.js
 node_modules/
 .next/

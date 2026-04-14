@@ -1,0 +1,61 @@
+version: 2
+project_name: apogee
+
+before:
+  hooks:
+    - go mod tidy
+    - sh -c "cd web && npm ci && npm run build"
+    - sh -c "mkdir -p internal/webassets/dist && rsync -a --delete web/out/ internal/webassets/dist/"
+
+builds:
+  - id: apogee
+    main: ./cmd/apogee
+    binary: apogee
+    env:
+      - CGO_ENABLED=1
+    goos:
+      - darwin
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X github.com/BIwashi/apogee/internal/version.Version={{.Version}}
+      - -X github.com/BIwashi/apogee/internal/version.Commit={{.ShortCommit}}
+      - -X github.com/BIwashi/apogee/internal/version.BuildDate={{.Date}}
+
+archives:
+  - formats: [tar.gz]
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+
+checksum:
+  name_template: "checksums.txt"
+
+snapshot:
+  version_template: "{{ .Version }}-next"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+
+brews:
+  - name: apogee
+    repository:
+      owner: BIwashi
+      name: homebrew-tap
+    commit_author:
+      name: apogee-release-bot
+      email: apogee@biwashi.dev
+    homepage: "https://github.com/BIwashi/apogee"
+    description: "Multi-agent observability dashboard for Claude Code."
+    license: "Apache-2.0"
+    install: |
+      bin.install "apogee"
+    test: |
+      system "#{bin}/apogee", "version"

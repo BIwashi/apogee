@@ -137,7 +137,7 @@ export default function SessionsPage() {
                     </td>
                     <td className="px-3 py-2 font-mono text-[11px] text-gray-200">
                       <Link
-                        href={`/sessions/${hit.session_id}?tab=overview`}
+                        href={`/session/?id=${hit.session_id}&tab=overview`}
                         className="hover:text-[var(--accent)]"
                       >
                         {shortId(hit.session_id)}
@@ -159,7 +159,7 @@ export default function SessionsPage() {
                     </td>
                     <td className="px-3 py-2 text-right">
                       <Link
-                        href={`/sessions/${hit.session_id}?tab=overview`}
+                        href={`/session/?id=${hit.session_id}&tab=overview`}
                         className="font-mono text-[11px] text-[var(--accent)] hover:underline"
                       >
                         detail →

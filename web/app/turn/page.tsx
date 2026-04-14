@@ -1,21 +1,21 @@
 "use client";
 
-import { use, useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
-import AttentionDot from "../../../../components/AttentionDot";
-import Breadcrumb from "../../../../components/Breadcrumb";
-import Card from "../../../../components/Card";
+import AttentionDot from "../components/AttentionDot";
+import Breadcrumb from "../components/Breadcrumb";
+import Card from "../components/Card";
 import FilterChips, {
   useFilterState,
-} from "../../../../components/FilterChips";
-import HITLPanel from "../../../../components/HITLPanel";
-import RawLogsPanel from "../../../../components/RawLogsPanel";
-import RecapPanels from "../../../../components/RecapPanels";
-import SectionHeader from "../../../../components/SectionHeader";
-import SpanTree from "../../../../components/SpanTree";
-import StatusPill from "../../../../components/StatusPill";
-import SwimLane from "../../../../components/SwimLane";
+} from "../components/FilterChips";
+import HITLPanel from "../components/HITLPanel";
+import RawLogsPanel from "../components/RawLogsPanel";
+import RecapPanels from "../components/RecapPanels";
+import SectionHeader from "../components/SectionHeader";
+import SpanTree from "../components/SpanTree";
+import StatusPill from "../components/StatusPill";
+import SwimLane from "../components/SwimLane";
 import type {
   ApogeeEvent,
   AttentionDetail,
@@ -29,19 +29,24 @@ import type {
   TurnLogsResponse,
   TurnPayload,
   TurnSpansResponse,
-} from "../../../../lib/api-types";
-import { SSE_EVENT_TYPES } from "../../../../lib/api-types";
-import { apiUrl } from "../../../../lib/api";
-import type { StatusKey } from "../../../../lib/design-tokens";
-import { useEventStream } from "../../../../lib/sse";
-import { useApi } from "../../../../lib/swr";
-import { formatClock, timeAgo } from "../../../../lib/time";
+} from "../lib/api-types";
+import { SSE_EVENT_TYPES } from "../lib/api-types";
+import { apiUrl } from "../lib/api";
+import type { StatusKey } from "../lib/design-tokens";
+import { useEventStream } from "../lib/sse";
+import { useApi } from "../lib/swr";
+import { formatClock, timeAgo } from "../lib/time";
 
 /**
- * `/sessions/[id]/turns/[turn_id]` — the apogee turn detail page. Pulls the
+ * `/turn?sess=<sess>&turn=<turn>` — the apogee turn detail page. Pulls the
  * turn row, span list (with phase segments), logs, and engine attention
  * detail in parallel, then renders them as a header + recap placeholders +
  * swim lane + filter chips + span tree + collapsible raw logs.
+ *
+ * This page is a flat query-string route (PR #10) so Next.js `output: "export"`
+ * can statically prerender it without knowing the session/turn id space at
+ * build time. Both ids are read from `useSearchParams()` and every fetch
+ * happens client-side — exactly the same behaviour as the old dynamic route.
  *
  * Live updates: subscribes to the SSE stream filtered to this session and
  * patches the local turn / span state when matching events arrive. Refresh
@@ -82,14 +87,12 @@ function durationLabel(turn: Turn): string {
   return "—";
 }
 
-export default function TurnDetailPage({
-  params,
-}: {
-  params: Promise<{ id: string; turn_id: string }>;
-}) {
-  const { id: sessionId, turn_id: turnId } = use(params);
+export default function TurnDetailPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
+
+  const sessionId = searchParams.get("sess") ?? "";
+  const turnId = searchParams.get("turn") ?? "";
   const selectedSpanId = searchParams.get("span");
 
   const setSelectedSpan = useCallback(
@@ -109,34 +112,34 @@ export default function TurnDetailPage({
 
   // While the turn is running we want fast refreshes; once it finishes we
   // freeze polling so the rendered state is stable for the operator.
-  const turnQuery = useApi<Turn>(`/v1/turns/${turnId}`, {
+  const turnQuery = useApi<Turn>(turnId ? `/v1/turns/${turnId}` : null, {
     refreshInterval: 2_000,
   });
   const turn = turnQuery.data;
   const isRunning = turn?.status === "running";
 
-  const spansQuery = useApi<TurnSpansResponse>(`/v1/turns/${turnId}/spans`, {
-    refreshInterval: isRunning ? 2_000 : 0,
-  });
-  const logsQuery = useApi<TurnLogsResponse>(`/v1/turns/${turnId}/logs`, {
-    refreshInterval: isRunning ? 5_000 : 0,
-  });
-  const attentionQuery = useApi<AttentionDetail>(
-    `/v1/turns/${turnId}/attention`,
+  const spansQuery = useApi<TurnSpansResponse>(
+    turnId ? `/v1/turns/${turnId}/spans` : null,
     { refreshInterval: isRunning ? 2_000 : 0 },
   );
-  const recapQuery = useApi<RecapResponse>(`/v1/turns/${turnId}/recap`, {
-    refreshInterval: isRunning ? 5_000 : 0,
-  });
+  const logsQuery = useApi<TurnLogsResponse>(
+    turnId ? `/v1/turns/${turnId}/logs` : null,
+    { refreshInterval: isRunning ? 5_000 : 0 },
+  );
+  const attentionQuery = useApi<AttentionDetail>(
+    turnId ? `/v1/turns/${turnId}/attention` : null,
+    { refreshInterval: isRunning ? 2_000 : 0 },
+  );
+  const recapQuery = useApi<RecapResponse>(
+    turnId ? `/v1/turns/${turnId}/recap` : null,
+    { refreshInterval: isRunning ? 5_000 : 0 },
+  );
   const [regenerating, setRegenerating] = useState(false);
   const onRegenerate = useCallback(async () => {
-    if (regenerating) return;
+    if (regenerating || !turnId) return;
     setRegenerating(true);
     try {
       await fetch(apiUrl(`/v1/turns/${turnId}/recap`), { method: "POST" });
-      // Poll briefly for the new recap. The worker runs out-of-process so
-      // a one-shot mutate is often too early; a short delay + revalidate
-      // keeps the UX snappy without a full refresh.
       setTimeout(() => {
         void recapQuery.mutate();
       }, 1500);
@@ -150,25 +153,26 @@ export default function TurnDetailPage({
   const [turnPatch, setTurnPatch] = useState<Turn | null>(null);
 
   const hitlPendingQuery = useApi<HITLListResponse>(
-    `/v1/sessions/${sessionId}/hitl/pending`,
+    sessionId ? `/v1/sessions/${sessionId}/hitl/pending` : null,
     { refreshInterval: 2_000 },
   );
   const hitlTurnQuery = useApi<HITLListResponse>(
-    `/v1/turns/${turnId}/hitl`,
+    turnId ? `/v1/turns/${turnId}/hitl` : null,
     { refreshInterval: isRunning ? 5_000 : 0 },
   );
-  // Local optimistic removals so a freshly-responded row disappears
-  // immediately while we wait for SSE to confirm.
   const [respondedIds, setRespondedIds] = useState<Set<string>>(() => new Set());
-  const onResponded = useCallback((hitlID: string) => {
-    setRespondedIds((prev) => {
-      const next = new Set(prev);
-      next.add(hitlID);
-      return next;
-    });
-    void hitlPendingQuery.mutate();
-    void hitlTurnQuery.mutate();
-  }, [hitlPendingQuery, hitlTurnQuery]);
+  const onResponded = useCallback(
+    (hitlID: string) => {
+      setRespondedIds((prev) => {
+        const next = new Set(prev);
+        next.add(hitlID);
+        return next;
+      });
+      void hitlPendingQuery.mutate();
+      void hitlTurnQuery.mutate();
+    },
+    [hitlPendingQuery, hitlTurnQuery],
+  );
 
   const onEvent = useCallback(
     (event: ApogeeEvent) => {
@@ -209,10 +213,14 @@ export default function TurnDetailPage({
     [turnId, sessionId, hitlPendingQuery, hitlTurnQuery],
   );
 
-  useEventStream<ApogeeEvent>(`/v1/events/stream?session_id=${sessionId}`, {
-    onEvent,
-    historyLimit: 64,
-  });
+  useEventStream<ApogeeEvent>(
+    sessionId ? `/v1/events/stream?session_id=${sessionId}` : "",
+    {
+      onEvent,
+      historyLimit: 64,
+      enabled: !!sessionId,
+    },
+  );
 
   const liveTurn = turnPatch ?? turn ?? null;
   const spansData = spansQuery.data;
@@ -244,10 +252,6 @@ export default function TurnDetailPage({
     return hitlTurnQuery.data?.hitl ?? [];
   }, [hitlTurnQuery.data]);
 
-  // When the summariser has returned a refined phase list, map each phase
-  // onto the actual span start/end times. The LLM reports inclusive span
-  // indices into the chronologically ordered span table; anything out of
-  // range silently falls back to the heuristic segments.
   const refinedPhases = useMemo(() => {
     if (!recap?.phases?.length || spans.length === 0) return null;
     const mapped = recap.phases
@@ -263,9 +267,31 @@ export default function TurnDetailPage({
           ended_at: endSpan.end_time ?? endSpan.start_time,
         };
       })
-      .filter((x): x is { name: string; started_at: string; ended_at: string } => x !== null);
+      .filter(
+        (x): x is { name: string; started_at: string; ended_at: string } =>
+          x !== null,
+      );
     return mapped.length > 0 ? mapped : null;
   }, [recap, spans]);
+
+  if (!sessionId || !turnId) {
+    return (
+      <div className="mx-auto flex max-w-6xl flex-col gap-6 pt-6">
+        <Breadcrumb
+          segments={[
+            { label: "Sessions", href: "/sessions" },
+            { label: "Turns" },
+            { label: "(missing ids)" },
+          ]}
+        />
+        <Card>
+          <p className="px-4 py-10 text-center text-[12px] text-[var(--text-muted)]">
+            No turn selected. Pick one from the live dashboard or the session detail.
+          </p>
+        </Card>
+      </div>
+    );
+  }
 
   if (!liveTurn) {
     return (
@@ -273,7 +299,7 @@ export default function TurnDetailPage({
         <Breadcrumb
           segments={[
             { label: "Sessions", href: "/sessions" },
-            { label: shortId(sessionId), href: `/sessions/${sessionId}` },
+            { label: shortId(sessionId), href: `/session/?id=${sessionId}` },
             { label: "Turns" },
             { label: shortId(turnId) },
           ]}
@@ -298,7 +324,7 @@ export default function TurnDetailPage({
         <Breadcrumb
           segments={[
             { label: "Sessions", href: "/sessions" },
-            { label: shortId(sessionId), href: `/sessions/${sessionId}` },
+            { label: shortId(sessionId), href: `/session/?id=${sessionId}` },
             { label: "Turns" },
             { label: shortId(turnId) },
           ]}

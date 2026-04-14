@@ -1,35 +1,40 @@
 "use client";
 
-import { use, useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Activity, BarChart3, Layers, List, ScrollText } from "lucide-react";
 
-import Breadcrumb from "../../components/Breadcrumb";
-import Card from "../../components/Card";
-import KpiStrip from "../../components/KpiStrip";
-import RawLogsPanel from "../../components/RawLogsPanel";
-import RecentTurnsTable from "../../components/RecentTurnsTable";
-import SectionHeader from "../../components/SectionHeader";
-import SpanTree from "../../components/SpanTree";
-import SwimLane from "../../components/SwimLane";
-import Tabs, { type TabItem } from "../../components/Tabs";
+import Breadcrumb from "../components/Breadcrumb";
+import Card from "../components/Card";
+import KpiStrip from "../components/KpiStrip";
+import RawLogsPanel from "../components/RawLogsPanel";
+import RecentTurnsTable from "../components/RecentTurnsTable";
+import SectionHeader from "../components/SectionHeader";
+import SpanTree from "../components/SpanTree";
+import SwimLane from "../components/SwimLane";
+import Tabs, { type TabItem } from "../components/Tabs";
 import type {
   SessionLogsResponse,
   SessionSummary,
   SessionTurnsResponse,
   TurnSpansResponse,
   Turn,
-} from "../../lib/api-types";
-import { useApi } from "../../lib/swr";
-import { formatClock, timeAgo } from "../../lib/time";
-import { useSelection } from "../../lib/url-state";
+} from "../lib/api-types";
+import { useApi } from "../lib/swr";
+import { formatClock, timeAgo } from "../lib/time";
+import { useSelection } from "../lib/url-state";
 
 /**
- * `/sessions/[id]` — tabbed session detail page. The five tabs mirror
+ * `/session?id=<id>` — tabbed session detail page. The five tabs mirror
  * Datadog APM's service detail: Overview / Turns / Trace / Logs / Metrics.
  * The active tab is stored in the `tab` URL param so deep links land on the
- * right surface. The breadcrumb headline is clickable — clicking copies the
- * prompt text when present.
+ * right surface.
+ *
+ * This route is a flat query-string page, not a dynamic segment. That lets
+ * `next.config.ts` use `output: "export"` (which forbids dynamic params that
+ * cannot be enumerated at build time) without losing the deep-linkable
+ * session view. The session id arrives via `useSearchParams()`; every piece
+ * of data is fetched client-side exactly like the old dynamic route.
  */
 
 type TabKey = "overview" | "turns" | "trace" | "logs" | "metrics";
@@ -51,20 +56,16 @@ function sortTurns(turns: Turn[]): Turn[] {
   return [...turns].sort((a, b) => b.started_at.localeCompare(a.started_at));
 }
 
-export default function SessionDetailPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
-  const { id } = use(params);
+export default function SessionDetailPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { setSelection } = useSelection();
 
+  const id = searchParams.get("id") ?? "";
+
   // Ensure the ribbon's selection reflects the session the user is viewing.
-  // Running it inside effect so navigation out of the page resets gracefully.
   useEffect(() => {
-    setSelection({ sess: id });
+    if (id) setSelection({ sess: id });
   }, [id, setSelection]);
 
   const rawTab = searchParams.get("tab") as TabKey | null;
@@ -79,15 +80,16 @@ export default function SessionDetailPage({
     [router, searchParams],
   );
 
-  const { data: summary } = useApi<SessionSummary>(`/v1/sessions/${id}/summary`, {
-    refreshInterval: 5_000,
-  });
+  const { data: summary } = useApi<SessionSummary>(
+    id ? `/v1/sessions/${id}/summary` : null,
+    { refreshInterval: 5_000 },
+  );
   const { data: turnsData } = useApi<SessionTurnsResponse>(
-    `/v1/sessions/${id}/turns`,
+    id ? `/v1/sessions/${id}/turns` : null,
     { refreshInterval: 3_000 },
   );
   const { data: logsData } = useApi<SessionLogsResponse>(
-    `/v1/sessions/${id}/logs?limit=200`,
+    id ? `/v1/sessions/${id}/logs?limit=200` : null,
     { refreshInterval: 5_000 },
   );
 
@@ -110,6 +112,19 @@ export default function SessionDetailPage({
     if (!prompt || typeof navigator === "undefined" || !navigator.clipboard) return;
     void navigator.clipboard.writeText(prompt);
   }, [turns]);
+
+  if (!id) {
+    return (
+      <div className="mx-auto flex max-w-6xl flex-col gap-6 pt-6">
+        <Breadcrumb segments={[{ label: "Sessions", href: "/sessions" }, { label: "(missing id)" }]} />
+        <Card>
+          <p className="px-4 py-10 text-center text-[12px] text-[var(--text-muted)]">
+            No session id supplied. Use the command palette (⌘K) to pick a session.
+          </p>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-6">
@@ -286,7 +301,7 @@ function TraceTab({
             <span>
               Showing the latest turn.{" "}
               <a
-                href={`/sessions/${sessionId}/turns/${latestTurnId}`}
+                href={`/turn/?sess=${sessionId}&turn=${latestTurnId}`}
                 className="underline hover:text-[var(--accent)]"
               >
                 Open full turn detail →
