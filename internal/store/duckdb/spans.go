@@ -117,6 +117,38 @@ func (s *Store) GetSpansByTurn(ctx context.Context, turnID string) ([]SpanRow, e
 	return s.querySpans(ctx, selectSpan+` WHERE turn_id = ? ORDER BY start_time`, turnID)
 }
 
+// CountToolSpans returns the running total of tool spans. Used by the
+// metrics collector to compute per-interval rates.
+func (s *Store) CountToolSpans(ctx context.Context) (int64, error) {
+	const q = `SELECT COUNT(*) FROM spans WHERE tool_name IS NOT NULL AND tool_name <> ''`
+	var n int64
+	if err := s.db.QueryRowContext(ctx, q).Scan(&n); err != nil {
+		return 0, fmt.Errorf("count tool spans: %w", err)
+	}
+	return n, nil
+}
+
+// CountErrorSpans returns the running total of tool spans that finished with
+// status='ERROR'. Used by the metrics collector.
+func (s *Store) CountErrorSpans(ctx context.Context) (int64, error) {
+	const q = `SELECT COUNT(*) FROM spans WHERE tool_name IS NOT NULL AND tool_name <> '' AND status_code = 'ERROR'`
+	var n int64
+	if err := s.db.QueryRowContext(ctx, q).Scan(&n); err != nil {
+		return 0, fmt.Errorf("count error spans: %w", err)
+	}
+	return n, nil
+}
+
+// CountPendingHITL returns the number of open HITL permission spans.
+func (s *Store) CountPendingHITL(ctx context.Context) (int64, error) {
+	const q = `SELECT COUNT(*) FROM spans WHERE name = 'claude_code.hitl.permission' AND end_time IS NULL`
+	var n int64
+	if err := s.db.QueryRowContext(ctx, q).Scan(&n); err != nil {
+		return 0, fmt.Errorf("count pending hitl: %w", err)
+	}
+	return n, nil
+}
+
 // ListRecentSpans returns up to limit spans ordered by start_time DESC. This
 // is the broad debug feed.
 func (s *Store) ListRecentSpans(ctx context.Context, limit int) ([]SpanRow, error) {

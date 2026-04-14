@@ -3,12 +3,16 @@
 import { useCallback, useMemo, useState } from "react";
 
 import Card from "./components/Card";
+import CountPills from "./components/CountPills";
 import EventTicker from "./components/EventTicker";
+import KpiStrip from "./components/KpiStrip";
 import LiveIndicator from "./components/LiveIndicator";
 import RecentTurnsTable from "./components/RecentTurnsTable";
 import SectionHeader from "./components/SectionHeader";
 import type {
   ApogeeEvent,
+  AttentionCounts,
+  AttentionState,
   InitialPayload,
   RecentTurnsResponse,
   Turn,
@@ -19,29 +23,54 @@ import { useEventStream } from "./lib/sse";
 import { useApi } from "./lib/swr";
 
 /**
- * `/` — the apogee live dashboard. Hydrates from `GET /v1/turns/recent` and
- * patches itself in real time from the SSE stream at
- * `GET /v1/events/stream`. Keeps two windows on screen:
- *   1. The 20 most recent turns, replaced in place on `turn.updated` /
- *      `turn.ended`, prepended on `turn.started`.
- *   2. A 40-entry ring buffer of raw SSE events so operators can watch
- *      activity flow through the collector without a reload.
+ * `/` — the apogee live triage dashboard. Hydrates from
+ * `GET /v1/turns/active` (attention-sorted), patches itself in real time
+ * from the SSE stream, and polls `GET /v1/attention/counts` every 2 s for
+ * the top-of-page count pills. The KPI strip pulls its own 5-second
+ * sparklines from `/v1/metrics/series`.
  */
 
-const RECENT_TURNS_LIMIT = 20;
+const RECENT_TURNS_LIMIT = 100;
 const TICKER_HISTORY = 40;
 
-export default function Page() {
-  const { data: recentTurnsData } =
-    useApi<RecentTurnsResponse>("/v1/turns/recent");
+function attentionPriority(turn: Turn): number {
+  switch (turn.attention_state) {
+    case "intervene_now":
+      return 0;
+    case "watch":
+      return 1;
+    case "watchlist":
+      return 2;
+    case "healthy":
+    default:
+      return 3;
+  }
+}
 
-  // SSE-derived state. `initialTurns` captures the `initial` payload so we
-  // can use it as the base when SWR has not finished loading. `patches` is
-  // an append-only log of turn updates that we fold onto the base list in
-  // render order. `events` is the ticker ring buffer.
+function sortTurns(turns: Turn[]): Turn[] {
+  return [...turns].sort((a, b) => {
+    const pa = attentionPriority(a);
+    const pb = attentionPriority(b);
+    if (pa !== pb) return pa - pb;
+    return b.started_at.localeCompare(a.started_at);
+  });
+}
+
+export default function Page() {
+  const { data: activeTurnsData } =
+    useApi<RecentTurnsResponse>("/v1/turns/active");
+  const { data: countsData } = useApi<AttentionCounts>(
+    "/v1/attention/counts",
+    { refreshInterval: 2_000 },
+  );
+
+  // SSE-derived state. Mirrors the PR #3 layout but drops the initial
+  // fallback entirely — the dedicated /v1/turns/active endpoint gives us a
+  // correctly-sorted list on first paint, and SSE patches from then on.
   const [initialTurns, setInitialTurns] = useState<Turn[] | null>(null);
   const [patches, setPatches] = useState<Turn[]>([]);
   const [events, setEvents] = useState<ApogeeEvent[]>([]);
+  const [filter, setFilter] = useState<AttentionState | null>(null);
 
   const onEvent = useCallback((event: ApogeeEvent) => {
     setEvents((prev) => {
@@ -86,35 +115,25 @@ export default function Page() {
   });
 
   const turns = useMemo(() => {
-    // Start from whichever hydration source has arrived first. `initial`
-    // from SSE takes priority over SWR because it is always fresh relative
-    // to the live stream.
-    const base = initialTurns ?? recentTurnsData?.turns ?? [];
+    const base = initialTurns ?? activeTurnsData?.turns ?? [];
     const byId = new Map<string, Turn>();
-    const order: string[] = [];
     for (const turn of base) {
-      if (byId.has(turn.turn_id)) continue;
       byId.set(turn.turn_id, turn);
-      order.push(turn.turn_id);
     }
-    // Apply patches in arrival order. New turns get prepended; existing
-    // turns are replaced in place.
     for (const turn of patches) {
-      if (byId.has(turn.turn_id)) {
-        byId.set(turn.turn_id, turn);
-      } else {
-        byId.set(turn.turn_id, turn);
-        order.unshift(turn.turn_id);
-      }
+      byId.set(turn.turn_id, turn);
     }
-    const result: Turn[] = [];
-    for (const id of order) {
-      const turn = byId.get(id);
-      if (turn) result.push(turn);
-      if (result.length >= RECENT_TURNS_LIMIT) break;
-    }
-    return result;
-  }, [initialTurns, recentTurnsData, patches]);
+    const merged = Array.from(byId.values());
+    return sortTurns(merged).slice(0, RECENT_TURNS_LIMIT);
+  }, [initialTurns, activeTurnsData, patches]);
+
+  const filteredTurns = useMemo(() => {
+    if (!filter) return turns;
+    return turns.filter((t) => {
+      const state = t.attention_state ?? "healthy";
+      return state === filter;
+    });
+  }, [turns, filter]);
 
   const runningCount = useMemo(
     () => turns.filter((t) => t.status === "running").length,
@@ -130,7 +149,7 @@ export default function Page() {
           </h1>
           <div className="accent-gradient-bar mt-3 h-[3px] w-32 rounded-full" />
           <p className="mt-3 max-w-xl text-[13px] text-[var(--text-muted)]">
-            Live telemetry for every Claude Code session reporting to this
+            Live triage for every Claude Code session reporting to this
             collector.
           </p>
         </div>
@@ -142,13 +161,21 @@ export default function Page() {
         </div>
       </header>
 
+      <section className="flex flex-col gap-3">
+        <CountPills
+          counts={countsData}
+          activeFilter={filter}
+          onSelect={setFilter}
+        />
+      </section>
+
       <section>
         <SectionHeader
-          title="Recent turns"
-          subtitle="Latest 20 turns across every session. Live-patched from the collector."
+          title="Active turns"
+          subtitle="Pre-ranked by the attention engine. Click a pill above to filter."
         />
         <Card className="p-0">
-          <RecentTurnsTable turns={turns} />
+          <RecentTurnsTable turns={filteredTurns} />
         </Card>
       </section>
 
@@ -160,6 +187,14 @@ export default function Page() {
         <Card className="p-0">
           <EventTicker events={events} />
         </Card>
+      </section>
+
+      <section>
+        <SectionHeader
+          title="Fleet KPIs"
+          subtitle="Rolling 5-minute windows from the collector metric sampler."
+        />
+        <KpiStrip />
       </section>
 
       <footer className="pb-8 pt-2">

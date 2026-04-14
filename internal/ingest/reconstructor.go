@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/BIwashi/apogee/internal/attention"
 	"github.com/BIwashi/apogee/internal/otel"
 	"github.com/BIwashi/apogee/internal/sse"
 	"github.com/BIwashi/apogee/internal/store/duckdb"
@@ -53,6 +54,11 @@ func (st *sessionState) hasActiveTurn() bool {
 	return st.TurnRoot != nil
 }
 
+// attentionDebounce is the minimum interval between attention re-scores of
+// the same turn. It prevents the SSE fan-out from storming when a busy turn
+// mutates dozens of times per second.
+const attentionDebounce = 250 * time.Millisecond
+
 // Reconstructor turns a stream of HookEvent values into spans, logs, and
 // session/turn rows. It is safe for concurrent use; callers may invoke Apply
 // from many goroutines.
@@ -66,6 +72,14 @@ type Reconstructor struct {
 	// mutation once the underlying DuckDB write has succeeded. The hub must
 	// never block — see internal/sse for the back-pressure policy.
 	Hub *sse.Hub
+
+	// Attention engine wiring. Engine may be nil, in which case the
+	// reconstructor skips re-scoring entirely (useful for tests that don't
+	// care). lastScoredAt debounces per-turn re-scores to at most once every
+	// attentionDebounce interval.
+	Engine       *attention.Engine
+	HistoryWrite attention.HistoryWriter
+	lastScoredAt map[string]time.Time
 }
 
 // NewReconstructor returns a Reconstructor backed by the given store. logger
@@ -79,10 +93,11 @@ func NewReconstructor(store *duckdb.Store, logger *slog.Logger, clock func() tim
 		clock = time.Now
 	}
 	return &Reconstructor{
-		sessions: make(map[string]*sessionState),
-		store:    store,
-		logger:   logger,
-		clock:    clock,
+		sessions:     make(map[string]*sessionState),
+		store:        store,
+		logger:       logger,
+		clock:        clock,
+		lastScoredAt: make(map[string]time.Time),
 	}
 }
 
@@ -108,31 +123,37 @@ func (r *Reconstructor) Apply(ctx context.Context, ev *HookEvent) error {
 		r.logger.Error("write log", "err", err, "event", ev.HookEventType)
 	}
 
+	// Capture the turn id this event pertains to before the handler runs,
+	// so we can re-score the right row even when the handler itself closes
+	// the turn (handleStop).
+	preTurnID := st.TurnID
+
+	var err error
 	switch ev.HookEventType {
 	case HookSessionStart:
-		return r.handleSessionStart(ctx, st, ev)
+		err = r.handleSessionStart(ctx, st, ev)
 	case HookSessionEnd:
-		return r.handleSessionEnd(ctx, st, ev)
+		err = r.handleSessionEnd(ctx, st, ev)
 	case HookUserPromptSubmit:
-		return r.handleUserPromptSubmit(ctx, st, ev)
+		err = r.handleUserPromptSubmit(ctx, st, ev)
 	case HookPreToolUse:
-		return r.handlePreToolUse(ctx, st, ev)
+		err = r.handlePreToolUse(ctx, st, ev)
 	case HookPostToolUse:
-		return r.handlePostToolUse(ctx, st, ev, false)
+		err = r.handlePostToolUse(ctx, st, ev, false)
 	case HookPostToolUseFail:
-		return r.handlePostToolUse(ctx, st, ev, true)
+		err = r.handlePostToolUse(ctx, st, ev, true)
 	case HookPermissionRequest:
-		return r.handlePermissionRequest(ctx, st, ev)
+		err = r.handlePermissionRequest(ctx, st, ev)
 	case HookNotification:
-		return r.handleNotification(ctx, st, ev)
+		err = r.handleNotification(ctx, st, ev)
 	case HookSubagentStart:
-		return r.handleSubagentStart(ctx, st, ev)
+		err = r.handleSubagentStart(ctx, st, ev)
 	case HookSubagentStop:
-		return r.handleSubagentStop(ctx, st, ev)
+		err = r.handleSubagentStop(ctx, st, ev)
 	case HookPreCompact:
-		return r.handlePreCompact(ctx, st, ev)
+		err = r.handlePreCompact(ctx, st, ev)
 	case HookStop:
-		return r.handleStop(ctx, st, ev)
+		err = r.handleStop(ctx, st, ev)
 	default:
 		// Unknown hook event: log it and add a span event on the turn root if
 		// one is open. The log row is already persisted above.
@@ -144,8 +165,95 @@ func (r *Reconstructor) Apply(ctx context.Context, ev *HookEvent) error {
 				Attributes: map[string]any{"hook_event_type": ev.HookEventType},
 			})
 		}
-		return nil
 	}
+
+	// Re-score the affected turn once the handler is done. If the event
+	// closed or didn't start a turn we fall back to the pre-handler turn id
+	// so the dashboard still gets a broadcast.
+	r.rescoreAttention(ctx, chooseTurnID(preTurnID, st.TurnID), ev.Time())
+
+	return err
+}
+
+// chooseTurnID picks the turn id to rescore. Prefer the pre-handler id
+// because if the handler just closed a turn (Stop) that's still the right
+// row; otherwise fall through to whatever the session is currently working
+// on.
+func chooseTurnID(pre, post string) string {
+	if pre != "" {
+		return pre
+	}
+	return post
+}
+
+// rescoreAttention computes the engine's classification for the given turn
+// and writes it back to the row, then broadcasts a turn.updated SSE event.
+// Debounced per-turn at attentionDebounce so busy turns do not storm the
+// hub.
+func (r *Reconstructor) rescoreAttention(ctx context.Context, turnID string, evTime time.Time) {
+	if r.Engine == nil || turnID == "" || r.store == nil {
+		return
+	}
+	now := r.clock()
+	if last, ok := r.lastScoredAt[turnID]; ok && now.Sub(last) < attentionDebounce {
+		return
+	}
+	r.lastScoredAt[turnID] = now
+
+	turn, err := r.store.GetTurn(ctx, turnID)
+	if err != nil || turn == nil {
+		if err != nil {
+			r.logger.Debug("rescore: load turn", "err", err)
+		}
+		return
+	}
+	spans, err := r.store.GetSpansByTurn(ctx, turnID)
+	if err != nil {
+		r.logger.Debug("rescore: load spans", "err", err)
+		return
+	}
+
+	decision := r.Engine.Score(attention.Input{
+		Turn:  *turn,
+		Spans: spans,
+		Now:   now,
+	})
+
+	var confidence float64
+	var since time.Time
+	confidence = decision.Phase.Confidence
+	since = decision.Phase.Since
+	if since.IsZero() {
+		since = turn.StartedAt
+	}
+	score := decision.Score
+	if err := r.store.UpdateTurnAttention(ctx,
+		turnID,
+		decision.State.String(),
+		decision.Reason,
+		decision.Tone,
+		score,
+		string(decision.Phase.Name),
+		confidence,
+		since,
+	); err != nil {
+		r.logger.Debug("rescore: update turn", "err", err)
+		return
+	}
+
+	// If the turn just ended, record the pattern outcome in the history.
+	if r.HistoryWrite != nil && turn.Status != "running" && turn.Status != "" {
+		pattern := attention.ToolNamesForPattern(spans)
+		if pattern != "" {
+			success := turn.Status == "completed"
+			_ = r.HistoryWrite.Upsert(pattern, attention.Outcome{
+				Success: success,
+				TurnID:  turnID,
+			})
+		}
+	}
+
+	r.broadcastTurn(ctx, turnID, sse.EventTypeTurnUpdated)
 }
 
 // getOrCreateSession returns the existing in-memory session state for a

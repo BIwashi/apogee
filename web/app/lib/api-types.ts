@@ -27,6 +27,40 @@ export type TurnStatus =
   | "errored"
   | "compacted";
 
+/**
+ * AttentionState mirrors internal/attention.State. Ordered from most urgent
+ * to least — intervene_now first.
+ */
+export type AttentionState =
+  | "intervene_now"
+  | "watch"
+  | "watchlist"
+  | "healthy";
+
+export const ATTENTION_STATES: AttentionState[] = [
+  "intervene_now",
+  "watch",
+  "watchlist",
+  "healthy",
+];
+
+export type AttentionTone =
+  | "critical"
+  | "warning"
+  | "info"
+  | "success"
+  | "muted";
+
+/** Phase mirrors internal/attention.Phase. */
+export type Phase =
+  | "delegating"
+  | "testing"
+  | "committing"
+  | "editing"
+  | "exploring"
+  | "running"
+  | "idle";
+
 export interface Turn {
   turn_id: string;
   trace_id: string;
@@ -47,9 +81,34 @@ export interface Turn {
   output_tokens?: number;
   headline?: string;
   outcome_summary?: string;
-  attention_state?: string;
+  attention_state?: AttentionState | string;
   attention_reason?: string;
   attention_score?: number;
+  attention_tone?: AttentionTone | string;
+  phase?: Phase | string;
+  phase_confidence?: number;
+  phase_since?: string;
+}
+
+export interface AttentionCounts {
+  intervene_now: number;
+  watch: number;
+  watchlist: number;
+  healthy: number;
+  total: number;
+}
+
+export interface MetricSeriesPoint {
+  at: string;
+  value: number;
+}
+
+export interface MetricSeries {
+  name: string;
+  window: string;
+  step: string;
+  kind: string;
+  points: MetricSeriesPoint[];
 }
 
 export interface Span {
