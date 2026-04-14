@@ -41,7 +41,10 @@ CREATE TABLE IF NOT EXISTS turns (
   phase              VARCHAR,
   phase_confidence   DOUBLE,
   phase_since        TIMESTAMP,
-  attention_signals_json VARCHAR
+  attention_signals_json VARCHAR,
+  recap_json             VARCHAR,
+  recap_generated_at     TIMESTAMP,
+  recap_model            VARCHAR
 );
 CREATE INDEX IF NOT EXISTS idx_turns_session ON turns(session_id, started_at DESC);
 CREATE INDEX IF NOT EXISTS idx_turns_recent ON turns(started_at DESC);

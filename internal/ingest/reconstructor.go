@@ -80,6 +80,13 @@ type Reconstructor struct {
 	Engine       *attention.Engine
 	HistoryWrite attention.HistoryWriter
 	lastScoredAt map[string]time.Time
+
+	// OnTurnClosed, when non-nil, is invoked once a turn row has been
+	// fully updated by closeTurn. It receives the terminal turn id and
+	// is called without the reconstructor lock held so callbacks that
+	// enqueue follow-up work (the LLM summariser, for example) do not
+	// back-pressure the ingest hot path. Callbacks must not block.
+	OnTurnClosed func(turnID string)
 }
 
 // NewReconstructor returns a Reconstructor backed by the given store. logger
@@ -699,10 +706,15 @@ func (r *Reconstructor) closeTurn(ctx context.Context, st *sessionState, end tim
 	}
 	durationMs := end.Sub(st.TurnStartedAt).Milliseconds()
 	closedTurnID := st.TurnID
+	turnWriteOK := true
 	if err := r.store.UpdateTurnStatus(ctx, closedTurnID, status, &end, &durationMs, st.ToolCallCount, st.SubagentCount, st.ErrorCount); err != nil {
 		r.logger.Error("close turn", "err", err)
+		turnWriteOK = false
 	} else {
 		r.broadcastTurn(ctx, closedTurnID, sse.EventTypeTurnEnded)
+	}
+	if turnWriteOK && r.OnTurnClosed != nil {
+		r.OnTurnClosed(closedTurnID)
 	}
 	st.TurnRoot = nil
 	st.TurnID = ""

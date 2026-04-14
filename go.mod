@@ -3,6 +3,7 @@ module github.com/BIwashi/apogee
 go 1.24
 
 require (
+	github.com/BurntSushi/toml v1.6.0
 	github.com/go-chi/chi/v5 v5.2.5
 	github.com/marcboeker/go-duckdb/v2 v2.4.3
 	github.com/stretchr/testify v1.11.1

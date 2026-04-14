@@ -18,6 +18,7 @@ import SwimLane from "../../../../components/SwimLane";
 import type {
   ApogeeEvent,
   AttentionDetail,
+  RecapResponse,
   Span,
   SpanPayload,
   Turn,
@@ -26,6 +27,7 @@ import type {
   TurnSpansResponse,
 } from "../../../../lib/api-types";
 import { SSE_EVENT_TYPES } from "../../../../lib/api-types";
+import { apiUrl } from "../../../../lib/api";
 import type { StatusKey } from "../../../../lib/design-tokens";
 import { useEventStream } from "../../../../lib/sse";
 import { useApi } from "../../../../lib/swr";
@@ -119,6 +121,25 @@ export default function TurnDetailPage({
     `/v1/turns/${turnId}/attention`,
     { refreshInterval: isRunning ? 2_000 : 0 },
   );
+  const recapQuery = useApi<RecapResponse>(`/v1/turns/${turnId}/recap`, {
+    refreshInterval: isRunning ? 5_000 : 0,
+  });
+  const [regenerating, setRegenerating] = useState(false);
+  const onRegenerate = useCallback(async () => {
+    if (regenerating) return;
+    setRegenerating(true);
+    try {
+      await fetch(apiUrl(`/v1/turns/${turnId}/recap`), { method: "POST" });
+      // Poll briefly for the new recap. The worker runs out-of-process so
+      // a one-shot mutate is often too early; a short delay + revalidate
+      // keeps the UX snappy without a full refresh.
+      setTimeout(() => {
+        void recapQuery.mutate();
+      }, 1500);
+    } finally {
+      setTimeout(() => setRegenerating(false), 1500);
+    }
+  }, [regenerating, recapQuery, turnId]);
 
   // SSE patches — only react to events that affect this turn.
   const [spanPatches, setSpanPatches] = useState<Span[]>([]);
@@ -172,6 +193,30 @@ export default function TurnDetailPage({
 
   const logs = logsQuery.data?.logs ?? [];
   const attention = attentionQuery.data ?? null;
+  const recap = recapQuery.data?.recap ?? null;
+
+  // When the summariser has returned a refined phase list, map each phase
+  // onto the actual span start/end times. The LLM reports inclusive span
+  // indices into the chronologically ordered span table; anything out of
+  // range silently falls back to the heuristic segments.
+  const refinedPhases = useMemo(() => {
+    if (!recap?.phases?.length || spans.length === 0) return null;
+    const mapped = recap.phases
+      .map((phase) => {
+        const startIdx = Math.max(0, Math.min(spans.length - 1, phase.start_span_index));
+        const endIdx = Math.max(0, Math.min(spans.length - 1, phase.end_span_index));
+        const startSpan = spans[startIdx];
+        const endSpan = spans[endIdx];
+        if (!startSpan || !endSpan) return null;
+        return {
+          name: phase.name,
+          started_at: startSpan.start_time,
+          ended_at: endSpan.end_time ?? endSpan.start_time,
+        };
+      })
+      .filter((x): x is { name: string; started_at: string; ended_at: string } => x !== null);
+    return mapped.length > 0 ? mapped : null;
+  }, [recap, spans]);
 
   if (!liveTurn) {
     return (
@@ -248,8 +293,12 @@ export default function TurnDetailPage({
       </header>
 
       <section>
-        <SectionHeader title="Recap" subtitle="Populated by the summarizer (PR #6)." />
-        <RecapPanels />
+        <SectionHeader title="Recap" subtitle="Populated by the Haiku summariser." />
+        <RecapPanels
+          recap={recap}
+          onRegenerate={onRegenerate}
+          regenerating={regenerating}
+        />
       </section>
 
       <section>
@@ -261,7 +310,7 @@ export default function TurnDetailPage({
           <SwimLane
             turn={liveTurn}
             spans={spans}
-            phases={phases}
+            phases={refinedPhases ?? phases}
             highlightedFilter={filter}
           />
         </Card>

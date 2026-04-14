@@ -18,6 +18,7 @@ import (
 	"github.com/BIwashi/apogee/internal/metrics"
 	"github.com/BIwashi/apogee/internal/sse"
 	"github.com/BIwashi/apogee/internal/store/duckdb"
+	"github.com/BIwashi/apogee/internal/summarizer"
 )
 
 // Server is the apogee collector HTTP server. It owns the chi router, the
@@ -31,6 +32,7 @@ type Server struct {
 	httpServer    *http.Server
 	logger        *slog.Logger
 	metrics       *metrics.Collector
+	summarizer    *summarizer.Service
 }
 
 // New constructs a Server backed by an open store. The caller retains
@@ -48,6 +50,20 @@ func New(cfg Config, store *duckdb.Store, logger *slog.Logger) *Server {
 	rec.Engine = attention.NewEngine(history)
 	rec.HistoryWrite = history
 
+	// Wire the summarizer. Config load is best-effort — a missing TOML
+	// simply falls through to defaults. When the load fails outright we
+	// log and continue with defaults so a bad config file never blocks
+	// the collector from starting.
+	summarizerCfg, err := summarizer.Load("")
+	if err != nil {
+		logger.Warn("summarizer: config load failed — using defaults", "err", err)
+		summarizerCfg = summarizer.Default()
+	}
+	summarizerSvc := summarizer.NewService(summarizerCfg, store, hub, logger)
+	rec.OnTurnClosed = func(turnID string) {
+		summarizerSvc.Enqueue(turnID, summarizer.ReasonTurnClosed)
+	}
+
 	s := &Server{
 		cfg:           cfg,
 		store:         store,
@@ -55,6 +71,7 @@ func New(cfg Config, store *duckdb.Store, logger *slog.Logger) *Server {
 		hub:           hub,
 		logger:        logger,
 		metrics:       metrics.New(store, metrics.DefaultInterval, logger),
+		summarizer:    summarizerSvc,
 	}
 	s.router = s.buildRouter()
 	return s
@@ -88,6 +105,12 @@ func (s *Server) Run(ctx context.Context) error {
 				s.logger.Debug("metrics collector stopped", "err", err)
 			}
 		}()
+	}
+
+	// Boot the summarizer worker pool. Start is non-blocking.
+	if s.summarizer != nil {
+		s.summarizer.Start(ctx)
+		defer s.summarizer.Stop()
 	}
 
 	errCh := make(chan error, 1)
@@ -133,6 +156,8 @@ func (s *Server) buildRouter() chi.Router {
 	r.Get("/v1/turns/{turn_id}/spans", s.listTurnSpans)
 	r.Get("/v1/turns/{turn_id}/logs", s.listTurnLogs)
 	r.Get("/v1/turns/{turn_id}/attention", s.getTurnAttention)
+	r.Get("/v1/turns/{turn_id}/recap", s.getTurnRecap)
+	r.Post("/v1/turns/{turn_id}/recap", s.postTurnRecap)
 	r.Get("/v1/attention/counts", s.getAttentionCounts)
 	r.Get("/v1/metrics/series", s.getMetricsSeries)
 	r.Get("/v1/filter-options", s.getFilterOptions)
@@ -388,6 +413,55 @@ func (s *Server) getTurnAttention(w http.ResponseWriter, r *http.Request) {
 		"signals":    signals,
 		"updated_at": updatedAt,
 	})
+}
+
+// getTurnRecap returns the stored recap for a turn. When the turn row is
+// present but no recap has been generated yet the response is
+// {"recap": null}. 404 only when the turn itself is missing.
+func (s *Server) getTurnRecap(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "turn_id")
+	turn, err := s.store.GetTurn(r.Context(), id)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if turn == nil {
+		writeJSONError(w, http.StatusNotFound, "turn not found")
+		return
+	}
+	if turn.RecapJSON == "" {
+		writeJSON(w, http.StatusOK, map[string]any{"recap": nil})
+		return
+	}
+	var recap json.RawMessage = json.RawMessage(turn.RecapJSON)
+	out := map[string]any{"recap": recap}
+	if turn.RecapGeneratedAt != nil {
+		out["generated_at"] = *turn.RecapGeneratedAt
+	}
+	if turn.RecapModel != "" {
+		out["model"] = turn.RecapModel
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+// postTurnRecap enqueues a manual re-recap for a turn. Returns 202
+// immediately; the worker picks up the job and eventually broadcasts a
+// turn.updated SSE when the recap lands.
+func (s *Server) postTurnRecap(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "turn_id")
+	turn, err := s.store.GetTurn(r.Context(), id)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if turn == nil {
+		writeJSONError(w, http.StatusNotFound, "turn not found")
+		return
+	}
+	if s.summarizer != nil {
+		s.summarizer.Enqueue(id, summarizer.ReasonManual)
+	}
+	writeJSON(w, http.StatusAccepted, map[string]any{"turn_id": id, "queued": true})
 }
 
 func (s *Server) getFilterOptions(w http.ResponseWriter, r *http.Request) {
