@@ -23,6 +23,9 @@ const (
 	EventTypeSpanInserted   = "span.inserted"
 	EventTypeSpanUpdated    = "span.updated"
 	EventTypeSessionUpdated = "session.updated"
+	EventHITLRequested      = "hitl.requested"
+	EventHITLResponded      = "hitl.responded"
+	EventHITLExpired        = "hitl.expired"
 )
 
 // Event is the broadcast wire message shape. Every SSE frame on the stream
@@ -46,6 +49,97 @@ type SpanPayload struct {
 // SessionPayload wraps a full session snapshot for `session.updated`.
 type SessionPayload struct {
 	Session duckdb.Session `json:"session"`
+}
+
+// HITLSnapshot is the flat JSON projection of a HITLEvent row. Pointer
+// fields are emitted as null when unset so the TypeScript client can rely
+// on a stable schema without having to inspect database null wrappers.
+type HITLSnapshot struct {
+	HitlID         string                  `json:"hitl_id"`
+	SpanID         string                  `json:"span_id"`
+	TraceID        string                  `json:"trace_id"`
+	SessionID      string                  `json:"session_id"`
+	TurnID         string                  `json:"turn_id"`
+	Kind           string                  `json:"kind"`
+	Status         string                  `json:"status"`
+	RequestedAt    time.Time               `json:"requested_at"`
+	RespondedAt    *time.Time              `json:"responded_at"`
+	Question       string                  `json:"question"`
+	Suggestions    []string                `json:"suggestions"`
+	Context        map[string]any          `json:"context"`
+	Decision       *string                 `json:"decision"`
+	ReasonCategory *string                 `json:"reason_category"`
+	OperatorNote   *string                 `json:"operator_note"`
+	ResumeMode     *string                 `json:"resume_mode"`
+	OperatorID     *string                 `json:"operator_id"`
+}
+
+// HITLPayload is the SSE wrapper for HITL lifecycle events.
+type HITLPayload struct {
+	HITL HITLSnapshot `json:"hitl"`
+}
+
+// SnapshotFromHITL projects a stored row onto its wire shape, decoding the
+// JSON-encoded suggestions and context fields and unwrapping nullable
+// columns. Decoding errors are tolerated — the field defaults to its zero
+// value rather than failing the broadcast.
+func SnapshotFromHITL(ev duckdb.HITLEvent) HITLSnapshot {
+	snap := HITLSnapshot{
+		HitlID:      ev.HitlID,
+		SpanID:      ev.SpanID,
+		TraceID:     ev.TraceID,
+		SessionID:   ev.SessionID,
+		TurnID:      ev.TurnID,
+		Kind:        ev.Kind,
+		Status:      ev.Status,
+		RequestedAt: ev.RequestedAt,
+		Question:    ev.Question,
+		Suggestions: []string{},
+		Context:     map[string]any{},
+	}
+	if ev.RespondedAt.Valid {
+		t := ev.RespondedAt.Time
+		snap.RespondedAt = &t
+	}
+	if ev.SuggestionsJSON != "" {
+		var parsed []string
+		if err := json.Unmarshal([]byte(ev.SuggestionsJSON), &parsed); err == nil && parsed != nil {
+			snap.Suggestions = parsed
+		}
+	}
+	if ev.ContextJSON != "" {
+		var parsed map[string]any
+		if err := json.Unmarshal([]byte(ev.ContextJSON), &parsed); err == nil && parsed != nil {
+			snap.Context = parsed
+		}
+	}
+	if ev.Decision.Valid {
+		v := ev.Decision.String
+		snap.Decision = &v
+	}
+	if ev.ReasonCategory.Valid {
+		v := ev.ReasonCategory.String
+		snap.ReasonCategory = &v
+	}
+	if ev.OperatorNote.Valid {
+		v := ev.OperatorNote.String
+		snap.OperatorNote = &v
+	}
+	if ev.ResumeMode.Valid {
+		v := ev.ResumeMode.String
+		snap.ResumeMode = &v
+	}
+	if ev.OperatorID.Valid {
+		v := ev.OperatorID.String
+		snap.OperatorID = &v
+	}
+	return snap
+}
+
+// NewHITLEvent builds an SSE Event for one of the hitl.* lifecycle types.
+func NewHITLEvent(kind string, now time.Time, ev duckdb.HITLEvent) Event {
+	data, _ := json.Marshal(HITLPayload{HITL: SnapshotFromHITL(ev)})
+	return Event{Type: kind, At: now, Data: data}
 }
 
 // InitialPayload is the synthetic bootstrap event pushed to every new

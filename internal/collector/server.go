@@ -14,6 +14,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 
 	"github.com/BIwashi/apogee/internal/attention"
+	"github.com/BIwashi/apogee/internal/hitl"
 	"github.com/BIwashi/apogee/internal/ingest"
 	"github.com/BIwashi/apogee/internal/metrics"
 	"github.com/BIwashi/apogee/internal/sse"
@@ -33,6 +34,7 @@ type Server struct {
 	logger        *slog.Logger
 	metrics       *metrics.Collector
 	summarizer    *summarizer.Service
+	hitl          *hitl.Service
 }
 
 // New constructs a Server backed by an open store. The caller retains
@@ -64,6 +66,17 @@ func New(cfg Config, store *duckdb.Store, logger *slog.Logger) *Server {
 		summarizerSvc.Enqueue(turnID, summarizer.ReasonTurnClosed)
 	}
 
+	// Wire the HITL lifecycle owner. The reconstructor pushes hitl.requested
+	// broadcasts via OnHITLRequested, the service handles auto-expiration
+	// and the response HTTP endpoint.
+	hitlSvc := hitl.New(store, hub, hitl.DefaultConfig(), logger)
+	hitlSvc.CloseHITLSpan = func(ctx context.Context, ev duckdb.HITLEvent) {
+		rec.CloseHITLSpan(ctx, ev)
+	}
+	rec.OnHITLRequested = func(ev duckdb.HITLEvent) {
+		hitlSvc.BroadcastRequested(ev)
+	}
+
 	s := &Server{
 		cfg:           cfg,
 		store:         store,
@@ -72,6 +85,7 @@ func New(cfg Config, store *duckdb.Store, logger *slog.Logger) *Server {
 		logger:        logger,
 		metrics:       metrics.New(store, metrics.DefaultInterval, logger),
 		summarizer:    summarizerSvc,
+		hitl:          hitlSvc,
 	}
 	s.router = s.buildRouter()
 	return s
@@ -111,6 +125,12 @@ func (s *Server) Run(ctx context.Context) error {
 	if s.summarizer != nil {
 		s.summarizer.Start(ctx)
 		defer s.summarizer.Stop()
+	}
+
+	// Boot the HITL expiration ticker. Non-blocking; the goroutine lives
+	// for the lifetime of ctx.
+	if s.hitl != nil {
+		s.hitl.Start(ctx)
 	}
 
 	errCh := make(chan error, 1)
@@ -164,6 +184,11 @@ func (s *Server) buildRouter() chi.Router {
 	r.Get("/v1/metrics/series", s.getMetricsSeries)
 	r.Get("/v1/filter-options", s.getFilterOptions)
 	r.Get("/v1/events/stream", s.streamEvents)
+	r.Get("/v1/hitl", s.listHITL)
+	r.Get("/v1/hitl/{hitl_id}", s.getHITL)
+	r.Post("/v1/hitl/{hitl_id}/respond", s.respondHITL)
+	r.Get("/v1/sessions/{id}/hitl/pending", s.listPendingHITLBySession)
+	r.Get("/v1/turns/{turn_id}/hitl", s.listHITLByTurn)
 	return r
 }
 
@@ -525,6 +550,100 @@ func (s *Server) getFilterOptions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, opts)
+}
+
+// hitlSnapshotJSON is a thin wrapper that calls into the SSE projection
+// helper so HTTP responses share the exact same JSON shape as broadcast
+// payloads.
+func hitlSnapshotJSON(ev duckdb.HITLEvent) sse.HITLSnapshot {
+	return sse.SnapshotFromHITL(ev)
+}
+
+func (s *Server) getHITL(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "hitl_id")
+	ev, ok, err := s.store.GetHITL(r.Context(), id)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if !ok {
+		writeJSONError(w, http.StatusNotFound, "hitl event not found")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"hitl": hitlSnapshotJSON(ev)})
+}
+
+func (s *Server) listHITL(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	limit := parseLimit(r, 100, 500)
+	out, err := s.store.ListRecentHITL(r.Context(), duckdb.HITLFilter{
+		SessionID: q.Get("session_id"),
+		Status:    q.Get("status"),
+		Kind:      q.Get("kind"),
+	}, limit)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"hitl": projectHITLList(out)})
+}
+
+func (s *Server) listPendingHITLBySession(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	out, err := s.store.ListPendingHITLBySession(r.Context(), id)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"hitl": projectHITLList(out)})
+}
+
+func (s *Server) listHITLByTurn(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "turn_id")
+	out, err := s.store.ListHITLByTurn(r.Context(), id)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"hitl": projectHITLList(out)})
+}
+
+func (s *Server) respondHITL(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "hitl_id")
+	var body duckdb.HITLResponse
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid json body")
+		return
+	}
+	if body.Decision == "" {
+		writeJSONError(w, http.StatusBadRequest, "decision is required")
+		return
+	}
+	if s.hitl == nil {
+		writeJSONError(w, http.StatusServiceUnavailable, "hitl service not configured")
+		return
+	}
+	updated, err := s.hitl.Respond(r.Context(), id, body)
+	if err != nil {
+		switch {
+		case errors.Is(err, duckdb.ErrHITLNotFound):
+			writeJSONError(w, http.StatusNotFound, "hitl event not found")
+		case errors.Is(err, duckdb.ErrHITLAlreadyResponded):
+			writeJSONError(w, http.StatusConflict, "hitl event already finalised")
+		default:
+			writeJSONError(w, http.StatusInternalServerError, err.Error())
+		}
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"hitl": hitlSnapshotJSON(updated)})
+}
+
+func projectHITLList(rows []duckdb.HITLEvent) []sse.HITLSnapshot {
+	out := make([]sse.HITLSnapshot, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, sse.SnapshotFromHITL(row))
+	}
+	return out
 }
 
 func (s *Server) requestLogger(next http.Handler) http.Handler {

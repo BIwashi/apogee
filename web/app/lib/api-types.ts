@@ -225,6 +225,9 @@ export const SSE_EVENT_TYPES = {
   SpanInserted: "span.inserted",
   SpanUpdated: "span.updated",
   SessionUpdated: "session.updated",
+  HITLRequested: "hitl.requested",
+  HITLResponded: "hitl.responded",
+  HITLExpired: "hitl.expired",
 } as const;
 
 export type SSEEventType =
@@ -263,7 +266,8 @@ export type AnyApogeeEvent =
   | ApogeeEvent<InitialPayload>
   | ApogeeEvent<TurnPayload>
   | ApogeeEvent<SpanPayload>
-  | ApogeeEvent<SessionPayload>;
+  | ApogeeEvent<SessionPayload>
+  | ApogeeEvent<HITLPayload>;
 
 export interface RecentTurnsResponse {
   turns: Turn[];
@@ -364,6 +368,89 @@ export interface TurnDetail {
   phases: PhaseSegment[];
   logs: LogRow[];
   attention: AttentionDetail | null;
+}
+
+/**
+ * HITL types — mirror internal/store/duckdb/hitl.go and internal/sse/event.go.
+ * Keep these in sync with the Go side; the wire shape is the
+ * SnapshotFromHITL() projection.
+ */
+export type HITLKind = "permission" | "tool_approval" | "prompt" | "choice";
+export type HITLStatus =
+  | "pending"
+  | "responded"
+  | "timeout"
+  | "error"
+  | "expired";
+export type HITLDecision = "allow" | "deny" | "custom" | "timeout";
+export type HITLReason =
+  | "security"
+  | "scope"
+  | "cost"
+  | "blocker"
+  | "nit"
+  | "mistake"
+  | "other";
+export type HITLResumeMode = "continue" | "retry" | "abort" | "alternative";
+
+export const HITL_REASONS: HITLReason[] = [
+  "security",
+  "scope",
+  "cost",
+  "blocker",
+  "nit",
+  "mistake",
+  "other",
+];
+
+export const HITL_RESUME_MODES: HITLResumeMode[] = [
+  "continue",
+  "retry",
+  "abort",
+  "alternative",
+];
+
+export interface HITLContext {
+  tool_name?: string;
+  tool_input_summary?: string;
+  target_file?: string;
+  command_preview?: string;
+}
+
+export interface HITLEvent {
+  hitl_id: string;
+  span_id: string;
+  trace_id: string;
+  session_id: string;
+  turn_id: string;
+  kind: HITLKind | string;
+  status: HITLStatus | string;
+  requested_at: string;
+  responded_at: string | null;
+  question: string;
+  suggestions: string[];
+  context: HITLContext;
+  decision: HITLDecision | string | null;
+  reason_category: HITLReason | string | null;
+  operator_note: string | null;
+  resume_mode: HITLResumeMode | string | null;
+  operator_id: string | null;
+}
+
+export interface HITLResponseInput {
+  decision: HITLDecision;
+  reason_category?: HITLReason;
+  operator_note?: string;
+  resume_mode?: HITLResumeMode;
+  operator_id?: string;
+}
+
+export interface HITLPayload {
+  hitl: HITLEvent;
+}
+
+export interface HITLListResponse {
+  hitl: HITLEvent[];
 }
 
 /**

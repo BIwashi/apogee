@@ -77,6 +77,11 @@ func NewEngine(history HistoryReader) *Engine {
 type Input struct {
 	Turn  duckdb.Turn
 	Spans []duckdb.SpanRow
+	// HITL is the list of typed HITL events scoped to this turn. The engine
+	// reads it to filter out spans whose hitl_events twin is no longer
+	// pending and to surface a rolled-up "N HITL requests pending" signal.
+	// May be empty / nil; the engine then degrades to span-only inference.
+	HITL []duckdb.HITLEvent
 	// Now is the wall-clock moment at which the decision is computed. Must
 	// be set by the caller — the engine never reads time.Now directly during
 	// rule evaluation so tests stay deterministic.
@@ -140,8 +145,14 @@ func (e *Engine) Score(in Input) Decision {
 		warnings []Signal
 	)
 
+	// Build a set of hitl_ids whose typed row is still pending. When the
+	// caller did not pass HITL events we degrade to "all open spans count
+	// as pending" so legacy callers still get a signal.
+	pendingHITL := pendingHITLIDs(in.HITL)
+	hasHITLContext := in.HITL != nil
+
 	// ── intervene_now rules ────────────────────────────────
-	if sig, ok := checkHITLPending(in.Spans, now, rules.HITLPendingCritical); ok {
+	if sig, ok := checkHITLPending(in.Spans, now, rules.HITLPendingCritical, pendingHITL, hasHITLContext); ok {
 		critical = append(critical, sig)
 	}
 	if sig, ok := checkErrorStreak(in.Spans, rules.ErrorStreakCritical, 1.0); ok {
@@ -161,6 +172,9 @@ func (e *Engine) Score(in Input) Decision {
 		warnings = append(warnings, sig)
 	}
 	if sig, ok := checkTokenBurn(in.Turn, now, rules.TokenBurnWarningPerMin); ok {
+		warnings = append(warnings, sig)
+	}
+	if sig, ok := checkHITLPendingCount(in.HITL); ok {
 		warnings = append(warnings, sig)
 	}
 
@@ -226,6 +240,14 @@ func reasonFrom(ss []Signal) string {
 		return fmt.Sprintf("input tokens burning at %v / min", top.Value)
 	case "history_failure":
 		return fmt.Sprintf("historical failure rate %v for pattern %q", top.Value, top.Threshold)
+	case "hitl_pending_count":
+		if n, ok := top.Value.(int); ok {
+			if n == 1 {
+				return "1 HITL request pending"
+			}
+			return fmt.Sprintf("%d HITL requests pending", n)
+		}
+		return "multiple HITL requests pending"
 	}
 	return fmt.Sprintf("rule %q fired", top.Kind)
 }
@@ -233,8 +255,10 @@ func reasonFrom(ss []Signal) string {
 // ── individual rule checkers ────────────────────────────────
 
 // checkHITLPending inspects every HITL permission span and returns a signal
-// when one has been open longer than the threshold.
-func checkHITLPending(spans []duckdb.SpanRow, now time.Time, threshold time.Duration) (Signal, bool) {
+// when one has been open longer than the threshold. When pendingIDs is
+// non-empty the rule restricts itself to spans whose typed row is still
+// pending, so expired/responded events do not contribute.
+func checkHITLPending(spans []duckdb.SpanRow, now time.Time, threshold time.Duration, pendingIDs map[string]bool, restrict bool) (Signal, bool) {
 	var worst time.Duration
 	for _, sp := range spans {
 		if sp.Name != "claude_code.hitl.permission" {
@@ -242,6 +266,12 @@ func checkHITLPending(spans []duckdb.SpanRow, now time.Time, threshold time.Dura
 		}
 		if sp.EndTime != nil {
 			continue
+		}
+		if restrict {
+			id, _ := sp.Attributes["claude_code.hitl.id"].(string)
+			if id == "" || !pendingIDs[id] {
+				continue
+			}
 		}
 		age := now.Sub(sp.StartTime)
 		if age > worst {
@@ -257,6 +287,48 @@ func checkHITLPending(spans []duckdb.SpanRow, now time.Time, threshold time.Dura
 		}, true
 	}
 	return Signal{}, false
+}
+
+// pendingHITLIDs collects the hitl_ids whose typed row is still pending.
+// Returns nil when called with an empty slice so the caller can fall back
+// to the legacy span-only behaviour.
+func pendingHITLIDs(events []duckdb.HITLEvent) map[string]bool {
+	if len(events) == 0 {
+		return nil
+	}
+	out := make(map[string]bool, len(events))
+	for _, ev := range events {
+		if ev.Status == "pending" {
+			out[ev.HitlID] = true
+		}
+	}
+	return out
+}
+
+// checkHITLPendingCount surfaces a rolled-up "N requests pending" signal
+// when the caller passed a typed HITL event list. Weight ramps with the
+// pending count: 0 (none) -> 0.4 (one) -> 0.7 (two or more). The signal is
+// recorded for visibility but does not promote the turn into intervene_now
+// on its own — the existing duration-based rule still owns that.
+func checkHITLPendingCount(events []duckdb.HITLEvent) (Signal, bool) {
+	count := 0
+	for _, ev := range events {
+		if ev.Status == "pending" {
+			count++
+		}
+	}
+	if count == 0 {
+		return Signal{}, false
+	}
+	weight := 0.4
+	if count >= 2 {
+		weight = 0.7
+	}
+	return Signal{
+		Kind:   "hitl_pending_count",
+		Value:  count,
+		Weight: weight,
+	}, true
 }
 
 // checkErrorStreak counts consecutive tool-span errors, looking backwards

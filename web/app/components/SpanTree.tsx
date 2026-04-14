@@ -3,7 +3,8 @@
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { useMemo, useState } from "react";
 
-import type { FilterKey, Span, SpanTreeNode } from "../lib/api-types";
+import type { FilterKey, HITLEvent, Span, SpanTreeNode } from "../lib/api-types";
+import HITLTimelineItem from "./HITLTimelineItem";
 
 /**
  * SpanTree — recursive waterfall view of a turn's spans. Builds a tree from
@@ -22,6 +23,7 @@ interface SpanTreeProps {
   selectedSpanId: string | null;
   onSelect: (spanId: string | null) => void;
   filter?: FilterKey;
+  hitlEvents?: HITLEvent[];
 }
 
 function buildTree(spans: Span[]): SpanTreeNode[] {
@@ -105,6 +107,23 @@ interface RowProps {
   collapsed: Record<string, boolean>;
   toggle: (id: string) => void;
   filter?: FilterKey;
+  hitlBySpan?: Map<string, HITLEvent>;
+}
+
+function statusChip(event: HITLEvent): { bg: string; label: string } {
+  if (event.status === "pending") {
+    return { bg: "var(--status-warning)", label: "pending" };
+  }
+  if (event.status === "expired" || event.status === "timeout") {
+    return { bg: "var(--status-muted)", label: event.status };
+  }
+  if (event.decision === "deny") {
+    return { bg: "var(--status-critical)", label: "deny" };
+  }
+  if (event.decision === "allow") {
+    return { bg: "var(--status-success)", label: "allow" };
+  }
+  return { bg: "var(--artemis-earth)", label: event.status };
 }
 
 function SpanRow({
@@ -115,12 +134,15 @@ function SpanRow({
   collapsed,
   toggle,
   filter,
+  hitlBySpan,
 }: RowProps) {
   const isCollapsed = collapsed[node.span_id] === true;
   const hasChildren = node.children.length > 0;
   const matches = matchesFilter(node, filter);
   const isSelected = selectedSpanId === node.span_id;
   const dimmed = !matches;
+  const hitlEvent = hitlBySpan?.get(node.span_id);
+  const isHITLRow = node.name === "claude_code.hitl.permission";
   return (
     <li>
       <div
@@ -168,10 +190,16 @@ function SpanRow({
         <span className="flex-1 truncate font-mono text-[11px] text-gray-200">
           {node.name}
         </span>
+        {hitlEvent && (
+          <HITLStatusChip event={hitlEvent} />
+        )}
         <span className="font-mono text-[10px] text-[var(--text-muted)]">
           {durationLabel(node)}
         </span>
       </div>
+      {isHITLRow && hitlEvent && hitlEvent.status !== "pending" && (
+        <HITLTimelineItem event={hitlEvent} />
+      )}
       {hasChildren && !isCollapsed && (
         <ul role="group">
           {node.children.map((child) => (
@@ -184,6 +212,7 @@ function SpanRow({
               collapsed={collapsed}
               toggle={toggle}
               filter={filter}
+              hitlBySpan={hitlBySpan}
             />
           ))}
         </ul>
@@ -192,16 +221,37 @@ function SpanRow({
   );
 }
 
+function HITLStatusChip({ event }: { event: HITLEvent }) {
+  const tone = statusChip(event);
+  return (
+    <span
+      className="rounded px-1.5 py-[1px] font-mono text-[9px] uppercase"
+      style={{ background: tone.bg, color: "#06080f" }}
+    >
+      {tone.label}
+    </span>
+  );
+}
+
 export default function SpanTree({
   spans,
   selectedSpanId,
   onSelect,
   filter,
+  hitlEvents,
 }: SpanTreeProps) {
   const tree = useMemo(() => buildTree(spans), [spans]);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const toggle = (id: string) =>
     setCollapsed((cur) => ({ ...cur, [id]: !cur[id] }));
+
+  const hitlBySpan = useMemo(() => {
+    const map = new Map<string, HITLEvent>();
+    for (const ev of hitlEvents ?? []) {
+      if (ev.span_id) map.set(ev.span_id, ev);
+    }
+    return map;
+  }, [hitlEvents]);
 
   if (spans.length === 0) {
     return (
@@ -223,6 +273,7 @@ export default function SpanTree({
           collapsed={collapsed}
           toggle={toggle}
           filter={filter}
+          hitlBySpan={hitlBySpan}
         />
       ))}
     </ul>

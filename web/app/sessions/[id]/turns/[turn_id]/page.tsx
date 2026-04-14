@@ -9,6 +9,7 @@ import Card from "../../../../components/Card";
 import FilterChips, {
   useFilterState,
 } from "../../../../components/FilterChips";
+import HITLPanel from "../../../../components/HITLPanel";
 import RawLogsPanel from "../../../../components/RawLogsPanel";
 import RecapPanels from "../../../../components/RecapPanels";
 import SectionHeader from "../../../../components/SectionHeader";
@@ -18,6 +19,9 @@ import SwimLane from "../../../../components/SwimLane";
 import type {
   ApogeeEvent,
   AttentionDetail,
+  HITLEvent,
+  HITLListResponse,
+  HITLPayload,
   RecapResponse,
   Span,
   SpanPayload,
@@ -145,6 +149,27 @@ export default function TurnDetailPage({
   const [spanPatches, setSpanPatches] = useState<Span[]>([]);
   const [turnPatch, setTurnPatch] = useState<Turn | null>(null);
 
+  const hitlPendingQuery = useApi<HITLListResponse>(
+    `/v1/sessions/${sessionId}/hitl/pending`,
+    { refreshInterval: 2_000 },
+  );
+  const hitlTurnQuery = useApi<HITLListResponse>(
+    `/v1/turns/${turnId}/hitl`,
+    { refreshInterval: isRunning ? 5_000 : 0 },
+  );
+  // Local optimistic removals so a freshly-responded row disappears
+  // immediately while we wait for SSE to confirm.
+  const [respondedIds, setRespondedIds] = useState<Set<string>>(() => new Set());
+  const onResponded = useCallback((hitlID: string) => {
+    setRespondedIds((prev) => {
+      const next = new Set(prev);
+      next.add(hitlID);
+      return next;
+    });
+    void hitlPendingQuery.mutate();
+    void hitlTurnQuery.mutate();
+  }, [hitlPendingQuery, hitlTurnQuery]);
+
   const onEvent = useCallback(
     (event: ApogeeEvent) => {
       switch (event.type) {
@@ -164,11 +189,24 @@ export default function TurnDetailPage({
           }
           break;
         }
+        case SSE_EVENT_TYPES.HITLRequested:
+        case SSE_EVENT_TYPES.HITLResponded:
+        case SSE_EVENT_TYPES.HITLExpired: {
+          const payload = event.data as HITLPayload;
+          if (
+            payload?.hitl?.session_id === sessionId ||
+            payload?.hitl?.turn_id === turnId
+          ) {
+            void hitlPendingQuery.mutate();
+            void hitlTurnQuery.mutate();
+          }
+          break;
+        }
         default:
           break;
       }
     },
-    [turnId],
+    [turnId, sessionId, hitlPendingQuery, hitlTurnQuery],
   );
 
   useEventStream<ApogeeEvent>(`/v1/events/stream?session_id=${sessionId}`, {
@@ -194,6 +232,17 @@ export default function TurnDetailPage({
   const logs = logsQuery.data?.logs ?? [];
   const attention = attentionQuery.data ?? null;
   const recap = recapQuery.data?.recap ?? null;
+
+  const hitlPendingForTurn: HITLEvent[] = useMemo(() => {
+    const rows = hitlPendingQuery.data?.hitl ?? [];
+    return rows.filter(
+      (ev) => ev.turn_id === turnId && !respondedIds.has(ev.hitl_id),
+    );
+  }, [hitlPendingQuery.data, turnId, respondedIds]);
+
+  const hitlAllForTurn: HITLEvent[] = useMemo(() => {
+    return hitlTurnQuery.data?.hitl ?? [];
+  }, [hitlTurnQuery.data]);
 
   // When the summariser has returned a refined phase list, map each phase
   // onto the actual span start/end times. The LLM reports inclusive span
@@ -292,13 +341,19 @@ export default function TurnDetailPage({
         </div>
       </header>
 
-      <section>
-        <SectionHeader title="Recap" subtitle="Populated by the Haiku summariser." />
-        <RecapPanels
-          recap={recap}
-          onRegenerate={onRegenerate}
-          regenerating={regenerating}
-        />
+      <section className="grid gap-3 md:grid-cols-[1fr_320px]">
+        <div className="flex flex-col gap-3">
+          <SectionHeader title="Recap" subtitle="Populated by the Haiku summariser." />
+          <RecapPanels
+            recap={recap}
+            onRegenerate={onRegenerate}
+            regenerating={regenerating}
+          />
+        </div>
+        <div className="flex flex-col gap-3">
+          <SectionHeader title="Operator queue" subtitle="Pending HITL requests for this turn." />
+          <HITLPanel events={hitlPendingForTurn} onResponded={onResponded} />
+        </div>
       </section>
 
       <section>
@@ -312,6 +367,7 @@ export default function TurnDetailPage({
             spans={spans}
             phases={refinedPhases ?? phases}
             highlightedFilter={filter}
+            hitlEvents={hitlAllForTurn}
           />
         </Card>
       </section>
@@ -332,6 +388,7 @@ export default function TurnDetailPage({
             selectedSpanId={selectedSpanId}
             onSelect={setSelectedSpan}
             filter={filter}
+            hitlEvents={hitlAllForTurn}
           />
         </Card>
       </section>

@@ -132,6 +132,36 @@ func TestEngineWatchOnTokenBurn(t *testing.T) {
 	require.Equal(t, StateWatch, d.State)
 }
 
+func TestEngineHITLPendingFiltersOnTypedRow(t *testing.T) {
+	e := NewEngine(nil)
+	span := openHITL(testNow.Add(-2 * time.Minute))
+	span.Attributes = map[string]any{"claude_code.hitl.id": "hitl-1"}
+	hitl := []duckdb.HITLEvent{{HitlID: "hitl-1", Status: "expired"}}
+	d := e.Score(Input{Turn: runningTurn(), Spans: []duckdb.SpanRow{span}, HITL: hitl, Now: testNow})
+	// The typed row is no longer pending so the long-open span must not
+	// fire intervene_now.
+	require.NotEqual(t, StateInterveneNow, d.State)
+}
+
+func TestEngineHITLPendingCountSurfaces(t *testing.T) {
+	e := NewEngine(nil)
+	hitl := []duckdb.HITLEvent{
+		{HitlID: "hitl-1", Status: "pending"},
+		{HitlID: "hitl-2", Status: "pending"},
+	}
+	d := e.Score(Input{Turn: runningTurn(), Spans: nil, HITL: hitl, Now: testNow})
+	require.Equal(t, StateWatch, d.State)
+	require.Contains(t, d.Reason, "HITL requests pending")
+	var found bool
+	for _, sig := range d.Signals {
+		if sig.Kind == "hitl_pending_count" {
+			found = true
+			require.InDelta(t, 0.7, sig.Weight, 0.001)
+		}
+	}
+	require.True(t, found)
+}
+
 func TestEngineWatchlistFromHistory(t *testing.T) {
 	hist := NewStaticHistory()
 	hist.Data["Bash|Read"] = PatternStats{
