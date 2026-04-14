@@ -257,3 +257,61 @@ func TestComputePhaseBashHeuristics(t *testing.T) {
 	p = ComputePhase(spans, testNow)
 	require.Equal(t, PhaseCommitting, p.Name)
 }
+
+func TestEngineInterveneOnHighUrgencyIntervention(t *testing.T) {
+	e := NewEngine(nil)
+	iv := []duckdb.Intervention{{
+		InterventionID: "intv-1",
+		Status:         duckdb.InterventionStatusQueued,
+		Urgency:        duckdb.InterventionUrgencyHigh,
+		Message:        "stop and reconsider the approach",
+	}}
+	d := e.Score(Input{Turn: runningTurn(), Spans: nil, Interventions: iv, Now: testNow})
+	require.Equal(t, StateInterveneNow, d.State)
+	require.Contains(t, d.Reason, "operator intervention")
+	var found bool
+	for _, sig := range d.Signals {
+		if sig.Kind == "intervention_pending" {
+			found = true
+			require.InDelta(t, 0.9, sig.Weight, 0.001)
+		}
+	}
+	require.True(t, found)
+}
+
+func TestEngineWatchOnNormalUrgencyIntervention(t *testing.T) {
+	e := NewEngine(nil)
+	iv := []duckdb.Intervention{{
+		InterventionID: "intv-2",
+		Status:         duckdb.InterventionStatusQueued,
+		Urgency:        duckdb.InterventionUrgencyNormal,
+		Message:        "remember to run tests before committing",
+	}}
+	d := e.Score(Input{Turn: runningTurn(), Spans: nil, Interventions: iv, Now: testNow})
+	require.Equal(t, StateWatch, d.State)
+	require.Contains(t, d.Reason, "operator intervention")
+}
+
+func TestEngineIgnoresLowUrgencyIntervention(t *testing.T) {
+	e := NewEngine(nil)
+	iv := []duckdb.Intervention{{
+		InterventionID: "intv-3",
+		Status:         duckdb.InterventionStatusQueued,
+		Urgency:        duckdb.InterventionUrgencyLow,
+		Message:        "fyi",
+	}}
+	d := e.Score(Input{Turn: runningTurn(), Spans: nil, Interventions: iv, Now: testNow})
+	require.Equal(t, StateHealthy, d.State)
+}
+
+func TestEngineInterventionTerminalIgnored(t *testing.T) {
+	e := NewEngine(nil)
+	iv := []duckdb.Intervention{{
+		InterventionID: "intv-4",
+		Status:         duckdb.InterventionStatusConsumed,
+		Urgency:        duckdb.InterventionUrgencyHigh,
+		Message:        "already consumed",
+	}}
+	d := e.Score(Input{Turn: runningTurn(), Spans: nil, Interventions: iv, Now: testNow})
+	require.Equal(t, StateHealthy, d.State)
+}

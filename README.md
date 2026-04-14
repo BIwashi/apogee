@@ -40,6 +40,7 @@ Running multi-agent Claude Code workflows means losing sight of what each agent 
 | Recap worker | Per-turn structured recap via the local `claude` CLI (Haiku) |
 | Rollup worker | Per-session narrative digest via the local `claude` CLI (Sonnet) |
 | HITL queue | Permission requests as first-class records with operator decisions |
+| Operator interventions | Push text into a live Claude Code session; next `PreToolUse` or `UserPromptSubmit` hook delivers it as `{"decision":"block","reason":...}` or additional context |
 | OpenTelemetry | OTLP gRPC/HTTP export, full claude_code.* semconv registry |
 | Hooks library | Stdlib-only Python hooks shipped via `apogee init` |
 | CLI | `serve`, `init`, `doctor`, `version` — one binary, no Node runtime |

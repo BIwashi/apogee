@@ -82,6 +82,12 @@ type Input struct {
 	// pending and to surface a rolled-up "N HITL requests pending" signal.
 	// May be empty / nil; the engine then degrades to span-only inference.
 	HITL []duckdb.HITLEvent
+	// Interventions is the list of operator-initiated interventions
+	// currently queued, claimed, or delivered for this turn. Pending rows
+	// nudge the turn into watch (normal urgency) or intervene_now (high
+	// urgency) so the dashboard badge fires even before Claude Code's next
+	// hook lands.
+	Interventions []duckdb.Intervention
 	// Now is the wall-clock moment at which the decision is computed. Must
 	// be set by the caller — the engine never reads time.Now directly during
 	// rule evaluation so tests stay deterministic.
@@ -161,6 +167,13 @@ func (e *Engine) Score(in Input) Decision {
 	}
 	if sig, ok := checkIdle(in.Turn, in.Spans, now, rules.IdleCritical); ok {
 		critical = append(critical, sig)
+	}
+	// Intervention-pending: high urgency escalates to intervene_now; lower
+	// tiers land in the watch bucket below.
+	if sig, critOK, warnOK := checkInterventionPending(in.Interventions); critOK {
+		critical = append(critical, sig)
+	} else if warnOK {
+		warnings = append(warnings, sig)
 	}
 
 	// ── watch rules ────────────────────────────────────────
@@ -248,8 +261,75 @@ func reasonFrom(ss []Signal) string {
 			return fmt.Sprintf("%d HITL requests pending", n)
 		}
 		return "multiple HITL requests pending"
+	case "intervention_pending":
+		if s, ok := top.Value.(string); ok && s != "" {
+			return "operator intervention pending: " + s
+		}
+		return "operator intervention pending"
 	}
 	return fmt.Sprintf("rule %q fired", top.Kind)
+}
+
+// checkInterventionPending scans the per-turn intervention list and returns a
+// signal when any row is still pending. The boolean return values separate
+// "land in intervene_now bucket" (high urgency) from "land in watch bucket"
+// (normal urgency). Low urgency rows do not surface a signal so the engine
+// stays quiet.
+func checkInterventionPending(rows []duckdb.Intervention) (Signal, bool, bool) {
+	if len(rows) == 0 {
+		return Signal{}, false, false
+	}
+	var chosen *duckdb.Intervention
+	for i := range rows {
+		switch rows[i].Status {
+		case duckdb.InterventionStatusQueued,
+			duckdb.InterventionStatusClaimed,
+			duckdb.InterventionStatusDelivered:
+		default:
+			continue
+		}
+		if chosen == nil {
+			chosen = &rows[i]
+			continue
+		}
+		// Prefer the highest urgency then the earliest created_at.
+		if interventionUrgencyRank(rows[i].Urgency) < interventionUrgencyRank(chosen.Urgency) {
+			chosen = &rows[i]
+		}
+	}
+	if chosen == nil {
+		return Signal{}, false, false
+	}
+	preview := chosen.Message
+	if len(preview) > 60 {
+		preview = preview[:59] + "…"
+	}
+	switch chosen.Urgency {
+	case duckdb.InterventionUrgencyHigh:
+		return Signal{
+			Kind:   "intervention_pending",
+			Value:  preview,
+			Weight: 0.9,
+		}, true, false
+	case duckdb.InterventionUrgencyNormal:
+		return Signal{
+			Kind:   "intervention_pending",
+			Value:  preview,
+			Weight: 0.7,
+		}, false, true
+	default: // low
+		return Signal{}, false, false
+	}
+}
+
+func interventionUrgencyRank(u string) int {
+	switch u {
+	case duckdb.InterventionUrgencyHigh:
+		return 0
+	case duckdb.InterventionUrgencyNormal:
+		return 1
+	}
+	return 2
 }
 
 // ── individual rule checkers ────────────────────────────────

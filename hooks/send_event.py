@@ -27,6 +27,7 @@ if str(_SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPT_DIR))
 
 import apogee_hook  # noqa: E402  (sys.path mutation above is intentional)
+import apogee_intervention  # noqa: E402
 
 
 def _parse_args(argv: list[str]) -> argparse.Namespace:
@@ -74,12 +75,6 @@ def main(argv: list[str] | None = None) -> int:
 
     raw_stdin = sys.stdin.read()
 
-    # Echo stdin back to stdout verbatim so the rest of the Claude Code hook
-    # pipeline sees the same payload we received.
-    if raw_stdin:
-        sys.stdout.write(raw_stdin)
-        sys.stdout.flush()
-
     input_data: dict = {}
     if raw_stdin.strip():
         try:
@@ -93,6 +88,41 @@ def main(argv: list[str] | None = None) -> int:
                 )
         except json.JSONDecodeError as exc:
             print(f"send_event: invalid JSON on stdin: {exc}", file=sys.stderr)
+
+    # Operator-intervention hook: for PreToolUse / UserPromptSubmit, ask the
+    # collector whether there is a queued operator intervention for this
+    # session and, if so, emit the Claude Code decision JSON instead of the
+    # default pass-through echo. Any failure inside this call degrades to
+    # the plain echo path so Claude Code never breaks.
+    decision = None
+    try:
+        decision = apogee_intervention.handle_hook(
+            server_base=args.server_url,
+            hook_event=args.event_type,
+            input_data=input_data,
+            timeout=args.timeout,
+        )
+    except Exception as exc:  # pragma: no cover - defensive
+        print(
+            f"send_event: apogee_intervention error: {exc}",
+            file=sys.stderr,
+        )
+        decision = None
+
+    if decision is not None:
+        # A claimed intervention replaces the default stdout echo with the
+        # Claude Code decision JSON.
+        try:
+            sys.stdout.write(json.dumps(decision))
+            sys.stdout.write("\n")
+            sys.stdout.flush()
+        except Exception as exc:  # pragma: no cover - defensive
+            print(f"send_event: failed to write decision: {exc}", file=sys.stderr)
+    elif raw_stdin:
+        # Default path: echo stdin back to stdout verbatim so the rest of
+        # the Claude Code hook pipeline sees the same payload we received.
+        sys.stdout.write(raw_stdin)
+        sys.stdout.flush()
 
     apogee_hook.send_event(
         source_app=args.source_app,

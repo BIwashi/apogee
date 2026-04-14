@@ -276,6 +276,67 @@ groups:
         brief: How Claude Code should resume after the HITL is finalised.
 
   # ============================================================
+  # Intervention attributes (PR #14)
+  # ============================================================
+  - id: registry.claude_code.intervention
+    type: attribute_group
+    stability: development
+    brief: >
+      Operator-initiated intervention — a message pushed into a live
+      Claude Code session via the next PreToolUse or UserPromptSubmit hook.
+    attributes:
+      - id: claude_code.intervention.id
+        type: string
+        stability: development
+        brief: Stable intervention identifier.
+      - id: claude_code.intervention.delivery_mode
+        stability: development
+        type:
+          allow_custom_values: false
+          members:
+            - { id: interrupt, stability: development, value: "interrupt" }
+            - { id: context, stability: development, value: "context" }
+            - { id: both, stability: development, value: "both" }
+        brief: Delivery mode chosen by the operator.
+      - id: claude_code.intervention.scope
+        stability: development
+        type:
+          allow_custom_values: false
+          members:
+            - { id: this_turn, stability: development, value: "this_turn" }
+            - { id: this_session, stability: development, value: "this_session" }
+        brief: Scope binding the intervention to a single turn or the whole session.
+      - id: claude_code.intervention.urgency
+        stability: development
+        type:
+          allow_custom_values: false
+          members:
+            - { id: high, stability: development, value: "high" }
+            - { id: normal, stability: development, value: "normal" }
+            - { id: low, stability: development, value: "low" }
+        brief: Urgency bucket surfaced by the attention engine.
+      - id: claude_code.intervention.status
+        stability: development
+        type:
+          allow_custom_values: false
+          members:
+            - { id: queued, stability: development, value: "queued" }
+            - { id: claimed, stability: development, value: "claimed" }
+            - { id: delivered, stability: development, value: "delivered" }
+            - { id: consumed, stability: development, value: "consumed" }
+            - { id: expired, stability: development, value: "expired" }
+            - { id: cancelled, stability: development, value: "cancelled" }
+        brief: Lifecycle status of the intervention.
+      - id: claude_code.intervention.delivered_via
+        type: string
+        stability: development
+        brief: Hook event name that delivered the intervention (PreToolUse | UserPromptSubmit).
+      - id: claude_code.intervention.operator_id
+        type: string
+        stability: development
+        brief: Operator identifier attached to the intervention.
+
+  # ============================================================
   # Attention attributes
   # ============================================================
   - id: registry.claude_code.attention
@@ -407,3 +468,12 @@ events:
     brief: A tool call was blocked by a policy gate or HITL request.
     attributes:
       - ref: claude_code.tool.blocked_reason
+  - id: claude_code.intervention.delivered
+    type: event
+    stability: development
+    brief: >
+      Operator-initiated intervention was delivered to Claude Code via a hook.
+    attributes:
+      - ref: claude_code.intervention.id
+      - ref: claude_code.intervention.delivery_mode
+      - ref: claude_code.intervention.delivered_via
