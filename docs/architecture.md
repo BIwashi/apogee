@@ -160,6 +160,90 @@ during a burst without locking the writer.
 
 ---
 
+## OpenTelemetry integration
+
+PR #8 wires the apogee reconstructor to the OpenTelemetry Go SDK so every
+internal span is mirrored to an OTLP exporter alongside the existing
+DuckDB write. The export path is **opt-in** and **side-channel only** —
+the dashboard still reads from DuckDB, the OTel side does not block the
+ingest hot path, and a misconfigured exporter cannot crash the
+collector.
+
+### What gets exported
+
+- One OpenTelemetry trace per Claude Code user turn.
+- Span tree:
+  - `claude_code.turn` (root, server kind)
+    - `claude_code.tool.<name>` for each tool call
+    - `claude_code.tool.mcp.<server>.<tool>` for MCP-provided tools
+    - `claude_code.subagent.<type>` for subagent runs (children carry
+      tool spans inside the subagent context)
+    - `claude_code.hitl.permission` for HITL gates
+  - `claude_code.turn.recap` post-hoc enrichment span emitted when the
+    summarizer (PR #6) lands a recap, linked to the turn root via an
+    OTel span link
+
+Every span is enriched with attributes from the `claude_code.*` namespace
+plus the GenAI semconv keys (`gen_ai.system`, `gen_ai.request.model`,
+etc) when a model name is known.
+
+### Configuration
+
+apogee honours the standard OTel env vars and a small set of
+apogee-specific overrides:
+
+| Variable | Meaning |
+| --- | --- |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP target. Setting this enables export. |
+| `OTEL_EXPORTER_OTLP_PROTOCOL` | `grpc` (default) or `http/protobuf`. |
+| `OTEL_EXPORTER_OTLP_INSECURE` | Skip TLS verification. |
+| `OTEL_EXPORTER_OTLP_HEADERS` | Comma-separated `k=v` pairs. |
+| `OTEL_SERVICE_NAME` | Defaults to `apogee`. |
+| `OTEL_RESOURCE_ATTRIBUTES` | Comma-separated `k=v` for the OTel resource. |
+| `OTEL_TRACES_SAMPLER_ARG` | Float ratio `[0..1]` for the trace ID ratio sampler. |
+| `APOGEE_OTLP_ENABLED` | Force-enable or force-disable, overrides endpoint presence. |
+
+The same fields can be set in `~/.apogee/config.toml`:
+
+```toml
+[telemetry]
+enabled = true
+endpoint = "http://localhost:4317"
+protocol = "grpc"
+insecure = true
+sample_ratio = 1.0
+service_name = "apogee"
+
+[telemetry.headers]
+"x-honeycomb-team" = "..."
+
+[telemetry.resource]
+"deployment.environment" = "local"
+```
+
+Resolution order is **env > TOML > defaults**. When no endpoint is
+configured the collector installs a noop tracer provider — the
+reconstructor still calls `Tracer.Start` but nothing is exported.
+
+### Verifying export
+
+- `GET /v1/healthz` (with `Accept: application/json`) reports
+  `otel_enabled`, `otel_endpoint`, and `otel_protocol`.
+- `GET /v1/telemetry/status` returns the resolved config plus a
+  running `spans_exported_total` counter incremented on every
+  successful OTLP batch.
+
+### Semantic conventions
+
+The `claude_code.*` namespace is described by a YAML registry at
+`semconv/model/registry.yaml` and surfaced as Go constants in the
+top-level `semconv` package. See [`docs/otel-semconv.md`](otel-semconv.md)
+for the table of attributes and their types. The Go constants and the
+YAML registry are kept in sync by `semconv/attrs_test.go` — adding a
+new attribute means editing both files.
+
+---
+
 ## What is NOT in the scaffold PR
 
 - Any Go code beyond `version` and `main`
