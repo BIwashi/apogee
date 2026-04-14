@@ -29,11 +29,6 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
 
-      - name: Setup Zig
-        uses: mlugg/setup-zig@v2
-        with:
-          version: 0.14.0
-
       - name: Mint GitHub App token
         id: app-token
         uses: actions/create-github-app-token@v1
