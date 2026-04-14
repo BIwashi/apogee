@@ -40,7 +40,8 @@ CREATE TABLE IF NOT EXISTS turns (
   attention_tone     VARCHAR,
   phase              VARCHAR,
   phase_confidence   DOUBLE,
-  phase_since        TIMESTAMP
+  phase_since        TIMESTAMP,
+  attention_signals_json VARCHAR
 );
 CREATE INDEX IF NOT EXISTS idx_turns_session ON turns(session_id, started_at DESC);
 CREATE INDEX IF NOT EXISTS idx_turns_recent ON turns(started_at DESC);

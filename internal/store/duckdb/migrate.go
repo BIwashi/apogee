@@ -39,6 +39,7 @@ func (s *Store) applyColumnAdditions(ctx context.Context) error {
 		{"turns", "phase", `ALTER TABLE turns ADD COLUMN phase VARCHAR`},
 		{"turns", "phase_confidence", `ALTER TABLE turns ADD COLUMN phase_confidence DOUBLE`},
 		{"turns", "phase_since", `ALTER TABLE turns ADD COLUMN phase_since TIMESTAMP`},
+		{"turns", "attention_signals_json", `ALTER TABLE turns ADD COLUMN attention_signals_json VARCHAR`},
 	}
 	for _, a := range additions {
 		var count int

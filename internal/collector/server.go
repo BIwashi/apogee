@@ -126,10 +126,13 @@ func (s *Server) buildRouter() chi.Router {
 	r.Get("/v1/sessions/recent", s.listRecentSessions)
 	r.Get("/v1/sessions/{id}", s.getSession)
 	r.Get("/v1/sessions/{id}/turns", s.listSessionTurns)
+	r.Get("/v1/sessions/{id}/logs", s.listSessionLogs)
 	r.Get("/v1/turns/recent", s.listRecentTurns)
 	r.Get("/v1/turns/active", s.listActiveTurns)
 	r.Get("/v1/turns/{turn_id}", s.getTurn)
 	r.Get("/v1/turns/{turn_id}/spans", s.listTurnSpans)
+	r.Get("/v1/turns/{turn_id}/logs", s.listTurnLogs)
+	r.Get("/v1/turns/{turn_id}/attention", s.getTurnAttention)
 	r.Get("/v1/attention/counts", s.getAttentionCounts)
 	r.Get("/v1/metrics/series", s.getMetricsSeries)
 	r.Get("/v1/filter-options", s.getFilterOptions)
@@ -301,7 +304,90 @@ func (s *Server) listTurnSpans(w http.ResponseWriter, r *http.Request) {
 	if spans == nil {
 		spans = []duckdb.SpanRow{}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"spans": spans})
+
+	// Compute phase segments only when we have a turn row to anchor the
+	// timeline against. Missing-turn returns just the spans (and an empty
+	// phases slice) so the swim lane degrades gracefully.
+	var phases []attention.PhaseSegment
+	turn, err := s.store.GetTurn(r.Context(), id)
+	if err == nil && turn != nil {
+		var endedAt time.Time
+		if turn.EndedAt != nil {
+			endedAt = *turn.EndedAt
+		}
+		phases = attention.PhaseSegments(spans, turn.StartedAt, endedAt)
+	}
+	if phases == nil {
+		phases = []attention.PhaseSegment{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"spans": spans, "phases": phases})
+}
+
+func (s *Server) listTurnLogs(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "turn_id")
+	limit := parseLimit(r, 500, 5000)
+	logs, err := s.store.ListLogsByTurn(r.Context(), id, limit)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if logs == nil {
+		logs = []duckdb.LogRow{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"logs": logs})
+}
+
+func (s *Server) listSessionLogs(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	limit := parseLimit(r, 200, 1000)
+	logs, err := s.store.ListLogsBySession(r.Context(), id, limit)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if logs == nil {
+		logs = []duckdb.LogRow{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"logs": logs})
+}
+
+// getTurnAttention surfaces the engine decision currently stored on the turn
+// row. It is a denormalised lookup — UpdateTurnAttention writes to the same
+// columns this handler reads from. signals are the JSON-decoded slice.
+func (s *Server) getTurnAttention(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "turn_id")
+	t, err := s.store.GetTurn(r.Context(), id)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if t == nil {
+		writeJSONError(w, http.StatusNotFound, "turn not found")
+		return
+	}
+	var signals []map[string]any
+	if t.AttentionSignalsJSON != "" {
+		_ = json.Unmarshal([]byte(t.AttentionSignalsJSON), &signals)
+	}
+	if signals == nil {
+		signals = []map[string]any{}
+	}
+	var updatedAt time.Time
+	if t.PhaseSince != nil {
+		updatedAt = *t.PhaseSince
+	} else {
+		updatedAt = t.StartedAt
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"turn_id":    t.TurnID,
+		"state":      t.AttentionState,
+		"tone":       t.AttentionTone,
+		"reason":     t.AttentionReason,
+		"score":      t.AttentionScore,
+		"phase":      t.Phase,
+		"signals":    signals,
+		"updated_at": updatedAt,
+	})
 }
 
 func (s *Server) getFilterOptions(w http.ResponseWriter, r *http.Request) {
