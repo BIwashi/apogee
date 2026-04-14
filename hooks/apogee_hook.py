@@ -27,14 +27,18 @@ All three functions are used by ``send_event.py`` and by the unit tests under
 from __future__ import annotations
 
 import json
+import os
+import subprocess
 import sys
 import time
 import urllib.error
 import urllib.request
+from pathlib import Path
 from typing import Any
 
 DEFAULT_SERVER_URL = "http://localhost:4100/v1/events"
 DEFAULT_TIMEOUT_SECONDS = 2.0
+DEFAULT_SOURCE_APP = "unknown"
 
 # Keys that the collector flattens onto the top level of HookEvent. Keep this
 # list aligned with internal/ingest/payload.go::HookEvent. Adding a new flat
@@ -56,6 +60,52 @@ _FLAT_FIELDS: tuple[str, ...] = (
     "model_name",
     "prompt",
 )
+
+
+def derive_source_app() -> str:
+    """Derive a ``source_app`` label at hook invocation time.
+
+    The intended workflow is: install the hooks once at user scope
+    (``~/.claude/settings.json``) and let every Claude Code session
+    auto-label itself based on where it was started. Resolution order:
+
+    1. ``APOGEE_SOURCE_APP`` environment variable — explicit override.
+    2. ``basename`` of ``git rev-parse --show-toplevel`` when inside a
+       git repository. This matches the operator's mental model: one
+       repo = one source_app.
+    3. ``basename`` of the current working directory as a fallback for
+       non-git projects.
+    4. :data:`DEFAULT_SOURCE_APP` (``"unknown"``) if every probe fails.
+
+    This function never raises. Failures drop through to the next
+    probe and ultimately to the ``"unknown"`` default.
+    """
+    env = os.environ.get("APOGEE_SOURCE_APP", "").strip()
+    if env:
+        return env
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--show-toplevel"],
+            capture_output=True,
+            text=True,
+            timeout=1.0,
+            check=False,
+        )
+        if result.returncode == 0:
+            top = result.stdout.strip()
+            if top:
+                name = Path(top).name
+                if name:
+                    return name
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        pass
+    try:
+        cwd_name = Path.cwd().name
+        if cwd_name:
+            return cwd_name
+    except OSError:
+        pass
+    return DEFAULT_SOURCE_APP
 
 
 def read_hook_input() -> dict[str, Any]:
@@ -205,8 +255,10 @@ def send_event(
 
 __all__ = [
     "DEFAULT_SERVER_URL",
+    "DEFAULT_SOURCE_APP",
     "DEFAULT_TIMEOUT_SECONDS",
     "build_event",
+    "derive_source_app",
     "extract_top_level_fields",
     "read_hook_input",
     "send_event",

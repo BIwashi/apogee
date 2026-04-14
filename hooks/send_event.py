@@ -41,8 +41,13 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     )
     parser.add_argument(
         "--source-app",
-        required=True,
-        help="Source application label stored on every event (e.g. 'my-project').",
+        default=None,
+        help=(
+            "Source application label stored on every event. When omitted, "
+            "the label is derived dynamically at hook invocation time: "
+            "$APOGEE_SOURCE_APP → `git rev-parse --show-toplevel` basename "
+            "→ $PWD basename. Passing --source-app explicitly overrides that."
+        ),
     )
     parser.add_argument(
         "--event-type",
@@ -72,6 +77,10 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(sys.argv[1:] if argv is None else argv)
+
+    source_app = args.source_app
+    if not source_app:
+        source_app = apogee_hook.derive_source_app()
 
     raw_stdin = sys.stdin.read()
 
@@ -125,7 +134,7 @@ def main(argv: list[str] | None = None) -> int:
         sys.stdout.flush()
 
     apogee_hook.send_event(
-        source_app=args.source_app,
+        source_app=source_app,
         hook_event_type=args.event_type,
         input_data=input_data,
         server_url=args.server_url,

@@ -8,7 +8,10 @@ from __future__ import annotations
 
 import io
 import json
+import os
+import subprocess
 import sys
+import tempfile
 import unittest
 import urllib.error
 from pathlib import Path
@@ -263,6 +266,145 @@ class SendEventCliTest(unittest.TestCase):
         self.assertEqual(posted["hook_event_type"], "PreToolUse")
         self.assertEqual(posted["server_url"], "http://localhost:9999/v1/events")
         self.assertEqual(posted["input_data"]["session_id"], "sess-cli")
+
+
+class DeriveSourceAppTest(unittest.TestCase):
+    def _fake_run(self, returncode: int, stdout: str = "") -> mock.Mock:
+        cp = subprocess.CompletedProcess(
+            args=["git", "rev-parse", "--show-toplevel"],
+            returncode=returncode,
+            stdout=stdout,
+            stderr="",
+        )
+        return mock.Mock(return_value=cp)
+
+    def test_env_var_wins(self) -> None:
+        with mock.patch.dict(os.environ, {"APOGEE_SOURCE_APP": "from-env"}, clear=False):
+            self.assertEqual(apogee_hook.derive_source_app(), "from-env")
+
+    def test_env_var_empty_falls_through(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp) / "my-repo"
+            workdir.mkdir()
+            original = Path.cwd()
+            os.chdir(workdir)
+            try:
+                with mock.patch.dict(os.environ, {"APOGEE_SOURCE_APP": "  "}, clear=False), \
+                     mock.patch.object(
+                         subprocess,
+                         "run",
+                         self._fake_run(returncode=128),
+                     ):
+                    self.assertEqual(apogee_hook.derive_source_app(), "my-repo")
+            finally:
+                os.chdir(original)
+
+    def test_git_toplevel_basename(self) -> None:
+        with mock.patch.dict(os.environ, {}, clear=True), \
+             mock.patch.object(
+                 subprocess,
+                 "run",
+                 self._fake_run(returncode=0, stdout="/Users/me/work/apogee\n"),
+             ):
+            self.assertEqual(apogee_hook.derive_source_app(), "apogee")
+
+    def test_cwd_fallback_when_git_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp) / "standalone-project"
+            workdir.mkdir()
+            original = Path.cwd()
+            os.chdir(workdir)
+            try:
+                with mock.patch.dict(os.environ, {}, clear=True), \
+                     mock.patch.object(
+                         subprocess,
+                         "run",
+                         self._fake_run(returncode=128),
+                     ):
+                    self.assertEqual(
+                        apogee_hook.derive_source_app(), "standalone-project"
+                    )
+            finally:
+                os.chdir(original)
+
+    def test_git_missing_binary_falls_back(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp) / "no-git-here"
+            workdir.mkdir()
+            original = Path.cwd()
+            os.chdir(workdir)
+            try:
+                with mock.patch.dict(os.environ, {}, clear=True), \
+                     mock.patch.object(
+                         subprocess,
+                         "run",
+                         side_effect=FileNotFoundError("git not installed"),
+                     ):
+                    self.assertEqual(
+                        apogee_hook.derive_source_app(), "no-git-here"
+                    )
+            finally:
+                os.chdir(original)
+
+
+class SendEventCliDynamicSourceAppTest(unittest.TestCase):
+    def test_cli_without_source_app_uses_derive(self) -> None:
+        payload = json.dumps({"session_id": "sess-dyn", "tool_name": "Bash"})
+        stdin_buf = io.StringIO(payload)
+        stdout_buf = io.StringIO()
+
+        posted: dict = {}
+
+        def fake_send_event(**kwargs):
+            posted.update(kwargs)
+
+        with mock.patch.object(sys, "stdin", stdin_buf), \
+             mock.patch.object(sys, "stdout", stdout_buf), \
+             mock.patch.object(send_event_cli.apogee_hook, "send_event", side_effect=fake_send_event), \
+             mock.patch.object(send_event_cli.apogee_hook, "derive_source_app", return_value="derived-app"):
+            rc = send_event_cli.main(
+                [
+                    "--event-type",
+                    "PreToolUse",
+                    "--server-url",
+                    "http://localhost:9999/v1/events",
+                ]
+            )
+
+        self.assertEqual(rc, 0)
+        self.assertEqual(posted["source_app"], "derived-app")
+
+    def test_cli_explicit_source_app_overrides_derive(self) -> None:
+        payload = json.dumps({"session_id": "sess-explicit", "tool_name": "Read"})
+        stdin_buf = io.StringIO(payload)
+        stdout_buf = io.StringIO()
+
+        posted: dict = {}
+
+        def fake_send_event(**kwargs):
+            posted.update(kwargs)
+
+        with mock.patch.object(sys, "stdin", stdin_buf), \
+             mock.patch.object(sys, "stdout", stdout_buf), \
+             mock.patch.object(send_event_cli.apogee_hook, "send_event", side_effect=fake_send_event), \
+             mock.patch.object(
+                 send_event_cli.apogee_hook,
+                 "derive_source_app",
+                 side_effect=AssertionError("should not be called when --source-app is set"),
+             ):
+            rc = send_event_cli.main(
+                [
+                    "--source-app",
+                    "explicit",
+                    "--event-type",
+                    "PostToolUse",
+                    "--server-url",
+                    "http://localhost:9999/v1/events",
+                ]
+            )
+
+        self.assertEqual(rc, 0)
+        self.assertEqual(posted["source_app"], "explicit")
 
 
 if __name__ == "__main__":
