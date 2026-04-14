@@ -17,6 +17,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/BIwashi/apogee/internal/cli"
 	"github.com/BIwashi/apogee/internal/collector"
 	"github.com/BIwashi/apogee/internal/store/duckdb"
 	"github.com/BIwashi/apogee/internal/version"
@@ -44,11 +45,15 @@ func run(args []string) error {
 	switch args[0] {
 	case "serve":
 		return runServe(args[1:])
+	case "init":
+		return cli.RunInit(args[1:], os.Stdout, os.Stderr)
+	case "hooks":
+		return cli.RunHooks(args[1:], os.Stdout, os.Stderr)
 	case "version":
 		fmt.Printf("apogee %s\n", version.Version)
 		return nil
 	default:
-		return fmt.Errorf("unknown subcommand %q (try `apogee serve` or `apogee version`)", args[0])
+		return fmt.Errorf("unknown subcommand %q (try `apogee serve`, `apogee init`, `apogee hooks extract`, or `apogee version`)", args[0])
 	}
 }
 

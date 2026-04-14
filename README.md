@@ -140,6 +140,45 @@ docs/               architecture + design-token specifications
 
 ---
 
+## Install the hooks
+
+apogee is wire-compatible with Claude Code's native hook system. Once the collector is running, one command installs the Python hook library into any project's `.claude/settings.json`:
+
+```sh
+# 1. Build or install the binary (see "Local development" below; `brew`/`go install` will land in PR #10).
+make build
+
+# 2. Start the collector.
+./bin/apogee serve &
+
+# 3. Install hooks into the current project.
+./bin/apogee init
+#   Target: /path/to/project/.claude/settings.json (project scope)
+#   Source app: project (derived from directory name)
+#   Hooks dir: ~/.apogee/hooks/0.0.0-dev (will be extracted)
+#   Hook events to install:
+#     + PreToolUse
+#     + PostToolUse
+#     ... (12 total)
+```
+
+`apogee init` extracts the embedded Python hook library into `~/.apogee/hooks/<version>/` and points `.claude/settings.json` at it. Restart Claude Code and every hook event begins flowing to the collector.
+
+Flags worth knowing:
+
+| Flag | Purpose |
+|---|---|
+| `--target <path>` | Override the `.claude` directory (default: `./.claude`). |
+| `--source-app <name>` | Label stamped onto every event. |
+| `--server-url <url>` | Collector endpoint (default: `http://localhost:4100/v1/events`). |
+| `--scope <user\|project>` | Install into `~/.claude` or `./.claude`. |
+| `--dry-run` | Print the plan without writing. |
+| `--force` | Overwrite existing apogee hook entries. |
+
+The hook scripts themselves are stdlib-only Python. Run `apogee hooks extract --to <dir>` to drop the library anywhere on disk, and see [`hooks/README.md`](hooks/README.md) for the full wire contract and failure semantics.
+
+---
+
 ## Local development
 
 Requirements: Go 1.24+, Node 20+, and a C toolchain (DuckDB is accessed through `github.com/marcboeker/go-duckdb/v2`, which is cgo).

@@ -1,0 +1,124 @@
+{
+  "hooks": {
+    "Notification": [
+      {
+        "hooks": [
+          {
+            "command": "python3 <REPO>/hooks/send_event.py --source-app my-app --event-type Notification --server-url http://localhost:4100/v1/events",
+            "type": "command"
+          }
+        ]
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "hooks": [
+          {
+            "command": "python3 <REPO>/hooks/send_event.py --source-app my-app --event-type PermissionRequest --server-url http://localhost:4100/v1/events",
+            "type": "command"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "command": "python3 <REPO>/hooks/send_event.py --source-app my-app --event-type PostToolUse --server-url http://localhost:4100/v1/events",
+            "type": "command"
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "hooks": [
+          {
+            "command": "python3 <REPO>/hooks/send_event.py --source-app my-app --event-type PostToolUseFailure --server-url http://localhost:4100/v1/events",
+            "type": "command"
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "command": "python3 <REPO>/hooks/send_event.py --source-app my-app --event-type PreCompact --server-url http://localhost:4100/v1/events",
+            "type": "command"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "command": "python3 <REPO>/hooks/send_event.py --source-app my-app --event-type PreToolUse --server-url http://localhost:4100/v1/events",
+            "type": "command"
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "command": "python3 <REPO>/hooks/send_event.py --source-app my-app --event-type SessionEnd --server-url http://localhost:4100/v1/events",
+            "type": "command"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "command": "python3 <REPO>/hooks/send_event.py --source-app my-app --event-type SessionStart --server-url http://localhost:4100/v1/events",
+            "type": "command"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "command": "python3 <REPO>/hooks/send_event.py --source-app my-app --event-type Stop --server-url http://localhost:4100/v1/events",
+            "type": "command"
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "command": "python3 <REPO>/hooks/send_event.py --source-app my-app --event-type SubagentStart --server-url http://localhost:4100/v1/events",
+            "type": "command"
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "command": "python3 <REPO>/hooks/send_event.py --source-app my-app --event-type SubagentStop --server-url http://localhost:4100/v1/events",
+            "type": "command"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "command": "python3 <REPO>/hooks/send_event.py --source-app my-app --event-type UserPromptSubmit --server-url http://localhost:4100/v1/events",
+            "type": "command"
+          }
+        ]
+      }
+    ]
+  }
+}
