@@ -1,0 +1,39 @@
+# Go
+/bin/
+/dist/
+*.test
+*.out
+coverage.*
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+.turbo/
+.pnpm-store/
+*.tsbuildinfo
+
+# apogee runtime data
+/data/
+*.duckdb
+*.duckdb.wal
+*.duckdb.tmp
+
+# Local env
+.env
+.env.local
+.env.*.local
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/settings.json.example
+*.swp
+
+# Logs
+*.log
+
+# Claude Code local state
+.claude/data/
+.claude/logs/
