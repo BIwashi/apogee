@@ -97,8 +97,8 @@ export default function RecentTurnsTable({ turns }: RecentTurnsTableProps) {
         <tbody>
           {turns.map((turn) => {
             const attention = normaliseAttention(turn);
-            const turnHref = `/sessions/${turn.session_id}/turns/${turn.turn_id}`;
-            const sessionHref = `/sessions/${turn.session_id}`;
+            const turnHref = `/turn/?sess=${turn.session_id}&turn=${turn.turn_id}`;
+            const sessionHref = `/session/?id=${turn.session_id}`;
             return (
               <tr
                 key={turn.turn_id}

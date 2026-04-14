@@ -2,9 +2,10 @@
 #
 # Common targets:
 #   make dev               # run collector + web dev server together
-#   make build             # build the apogee binary into ./bin/apogee
+#   make build             # build the apogee binary (includes the web bundle)
 #   make build-collector   # build only the Go binary
-#   make build-web         # build the Next.js UI into web/.next
+#   make build-web         # build the Next.js UI into web/out and copy to internal/webassets/dist
+#   make web-build         # alias for build-web
 #   make run-collector     # build then run the collector against ./.local/apogee.duckdb
 #   make test              # run Go tests with race detector
 #   make test-integration  # run only collector integration tests
@@ -17,7 +18,18 @@ BIN_DIR       ?= bin
 BINARY        ?= $(BIN_DIR)/apogee
 PKG           ?= ./...
 WEB_DIR       ?= web
+WEB_OUT       ?= $(WEB_DIR)/out
+WEB_EMBED_DST ?= internal/webassets/dist
 LOCAL_DB      ?= $(PWD)/.local/apogee.duckdb
+
+# Version / build metadata injected via -ldflags. Users can override any of
+# these on the command line: `make build VERSION=0.2.0`.
+VERSION    ?= 0.0.0-dev
+COMMIT     := $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
+BUILD_DATE := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
+LDFLAGS    := -X github.com/BIwashi/apogee/internal/version.Version=$(VERSION) \
+              -X github.com/BIwashi/apogee/internal/version.Commit=$(COMMIT) \
+              -X github.com/BIwashi/apogee/internal/version.BuildDate=$(BUILD_DATE)
 
 .PHONY: all
 all: build
@@ -26,26 +38,31 @@ all: build
 dev:
 	@echo ">> starting collector and web (Ctrl-C to stop)"
 	@$(MAKE) build-collector >/dev/null
-	@( $(BINARY) & echo $$! > .apogee.pid ) ; \
+	@( $(BINARY) serve & echo $$! > .apogee.pid ) ; \
 	  ( cd $(WEB_DIR) && npm run dev ) ; \
 	  kill `cat .apogee.pid` 2>/dev/null ; rm -f .apogee.pid
 
 .PHONY: build
-build: build-collector build-web
+build: build-web build-collector
 
 .PHONY: build-collector
 build-collector:
 	@mkdir -p $(BIN_DIR)
-	$(GO) build -o $(BINARY) ./cmd/apogee
+	$(GO) build -ldflags "$(LDFLAGS)" -o $(BINARY) ./cmd/apogee
 
 .PHONY: run-collector
 run-collector: build-collector
 	@mkdir -p $(dir $(LOCAL_DB))
-	$(BINARY) serve -addr=:4100 -db=$(LOCAL_DB)
+	$(BINARY) serve --addr=:4100 --db=$(LOCAL_DB)
 
-.PHONY: build-web
-build-web: web-install
+.PHONY: build-web web-build
+build-web web-build: web-install
 	cd $(WEB_DIR) && npm run build
+	@mkdir -p $(WEB_EMBED_DST)
+	@# rsync keeps the embed tree in lock-step with web/out. --delete is
+	@# critical: leftover files from a previous bundle would otherwise
+	@# inflate the embedded FS.
+	rsync -a --delete $(WEB_OUT)/ $(WEB_EMBED_DST)/
 
 .PHONY: web-dev
 web-dev: web-install
@@ -78,4 +95,6 @@ vet:
 .PHONY: clean
 clean:
 	rm -rf $(BIN_DIR) dist
-	rm -rf $(WEB_DIR)/.next $(WEB_DIR)/out
+	rm -rf $(WEB_DIR)/.next $(WEB_OUT)
+	@# Leave internal/webassets/dist/index.html (placeholder) in place so
+	@# `go build ./...` still works after a clean.

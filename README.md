@@ -68,10 +68,10 @@ See [`docs/design-tokens.md`](docs/design-tokens.md) for the complete spec.
                                 │  └────────────────┬────────────────────┘    │
                                 │                   │                         │
                                 │  ┌─ web (Next.js static, embed.FS) ────▼──┐ │
-                                │  │ /           live triage dashboard      │ │
-                                │  │ /sessions   session list               │ │
-                                │  │ /sessions/[id]                session  │ │
-                                │  │ /sessions/[id]/turns/[turn] turn detail│ │
+                                │  │ /                 live triage          │ │
+                                │  │ /sessions/        session catalog      │ │
+                                │  │ /session/?id=     session detail       │ │
+                                │  │ /turn/?sess=&turn=  turn detail        │ │
                                 │  └────────────────────────────────────────┘ │
                                 └─────────────────────────────────────────────┘
 ```
@@ -139,6 +139,39 @@ docs/               architecture + design-token specifications
 ```
 
 ---
+
+## Install
+
+apogee ships as a single self-contained binary. The dashboard is embedded inside the Go binary via `embed.FS`, so there is no runtime Node.js dependency and no separate frontend to deploy.
+
+```sh
+# Homebrew (when the tap is set up)
+brew install BIwashi/tap/apogee
+
+# Go (installs the binary with the placeholder UI — see note below)
+go install github.com/BIwashi/apogee/cmd/apogee@latest
+
+# Download a tagged release from GitHub
+#   https://github.com/BIwashi/apogee/releases
+
+# Build from source
+git clone https://github.com/BIwashi/apogee.git
+cd apogee
+make build
+./bin/apogee serve
+```
+
+> [!NOTE]
+> `go install` produces a binary whose embedded dashboard is a placeholder page: the API is fully functional, but the UI is a stub that instructs you to run `make web-build` locally or install a release binary. This is because the Next.js static export is not distributed through the Go module proxy. `brew install` and the release tarballs always carry the full dashboard.
+
+Once installed, run the collector and install the hooks into your project:
+
+```sh
+apogee serve &
+apogee init --source-app my-project
+apogee doctor   # quick environment check (python3, claude CLI, db writable)
+apogee version  # prints build info (commit, date, Go version)
+```
 
 ## Install the hooks
 

@@ -255,7 +255,7 @@ export default function Page() {
                 <X size={12} strokeWidth={1.5} /> clear scope
               </button>
               <Link
-                href={`/sessions/${selection.sess}?tab=overview`}
+                href={`/session/?id=${selection.sess}&tab=overview`}
                 className="inline-flex items-center gap-1 rounded border border-[var(--border-bright)] bg-[var(--bg-raised)] px-2 py-1 font-mono text-[11px] text-white hover:bg-[var(--bg-overlay)]"
               >
                 View tabbed detail →
