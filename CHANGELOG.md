@@ -7,8 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-This is the initial 11-PR development arc that brings apogee from an empty
-scaffold to a single-binary observability dashboard for Claude Code.
+### Added
+
+- **PR #18 — dynamic source_app + user-scope default for `apogee init`.** The Python hook derives `source_app` at hook invocation time from `$APOGEE_SOURCE_APP`, then `basename $(git rev-parse --show-toplevel)`, then `basename $PWD`. `apogee init` defaults to user scope and no longer pins `--source-app` into the generated commands, so one install on a machine automatically labels every project with its own repo name. Passing `--source-app foo` still pins a fixed label as before.
+
+## [0.1.0] — 2026-04-15
+
+First tagged release. darwin amd64 + arm64. Linux deferred to v0.2.0 pending a
+proper cgo cross-toolchain. This is the initial 11-PR development arc that
+brings apogee from an empty scaffold to a single-binary observability
+dashboard for Claude Code.
 
 ### Added
 

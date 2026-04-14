@@ -141,18 +141,28 @@ brew install BIwashi/tap/apogee
 # or
 go install github.com/BIwashi/apogee/cmd/apogee@latest
 
-# 2. Start the collector and install hooks into the current project.
+# 2. Start the collector and install hooks once for every project on this machine.
 apogee serve &
-apogee init --source-app my-project
+apogee init
 
 # 3. Open the dashboard.
 open http://localhost:4100
 ```
 
+That's it. `apogee init` defaults to **user scope** (`~/.claude/settings.json`), so every Claude Code session on this machine reports into the same collector. The `source_app` label is derived dynamically at hook firing time from:
+
+1. `$APOGEE_SOURCE_APP` — explicit override.
+2. `basename $(git rev-parse --show-toplevel)` — when the session is inside a git repository.
+3. `basename $PWD` — fallback.
+
+So starting `claude` in `~/work/newmo-backend` labels every event `source_app=newmo-backend`, and starting `claude` in `~/work/apogee` labels every event `source_app=apogee`, automatically, with no reconfiguration.
+
+Pin a fixed label with `apogee init --source-app my-project` when you want to override the runtime derivation. Per-project installs are still available via `apogee init --scope project`.
+
 > [!NOTE]
 > `go install` produces a binary whose embedded dashboard is a placeholder page: the API is fully functional, but the UI is a stub that instructs you to run `make web-build` locally or install a release binary. This is because the Next.js static export is not distributed through the Go module proxy. `brew install` and the release tarballs always carry the full dashboard.
 
-Once the collector is running, restart Claude Code in your project and every hook event begins streaming into the dashboard.
+Once the collector is running, restart Claude Code in any project and every hook event begins streaming into the dashboard.
 
 ---
 

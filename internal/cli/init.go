@@ -52,8 +52,12 @@ type InitConfig struct {
 	// ``/path/to/project/.claude``). InitConfig.SettingsPath returns the
 	// corresponding ``settings.json``.
 	Target string
-	// SourceApp is the label stamped onto every event. Defaults to the
-	// basename of the project directory when empty.
+	// SourceApp, when set, pins the label stamped onto every event.
+	// Leave empty to let ``send_event.py`` derive the label dynamically
+	// at hook invocation time from $APOGEE_SOURCE_APP, the git toplevel
+	// basename, or $PWD basename — in that order. Dynamic derivation is
+	// the default so one user-scope install can observe every project
+	// on the machine with the right per-project label.
 	SourceApp string
 	// ServerURL is the collector endpoint.
 	ServerURL string
@@ -76,12 +80,15 @@ func (c InitConfig) SettingsPath() string {
 // InitResult captures the outcome of an init run for display / assertions.
 type InitResult struct {
 	SettingsPath string
-	SourceApp    string
-	HooksDir     string
-	ServerURL    string
-	Added        []string
-	Skipped      []string
-	Settings     map[string]any
+	// SourceApp is the label that will be stamped on events. When empty,
+	// the commands written to settings.json omit the ``--source-app``
+	// flag and ``send_event.py`` derives it at runtime.
+	SourceApp string
+	HooksDir  string
+	ServerURL string
+	Added     []string
+	Skipped   []string
+	Settings  map[string]any
 }
 
 // RunInit is the `apogee init` entry point. It parses flags, resolves paths,
@@ -91,16 +98,21 @@ func RunInit(args []string, stdout, stderr io.Writer) error {
 	flags := flag.NewFlagSet("init", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 
-	target := flags.String("target", "./.claude", "Claude Code settings directory (default: ./.claude). Ignored when --scope user is set.")
-	sourceApp := flags.String("source-app", "", "Source app label (default: derived from the directory name)")
+	target := flags.String("target", "", "Claude Code settings directory. Defaults to ~/.claude (user scope) or ./.claude (project scope).")
+	sourceApp := flags.String("source-app", "", "Pin the source_app label. Leave empty (the default) to let the hook derive it at runtime from $APOGEE_SOURCE_APP, git toplevel, or $PWD.")
 	serverURL := flags.String("server-url", DefaultServerURL, "Collector URL")
-	scope := flags.String("scope", "project", "Install scope: project | user")
+	scope := flags.String("scope", "user", "Install scope: user | project. Defaults to user so one install covers every Claude Code project on this machine.")
 	hooksDir := flags.String("hooks-dir", "", "Directory containing send_event.py (default: extract embedded hooks to ~/.apogee/hooks/<version>/)")
 	dryRun := flags.Bool("dry-run", false, "Print what would change without writing")
 	force := flags.Bool("force", false, "Overwrite existing apogee hooks without prompting")
 
 	flags.Usage = func() {
 		fmt.Fprintln(stderr, "apogee init — install apogee hook entries into .claude/settings.json")
+		fmt.Fprintln(stderr)
+		fmt.Fprintln(stderr, "Default install: user scope (~/.claude/settings.json) with dynamic")
+		fmt.Fprintln(stderr, "source_app resolution. One install covers every Claude Code session on")
+		fmt.Fprintln(stderr, "the machine, and each event is labelled with the repo name of the")
+		fmt.Fprintln(stderr, "directory the session was started from.")
 		fmt.Fprintln(stderr)
 		fmt.Fprintln(stderr, "send_event.py lookup order:")
 		fmt.Fprintln(stderr, "  1. --hooks-dir <dir>/send_event.py")
@@ -123,12 +135,12 @@ func RunInit(args []string, stdout, stderr io.Writer) error {
 	}
 
 	switch *scope {
-	case "project", "":
-		cfg.Scope = ScopeProject
-	case "user":
+	case "user", "":
 		cfg.Scope = ScopeUser
+	case "project":
+		cfg.Scope = ScopeProject
 	default:
-		return fmt.Errorf("init: invalid --scope %q (expected 'project' or 'user')", *scope)
+		return fmt.Errorf("init: invalid --scope %q (expected 'user' or 'project')", *scope)
 	}
 
 	resolvedTarget, err := ResolveTarget(*target, cfg.Scope)
@@ -137,9 +149,8 @@ func RunInit(args []string, stdout, stderr io.Writer) error {
 	}
 	cfg.Target = resolvedTarget
 
-	if cfg.SourceApp == "" {
-		cfg.SourceApp = deriveSourceApp(cfg.Target)
-	}
+	// SourceApp stays empty by default — the Python hook derives it at
+	// runtime so one install can span every project on this machine.
 
 	if cfg.HooksDir == "" {
 		cfg.HooksDir = os.Getenv("APOGEE_HOOKS_DIR")
@@ -172,9 +183,6 @@ func RunInit(args []string, stdout, stderr io.Writer) error {
 func Init(cfg InitConfig) (*InitResult, error) {
 	if cfg.Target == "" {
 		return nil, errors.New("init: target is required")
-	}
-	if cfg.SourceApp == "" {
-		return nil, errors.New("init: source_app is required")
 	}
 	if cfg.ServerURL == "" {
 		cfg.ServerURL = DefaultServerURL
@@ -225,10 +233,17 @@ func Init(cfg InitConfig) (*InitResult, error) {
 		if cfg.Force {
 			entries = removeApogeeEntries(entries, commandPrefix)
 		}
-		command := fmt.Sprintf(
-			"%s --source-app %s --event-type %s --server-url %s",
-			commandPrefix, cfg.SourceApp, event, cfg.ServerURL,
-		)
+		parts := []string{
+			commandPrefix,
+			"--event-type", event,
+			"--server-url", cfg.ServerURL,
+		}
+		if cfg.SourceApp != "" {
+			// Pinning --source-app overrides the hook's runtime
+			// derivation, matching the user's explicit intent.
+			parts = append(parts, "--source-app", cfg.SourceApp)
+		}
+		command := strings.Join(parts, " ")
 		entries = append(entries, map[string]any{
 			"hooks": []any{
 				map[string]any{
@@ -402,6 +417,12 @@ func marshalStable(v any) ([]byte, error) {
 // deriveSourceApp converts a ``.claude`` directory path into a plausible
 // source_app label: the basename of the parent directory, or ``apogee`` as a
 // last resort.
+//
+// Kept for backward compatibility and explicit overrides (``apogee init
+// --source-app $(apogee derive)`` style workflows). The default init flow
+// leaves ``SourceApp`` empty so the Python hook derives it at runtime; this
+// helper is only invoked by callers that want to pin a label based on the
+// current target directory.
 func deriveSourceApp(target string) string {
 	parent := filepath.Dir(target)
 	if parent == "" || parent == "/" || parent == "." {
@@ -438,7 +459,12 @@ func printInitPlan(w io.Writer, cfg InitConfig, r *InitResult) {
 	fmt.Fprintln(w, "apogee init — plan")
 	fmt.Fprintln(w)
 	fmt.Fprintf(w, "  Target: %s (%s scope)\n", r.SettingsPath, cfg.Scope)
-	fmt.Fprintf(w, "  Source app: %s\n", r.SourceApp)
+	if r.SourceApp != "" {
+		fmt.Fprintf(w, "  Source app: %s (pinned)\n", r.SourceApp)
+	} else {
+		fmt.Fprintln(w, "  Source app: auto — derived by send_event.py at runtime")
+		fmt.Fprintln(w, "              ($APOGEE_SOURCE_APP → git toplevel → $PWD)")
+	}
 	fmt.Fprintf(w, "  Hooks dir: %s\n", r.HooksDir)
 	fmt.Fprintln(w)
 

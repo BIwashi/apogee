@@ -32,13 +32,22 @@ future `apogee` upgrade re-extracts automatically on the next `init`.
 
 ```
 apogee init [flags]
-  --target <path>        Claude Code settings directory (default: ./.claude)
-  --source-app <name>    Label stamped onto every event (default: $(basename $PWD))
+  --target <path>        Claude Code settings directory (default: ~/.claude for user scope)
+  --source-app <name>    Pin the source_app label. Leave empty for dynamic derivation.
   --server-url <url>     Collector URL (default: http://localhost:4100/v1/events)
-  --scope <user|project> Install to ~/.claude/ (user) or ./.claude/ (project). Default: project.
+  --scope <user|project> Install to ~/.claude/ (user) or ./.claude/ (project). Default: user.
   --dry-run              Print plan without writing
   --force                Overwrite existing apogee hook entries
 ```
+
+Dynamic `source_app` resolution order (used when `--source-app` is omitted):
+
+1. `$APOGEE_SOURCE_APP` environment variable
+2. `basename $(git rev-parse --show-toplevel)`
+3. `basename $PWD`
+4. `"unknown"` as the last-resort fallback
+
+One user-scope install on a machine therefore reports every project under its own repo name with no per-project reconfiguration.
 
 ## Install with `install.py` (no Go binary)
 

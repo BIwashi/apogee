@@ -236,3 +236,70 @@ func TestDeriveSourceAppFromTarget(t *testing.T) {
 		t.Errorf("deriveSourceApp: got %q, want %q", got, "my-project")
 	}
 }
+
+func TestInitEmptySourceAppOmitsFlag(t *testing.T) {
+	cfg := newTestConfig(t)
+	cfg.SourceApp = "" // dynamic — send_event.py derives at runtime
+	result, err := Init(cfg)
+	if err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+	if result.SourceApp != "" {
+		t.Errorf("expected empty SourceApp on result, got %q", result.SourceApp)
+	}
+
+	settings := readSettings(t, cfg.SettingsPath())
+	hooksRaw, ok := settings["hooks"].(map[string]any)
+	if !ok {
+		t.Fatalf("hooks section missing: %T", settings["hooks"])
+	}
+	for _, event := range HookEvents {
+		entries := hooksRaw[event].([]any)
+		cmd := entries[0].(map[string]any)["hooks"].([]any)[0].(map[string]any)["command"].(string)
+		if strings.Contains(cmd, "--source-app") {
+			t.Errorf("event %s: command should not contain --source-app when dynamic: %s", event, cmd)
+		}
+		if !strings.Contains(cmd, "--event-type "+event) {
+			t.Errorf("event %s: command missing --event-type: %s", event, cmd)
+		}
+	}
+}
+
+func TestInitPinnedSourceAppWritesFlag(t *testing.T) {
+	cfg := newTestConfig(t)
+	cfg.SourceApp = "pinned-name"
+	if _, err := Init(cfg); err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+	settings := readSettings(t, cfg.SettingsPath())
+	hooksRaw := settings["hooks"].(map[string]any)
+	cmd := hooksRaw["PreToolUse"].([]any)[0].(map[string]any)["hooks"].([]any)[0].(map[string]any)["command"].(string)
+	if !strings.Contains(cmd, "--source-app pinned-name") {
+		t.Errorf("pinned SourceApp missing from command: %s", cmd)
+	}
+}
+
+func TestInitDynamicAndPinnedCoexistOnForce(t *testing.T) {
+	// First install dynamic; then force-install a pinned label — the old
+	// dynamic command should be replaced by the new pinned one.
+	cfg := newTestConfig(t)
+	cfg.SourceApp = ""
+	if _, err := Init(cfg); err != nil {
+		t.Fatalf("first init: %v", err)
+	}
+	cfg.SourceApp = "pinned-after"
+	cfg.Force = true
+	if _, err := Init(cfg); err != nil {
+		t.Fatalf("force init: %v", err)
+	}
+	settings := readSettings(t, cfg.SettingsPath())
+	hooksRaw := settings["hooks"].(map[string]any)
+	entries := hooksRaw["PreToolUse"].([]any)
+	if len(entries) != 1 {
+		t.Fatalf("expected exactly 1 entry after force, got %d", len(entries))
+	}
+	cmd := entries[0].(map[string]any)["hooks"].([]any)[0].(map[string]any)["command"].(string)
+	if !strings.Contains(cmd, "--source-app pinned-after") {
+		t.Errorf("force did not update source-app: %s", cmd)
+	}
+}
