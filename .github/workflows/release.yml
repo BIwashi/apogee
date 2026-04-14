@@ -10,32 +10,47 @@ permissions:
 
 jobs:
   release:
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [macos-latest, ubuntu-latest]
-    runs-on: ${{ matrix.os }}
+    runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-go@v5
+      - name: Setup Go
+        uses: actions/setup-go@v5
         with:
-          go-version: '1.25'
+          go-version: '1.24'
 
-      - uses: actions/setup-node@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
         with:
           node-version: '20'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
 
-      - name: Install cgo toolchain (linux)
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y build-essential
+      - name: Setup Zig
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.14.0
 
-      - name: goreleaser
+      - name: Mint GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.APOGEE_RELEASE_APP_ID }}
+          private-key: ${{ secrets.APOGEE_RELEASE_APP_PRIVATE_KEY }}
+          owner: BIwashi
+          repositories: |
+            apogee
+            homebrew-tap
+
+      - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6
         with:
+          distribution: goreleaser
           version: '~> v2'
           args: release --clean
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+          HOMEBREW_TAP_GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
