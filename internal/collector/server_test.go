@@ -1,6 +1,7 @@
 package collector
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -8,11 +9,14 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
 	"github.com/BIwashi/apogee/internal/ingest"
+	"github.com/BIwashi/apogee/internal/sse"
 	"github.com/BIwashi/apogee/internal/store/duckdb"
 )
 
@@ -132,6 +136,102 @@ func TestIntegrationFullSamplePipeline(t *testing.T) {
 		require.NotEmpty(t, opts.HookEvents)
 		require.NotEmpty(t, opts.SourceApps)
 	}
+}
+
+func TestIntegrationSSEStream(t *testing.T) {
+	_, ts := newTestServer(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, ts.URL+"/v1/events/stream", nil)
+	require.NoError(t, err)
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.Equal(t, "text/event-stream", resp.Header.Get("Content-Type"))
+
+	reader := bufio.NewReader(resp.Body)
+
+	// First frame must be the synthetic `initial` event (pre-broadcast).
+	initial := readSSEFrame(t, reader)
+	require.Equal(t, sse.EventTypeInitial, initial.Type)
+	var initialPayload sse.InitialPayload
+	require.NoError(t, json.Unmarshal(initial.Data, &initialPayload))
+	// Fresh store: both recent lists are empty but non-nil.
+	require.NotNil(t, initialPayload.RecentTurns)
+	require.NotNil(t, initialPayload.RecentSessions)
+	require.Len(t, initialPayload.RecentTurns, 0)
+
+	// Post a single hook event; expect broadcasts to arrive on the stream.
+	ev := ingest.HookEvent{
+		SourceApp:     "demo",
+		SessionID:     "sess-sse",
+		HookEventType: "SessionStart",
+		Timestamp:     time.Now().UnixMilli(),
+	}
+	body, err := json.Marshal(ev)
+	require.NoError(t, err)
+	postResp, err := http.Post(ts.URL+"/v1/events", "application/json", bytes.NewReader(body))
+	require.NoError(t, err)
+	postResp.Body.Close()
+	require.Equal(t, http.StatusAccepted, postResp.StatusCode)
+
+	// We should see at least one session.updated broadcast.
+	found := false
+	for i := 0; i < 5; i++ {
+		next := readSSEFrame(t, reader)
+		if next.Type == sse.EventTypeSessionUpdated {
+			var payload sse.SessionPayload
+			require.NoError(t, json.Unmarshal(next.Data, &payload))
+			require.Equal(t, "sess-sse", payload.Session.SessionID)
+			found = true
+			break
+		}
+	}
+	require.True(t, found, "expected session.updated broadcast on stream")
+}
+
+func TestIntegrationEventsBatchAccepted(t *testing.T) {
+	_, ts := newTestServer(t)
+	samples := loadSamples(t)[:3]
+	body, err := json.Marshal(samples)
+	require.NoError(t, err)
+	resp, err := http.Post(ts.URL+"/v1/events", "application/json", bytes.NewReader(body))
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusAccepted, resp.StatusCode)
+	var out map[string]any
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&out))
+	require.Equal(t, float64(3), out["accepted"])
+}
+
+// readSSEFrame reads one `data: <json>\n\n` frame from an SSE stream,
+// skipping any heartbeat comment lines that precede it. It fails the test on
+// parse error so callers stay concise.
+func readSSEFrame(t *testing.T, r *bufio.Reader) sse.Event {
+	t.Helper()
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		line, err := r.ReadString('\n')
+		require.NoError(t, err)
+		line = strings.TrimRight(line, "\r\n")
+		if line == "" {
+			continue // frame separator
+		}
+		if strings.HasPrefix(line, ":") {
+			continue // heartbeat comment
+		}
+		if !strings.HasPrefix(line, "data: ") {
+			t.Fatalf("unexpected SSE line: %q", line)
+		}
+		var ev sse.Event
+		require.NoError(t, json.Unmarshal([]byte(strings.TrimPrefix(line, "data: ")), &ev))
+		return ev
+	}
+	t.Fatalf("timed out waiting for SSE frame")
+	return sse.Event{}
 }
 
 func TestIntegrationSessionTurns(t *testing.T) {

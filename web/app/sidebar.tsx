@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
+import { useState, useSyncExternalStore } from "react";
 import {
   Activity,
   GitBranch,
   LayoutGrid,
+  Palette,
   PanelLeftClose,
   PanelLeftOpen,
   Settings,
@@ -22,26 +24,45 @@ interface NavItem {
   href: string;
   label: string;
   icon: LucideIcon;
+  disabled?: boolean;
 }
 
 const NAV: NavItem[] = [
   { href: "/", label: "Overview", icon: LayoutGrid },
-  { href: "/timeline", label: "Timeline", icon: Activity },
-  { href: "/sessions", label: "Sessions", icon: GitBranch },
-  { href: "/agents", label: "Agents", icon: Users },
-  { href: "/settings", label: "Settings", icon: Settings },
+  { href: "/timeline", label: "Timeline", icon: Activity, disabled: true },
+  { href: "/sessions", label: "Sessions", icon: GitBranch, disabled: true },
+  { href: "/agents", label: "Agents", icon: Users, disabled: true },
+  { href: "/settings", label: "Settings", icon: Settings, disabled: true },
+  { href: "/styleguide", label: "Styleguide", icon: Palette },
 ];
 
-export default function Sidebar({ children }: { children: React.ReactNode }) {
-  const [collapsed, setCollapsed] = useState(false);
+const MOBILE_QUERY = "(max-width: 768px)";
 
-  useEffect(() => {
-    const mq = window.matchMedia("(max-width: 768px)");
-    if (mq.matches) setCollapsed(true);
-    const handler = (e: MediaQueryListEvent) => setCollapsed(e.matches);
-    mq.addEventListener("change", handler);
-    return () => mq.removeEventListener("change", handler);
-  }, []);
+function subscribeMobile(callback: () => void): () => void {
+  if (typeof window === "undefined") return () => {};
+  const mq = window.matchMedia(MOBILE_QUERY);
+  mq.addEventListener("change", callback);
+  return () => mq.removeEventListener("change", callback);
+}
+
+function getMobileSnapshot(): boolean {
+  if (typeof window === "undefined") return false;
+  return window.matchMedia(MOBILE_QUERY).matches;
+}
+
+function getMobileServerSnapshot(): boolean {
+  return false;
+}
+
+export default function Sidebar({ children }: { children: React.ReactNode }) {
+  const isMobile = useSyncExternalStore(
+    subscribeMobile,
+    getMobileSnapshot,
+    getMobileServerSnapshot,
+  );
+  const [userCollapsed, setUserCollapsed] = useState<boolean | null>(null);
+  const collapsed = userCollapsed ?? isMobile;
+  const pathname = usePathname();
 
   return (
     <div className="flex">
@@ -64,7 +85,7 @@ export default function Sidebar({ children }: { children: React.ReactNode }) {
             <span className="font-display text-sm text-white">A</span>
           )}
           <button
-            onClick={() => setCollapsed(!collapsed)}
+            onClick={() => setUserCollapsed(!collapsed)}
             className="ml-1 rounded p-1 text-[var(--text-muted)] transition-colors hover:bg-[var(--surface-raised)] hover:text-gray-300"
             title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
           >
@@ -78,25 +99,40 @@ export default function Sidebar({ children }: { children: React.ReactNode }) {
 
         {/* Nav */}
         <ul className="mt-2 flex-1 space-y-0.5 px-2">
-          {NAV.map(({ href, label, icon: Icon }) => {
-            // Only "Overview" is active in this scaffold PR; the other
-            // routes are placeholders that will light up in future PRs.
-            const active = href === "/";
+          {NAV.map(({ href, label, icon: Icon, disabled }) => {
+            const active = pathname === href;
+            const base =
+              "flex items-center gap-2.5 rounded px-3 py-1.5 text-[13px] transition-colors";
+            const tone = disabled
+              ? "cursor-not-allowed text-[var(--text-muted)] opacity-50"
+              : active
+                ? "bg-[var(--accent)]/10 font-medium text-[var(--accent)]"
+                : "text-[var(--text-muted)] hover:bg-[var(--surface-raised)] hover:text-gray-200";
+            const body = (
+              <>
+                <Icon size={16} strokeWidth={1.5} className="flex-shrink-0" />
+                {!collapsed && <span>{label}</span>}
+              </>
+            );
             return (
               <li key={href}>
-                <a
-                  href={href}
-                  aria-disabled={!active}
-                  className={`flex items-center gap-2.5 rounded px-3 py-1.5 text-[13px] transition-colors ${
-                    active
-                      ? "bg-[var(--accent)]/10 font-medium text-[var(--accent)]"
-                      : "text-[var(--text-muted)] hover:bg-[var(--surface-raised)] hover:text-gray-200"
-                  }`}
-                  title={collapsed ? label : undefined}
-                >
-                  <Icon size={16} strokeWidth={1.5} className="flex-shrink-0" />
-                  {!collapsed && <span>{label}</span>}
-                </a>
+                {disabled ? (
+                  <span
+                    aria-disabled
+                    className={`${base} ${tone}`}
+                    title={collapsed ? `${label} (coming soon)` : "coming soon"}
+                  >
+                    {body}
+                  </span>
+                ) : (
+                  <a
+                    href={href}
+                    className={`${base} ${tone}`}
+                    title={collapsed ? label : undefined}
+                  >
+                    {body}
+                  </a>
+                )}
               </li>
             );
           })}
