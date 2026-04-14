@@ -25,6 +25,17 @@ scaffold to a single-binary observability dashboard for Claude Code.
 - **PR #9 — Python hook library + install UX.** Stdlib-only Python hook library under `hooks/`, embedded into the Go binary via `//go:embed all:hooks`. `apogee init` extracts the library to `~/.apogee/hooks/<version>/` and rewrites `.claude/settings.json`. Hook smoke test and Python unittests included.
 - **PR #10 — embedded frontend + CLI distribution.** Next.js static export embedded into the Go binary via `embed.FS`, SPA fallback handler in the chi router, cobra-based CLI with `serve / init / doctor / version`, GoReleaser config, and the warning that `go install` produces a placeholder UI.
 - **PR #11 — README, screenshots, session rollup polish.** Per-session narrative rollup worker (Sonnet tier) with `session_rollups` table, `RollupWorker`, hourly background scheduler, manual `POST /v1/sessions/:id/rollup` endpoint, and the `RollupPanel` component on the session detail page. Real dashboard screenshots committed under `assets/screenshots/` and rendered in the README. New `CONTRIBUTING.md`, this `CHANGELOG.md`, and a refreshed `README.md`.
+- **PR #15 — operator intervention UI.** Composer, queue, and timeline
+  components with live SSE updates and staleness indicators. The composer
+  is keyboard-first (Ctrl/Cmd+Enter sends, Esc clears, Alt+I focuses),
+  sticks mode/scope/urgency between submissions, and colours its left
+  border by the selected urgency. The queue marks rows that have been
+  queued longer than 30s with a warning pill and upgrades to "no hook
+  activity" at 120s — the idle-session safety net surfaced in the UI.
+  The turn detail page gains a pulsing header chip that mirrors the
+  same staleness tiers, and the session detail page gains a compact
+  summary card plus per-turn Intervene buttons that deep-link into the
+  composer via `?compose=1`.
 - **PR #14 — operator interventions (backend).** Reverse-direction HITL: operators push a message into a live Claude Code session, and the next `PreToolUse` or `UserPromptSubmit` hook returns it as a Claude Code hook decision. Adds the `interventions` DuckDB table, a `queued → claimed → delivered → consumed` lifecycle, atomic claim primitive, `interventions.Service` with an auto-expire sweeper, nine REST endpoints under `/v1/interventions` and `/v1/sessions/{id}/interventions`, six new `intervention.*` SSE broadcast types, attention-engine `intervention_pending` signal, semconv registry `claude_code.intervention.*` group and `claude_code.intervention.delivered` span event, `[interventions]` TOML block with env-var overrides, the `hooks/apogee_intervention.py` helper module plus send-event.py integration, `docs/interventions.md`, and integration tests covering the full lifecycle, the concurrent-claim race, auto-expire, and cancel paths. The matching UI ships in PR #15.
 
 ### Changed

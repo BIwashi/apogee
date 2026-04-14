@@ -1,7 +1,9 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+
+import { AlertTriangle } from "lucide-react";
 
 import AttentionDot from "../components/AttentionDot";
 import Breadcrumb from "../components/Breadcrumb";
@@ -10,18 +12,22 @@ import FilterChips, {
   useFilterState,
 } from "../components/FilterChips";
 import HITLPanel from "../components/HITLPanel";
+import OperatorQueueSection from "../components/OperatorQueueSection";
 import RawLogsPanel from "../components/RawLogsPanel";
 import RecapPanels from "../components/RecapPanels";
 import SectionHeader from "../components/SectionHeader";
 import SpanTree from "../components/SpanTree";
 import StatusPill from "../components/StatusPill";
 import SwimLane from "../components/SwimLane";
+import { computeStaleness, humanDuration } from "../components/interventionVisuals";
 import type {
   ApogeeEvent,
   AttentionDetail,
   HITLEvent,
   HITLListResponse,
   HITLPayload,
+  InterventionListResponse,
+  InterventionPayload,
   RecapResponse,
   Span,
   SpanPayload,
@@ -94,6 +100,7 @@ export default function TurnDetailPage() {
   const sessionId = searchParams.get("sess") ?? "";
   const turnId = searchParams.get("turn") ?? "";
   const selectedSpanId = searchParams.get("span");
+  const composeRequested = searchParams.get("compose") === "1";
 
   const setSelectedSpan = useCallback(
     (spanId: string | null) => {
@@ -156,6 +163,10 @@ export default function TurnDetailPage() {
     sessionId ? `/v1/sessions/${sessionId}/hitl/pending` : null,
     { refreshInterval: 2_000 },
   );
+  const interventionPendingQuery = useApi<InterventionListResponse>(
+    sessionId ? `/v1/sessions/${sessionId}/interventions/pending` : null,
+    { refreshInterval: 2_000 },
+  );
   const hitlTurnQuery = useApi<HITLListResponse>(
     turnId ? `/v1/turns/${turnId}/hitl` : null,
     { refreshInterval: isRunning ? 5_000 : 0 },
@@ -206,11 +217,23 @@ export default function TurnDetailPage() {
           }
           break;
         }
+        case SSE_EVENT_TYPES.InterventionSubmitted:
+        case SSE_EVENT_TYPES.InterventionClaimed:
+        case SSE_EVENT_TYPES.InterventionDelivered:
+        case SSE_EVENT_TYPES.InterventionConsumed:
+        case SSE_EVENT_TYPES.InterventionExpired:
+        case SSE_EVENT_TYPES.InterventionCancelled: {
+          const payload = event.data as InterventionPayload;
+          if (payload?.intervention?.session_id === sessionId) {
+            void interventionPendingQuery.mutate();
+          }
+          break;
+        }
         default:
           break;
       }
     },
-    [turnId, sessionId, hitlPendingQuery, hitlTurnQuery],
+    [turnId, sessionId, hitlPendingQuery, hitlTurnQuery, interventionPendingQuery],
   );
 
   useEventStream<ApogeeEvent>(
@@ -251,6 +274,30 @@ export default function TurnDetailPage() {
   const hitlAllForTurn: HITLEvent[] = useMemo(() => {
     return hitlTurnQuery.data?.hitl ?? [];
   }, [hitlTurnQuery.data]);
+
+  // Drive the header-level staleness chip from a 1Hz tick. The pending
+  // intervention list arrives from the SWR/SSE pair above; we just need a
+  // shared clock so the "45s" label ticks while the operator watches.
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  useEffect(() => {
+    const h = setInterval(() => setNowMs(Date.now()), 1_000);
+    return () => clearInterval(h);
+  }, []);
+
+  const stalenessChip = useMemo(() => {
+    const rows = interventionPendingQuery.data?.interventions ?? [];
+    let worst: { seconds: number; tone: "warning" | "critical" } | null = null;
+    for (const iv of rows) {
+      if (iv.status !== "queued") continue;
+      if (iv.turn_id && iv.turn_id !== turnId) continue;
+      const stale = computeStaleness(iv, nowMs);
+      if (!stale.tone) continue;
+      if (!worst || stale.seconds > worst.seconds) {
+        worst = { seconds: stale.seconds, tone: stale.tone };
+      }
+    }
+    return worst;
+  }, [interventionPendingQuery.data, turnId, nowMs]);
 
   const refinedPhases = useMemo(() => {
     if (!recap?.phases?.length || spans.length === 0) return null;
@@ -337,6 +384,27 @@ export default function TurnDetailPage() {
               tone={liveTurn.attention_tone}
               reason={liveTurn.attention_reason}
             />
+            {stalenessChip && (
+              <span
+                className="inline-flex animate-pulse items-center gap-1 rounded border px-2 py-[2px] font-display text-[10px] uppercase tracking-[0.16em]"
+                style={{
+                  borderColor:
+                    stalenessChip.tone === "critical"
+                      ? "var(--status-critical)"
+                      : "var(--status-warning)",
+                  background: "var(--bg-overlay)",
+                  color:
+                    stalenessChip.tone === "critical"
+                      ? "var(--status-critical)"
+                      : "var(--status-warning)",
+                }}
+              >
+                <AlertTriangle size={16} strokeWidth={1.5} />
+                {stalenessChip.tone === "critical"
+                  ? `no hook activity · ${humanDuration(stalenessChip.seconds)}`
+                  : `operator waiting · ${humanDuration(stalenessChip.seconds)}`}
+              </span>
+            )}
             {liveTurn.attention_reason && (
               <span className="text-[11px]">{liveTurn.attention_reason}</span>
             )}
@@ -367,6 +435,13 @@ export default function TurnDetailPage() {
         </div>
       </header>
 
+      <OperatorQueueSection
+        sessionId={sessionId}
+        turnId={turnId}
+        turnStatus={liveTurn.status}
+        initialCompose={composeRequested}
+      />
+
       <section className="grid gap-3 md:grid-cols-[1fr_320px]">
         <div className="flex flex-col gap-3">
           <SectionHeader title="Recap" subtitle="Populated by the Haiku summariser." />
@@ -377,7 +452,7 @@ export default function TurnDetailPage() {
           />
         </div>
         <div className="flex flex-col gap-3">
-          <SectionHeader title="Operator queue" subtitle="Pending HITL requests for this turn." />
+          <SectionHeader title="Human in the loop" subtitle="Pending HITL requests for this turn." />
           <HITLPanel events={hitlPendingForTurn} onResponded={onResponded} />
         </div>
       </section>

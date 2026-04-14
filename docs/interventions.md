@@ -183,3 +183,56 @@ Precedence: env > TOML > default (matches the summarizer).
 The UI (PR #15) should therefore treat `delivered` as a soft-terminal
 state — the operator's message has already been shown to the agent — and
 reserve `consumed` for visual confirmation that Claude Code moved past it.
+
+## UI walkthrough
+
+PR #15 ships three React components under `web/app/components/` plus a
+composite section that glues them onto the turn detail page.
+
+- **`InterventionComposer`** — the keyboard-first form. Textarea, three
+  radio groups (delivery mode / scope / urgency), live character count
+  against the 4096-char cap, and a 3px left-border whose hue reflects
+  the current urgency. `Ctrl/Cmd+Enter` submits, `Esc` clears. When the
+  parent passes `autoFocus` the textarea grabs focus on mount.
+- **`InterventionQueue`** — the live card of `queued` / `claimed` /
+  `delivered` rows for a session. Pulls
+  `/v1/sessions/<id>/interventions/pending` on a 2s SWR interval and
+  calls `mutate()` on every matching `intervention.*` SSE event. Each
+  row carries a staleness pill: `waiting 45s` at 30s, upgrading to
+  `stalled — no hook activity` at 120s.
+- **`InterventionTimeline`** — the compact history card of terminal
+  rows (`consumed` / `expired` / `cancelled`). Uses the same chip and
+  icon language as the queue and collapses to 20 rows by default with
+  a `show more` button.
+- **`OperatorQueueSection`** — the composite glue. Lays out composer
+  and queue side by side (stacking below 1100px) with the timeline
+  underneath, and is dropped into `web/app/turn/page.tsx` above the
+  existing Recap + HITL grid so operator-initiated actions sit above
+  reactive HITL on the page.
+
+On the turn detail page header, a pulsing staleness chip renders next
+to the attention dot when any queued intervention on the current turn
+exceeds 30s. The chip reads `OPERATOR WAITING · 45s` at warning tone
+and upgrades to `NO HOOK ACTIVITY · 2m 12s` at critical tone when the
+deadline passes 120s — the explicit surfacing of the idle-session
+safety net.
+
+On the session detail page, an **Intervention summary** card on the
+Overview tab shows `N queued · M in flight · K lifetime` with an
+`Open composer →` link that jumps straight to the most recent running
+turn with `?compose=1`. The Turns tab exposes an **Intervene** button
+on every running turn that opens the turn detail with the same deep
+link.
+
+### Keyboard shortcut
+
+`Alt+I` on the turn detail page opens and focuses the composer
+regardless of the current selection. The shortcut is surfaced as a
+`kbd` hint next to the `OPERATOR QUEUE` section header.
+
+### Deep links
+
+- `/turn?sess=<sess>&turn=<turn>&compose=1` — opens the turn detail
+  with the composer pre-focused.
+- `/session?id=<sess>&tab=turns` — jumps to the running-turn list with
+  the per-row Intervene buttons.

@@ -1,20 +1,30 @@
 "use client";
 
 import { useCallback, useEffect, useMemo } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Activity, BarChart3, Layers, List, ScrollText } from "lucide-react";
+import {
+  Activity,
+  BarChart3,
+  Layers,
+  List,
+  ScrollText,
+  Send,
+} from "lucide-react";
 
 import Breadcrumb from "../components/Breadcrumb";
 import Card from "../components/Card";
 import KpiStrip from "../components/KpiStrip";
 import RawLogsPanel from "../components/RawLogsPanel";
-import RecentTurnsTable from "../components/RecentTurnsTable";
 import RollupPanel from "../components/RollupPanel";
+import RecentTurnsTable from "../components/RecentTurnsTable";
 import SectionHeader from "../components/SectionHeader";
 import SpanTree from "../components/SpanTree";
 import SwimLane from "../components/SwimLane";
 import Tabs, { type TabItem } from "../components/Tabs";
 import type {
+  Intervention,
+  InterventionListResponse,
   SessionLogsResponse,
   SessionSummary,
   SessionTurnsResponse,
@@ -93,10 +103,18 @@ export default function SessionDetailPage() {
     id ? `/v1/sessions/${id}/logs?limit=200` : null,
     { refreshInterval: 5_000 },
   );
+  const { data: interventionsData } = useApi<InterventionListResponse>(
+    id ? `/v1/sessions/${id}/interventions?limit=200` : null,
+    { refreshInterval: 5_000 },
+  );
 
   const turns = useMemo(() => sortTurns(turnsData?.turns ?? []), [turnsData]);
   const logs = logsData?.logs ?? [];
   const latestTurnId = summary?.latest_turn_id ?? turns[0]?.turn_id ?? null;
+  const interventions = useMemo(
+    () => interventionsData?.interventions ?? [],
+    [interventionsData],
+  );
 
   const { data: traceData } = useApi<TurnSpansResponse>(
     latestTurnId && active === "trace" ? `/v1/turns/${latestTurnId}/spans` : null,
@@ -173,9 +191,14 @@ export default function SessionDetailPage() {
       <Tabs items={TABS} active={active} onSelect={setActive} />
 
       {active === "overview" && (
-        <OverviewTab id={id} summary={summary ?? null} turns={turns} />
+        <OverviewTab
+          id={id}
+          summary={summary ?? null}
+          turns={turns}
+          interventions={interventions}
+        />
       )}
-      {active === "turns" && <TurnsTab turns={turns} />}
+      {active === "turns" && <TurnsTab sessionId={id} turns={turns} />}
       {active === "trace" && (
         <TraceTab
           latestTurn={latestTurn}
@@ -201,10 +224,12 @@ function OverviewTab({
   id,
   summary,
   turns,
+  interventions,
 }: {
   id: string;
   summary: SessionSummary | null;
   turns: Turn[];
+  interventions: Intervention[];
 }) {
   return (
     <div className="flex flex-col gap-6">
@@ -219,6 +244,15 @@ function OverviewTab({
           <SummaryStat label="SOURCE" value={summary?.source_app || "—"} />
         </Card>
       </section>
+      {interventions.length > 0 && (
+        <section>
+          <InterventionSummaryCard
+            sessionId={id}
+            interventions={interventions}
+            turns={turns}
+          />
+        </section>
+      )}
       <section>
         <RollupPanel sessionId={id} />
       </section>
@@ -263,14 +297,134 @@ function SummaryStat({
   );
 }
 
-function TurnsTab({ turns }: { turns: Turn[] }) {
+function TurnsTab({
+  sessionId,
+  turns,
+}: {
+  sessionId: string;
+  turns: Turn[];
+}) {
+  const runningTurns = useMemo(
+    () => turns.filter((t) => t.status === "running"),
+    [turns],
+  );
   return (
-    <section>
+    <section className="flex flex-col gap-4">
       <SectionHeader title="All turns" subtitle="Attention-sorted. Click a row to drill in." />
+      {runningTurns.length > 0 && (
+        <Card className="flex flex-col gap-2">
+          <p
+            className="font-display text-[10px] uppercase tracking-[0.16em]"
+            style={{ color: "var(--artemis-earth)" }}
+          >
+            Live turns · operator actions
+          </p>
+          <ul className="flex flex-col gap-1">
+            {runningTurns.map((t) => (
+              <li
+                key={t.turn_id}
+                className="flex items-center gap-3 font-mono text-[11px] text-[var(--text-muted)]"
+              >
+                <span>{t.turn_id.slice(0, 8)}</span>
+                <span>·</span>
+                <span>{t.prompt_text?.slice(0, 60) ?? "—"}</span>
+                <Link
+                  href={`/turn/?sess=${sessionId}&turn=${t.turn_id}&compose=1`}
+                  className="ml-auto inline-flex items-center gap-1 rounded border px-2 py-[2px] text-[10px]"
+                  style={{
+                    borderColor: "var(--status-info)",
+                    background: "var(--bg-overlay)",
+                    color: "var(--status-info)",
+                  }}
+                >
+                  <Send size={16} strokeWidth={1.5} /> Intervene
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
       <Card className="p-0">
         <RecentTurnsTable turns={turns} />
       </Card>
     </section>
+  );
+}
+
+function InterventionSummaryCard({
+  sessionId,
+  interventions,
+  turns,
+}: {
+  sessionId: string;
+  interventions: Intervention[];
+  turns: Turn[];
+}) {
+  const counts = useMemo(() => {
+    const out = {
+      queued: 0,
+      claimed: 0,
+      delivered: 0,
+      lifetime: 0,
+    };
+    for (const iv of interventions) {
+      out.lifetime += 1;
+      if (iv.status === "queued") out.queued += 1;
+      else if (iv.status === "claimed") out.claimed += 1;
+      else if (iv.status === "delivered") out.delivered += 1;
+    }
+    return out;
+  }, [interventions]);
+  const latestRunningTurn = useMemo(
+    () => turns.find((t) => t.status === "running") ?? null,
+    [turns],
+  );
+  const composerHref = latestRunningTurn
+    ? `/turn/?sess=${sessionId}&turn=${latestRunningTurn.turn_id}&compose=1`
+    : null;
+  const inFlight = counts.queued + counts.claimed + counts.delivered;
+  return (
+    <Card className="flex items-center gap-4">
+      <Send size={16} strokeWidth={1.5} color="var(--artemis-earth)" />
+      <p className="font-mono text-[11px] text-gray-200">
+        <span style={{ color: "var(--status-warning)" }}>
+          {counts.queued} queued
+        </span>
+        {" · "}
+        <span style={{ color: "var(--artemis-earth)" }}>
+          {counts.claimed + counts.delivered} in flight
+        </span>
+        {" · "}
+        <span className="text-[var(--text-muted)]">
+          {counts.lifetime} lifetime
+        </span>
+      </p>
+      {inFlight > 0 && (
+        <span
+          className="rounded border px-2 py-[2px] font-display text-[10px] uppercase tracking-[0.16em]"
+          style={{
+            background: "var(--bg-overlay)",
+            borderColor: "var(--status-warning)",
+            color: "var(--status-warning)",
+          }}
+        >
+          {inFlight} queued interventions
+        </span>
+      )}
+      {composerHref && (
+        <Link
+          href={composerHref}
+          className="ml-auto inline-flex items-center gap-1 rounded border px-3 py-1 font-mono text-[11px]"
+          style={{
+            borderColor: "var(--status-info)",
+            background: "var(--bg-overlay)",
+            color: "var(--status-info)",
+          }}
+        >
+          <Send size={16} strokeWidth={1.5} /> Open composer
+        </Link>
+      )}
+    </Card>
   );
 }
 
