@@ -199,3 +199,119 @@ export interface RecentTurnsResponse {
 export interface RecentSessionsResponse {
   sessions: Session[];
 }
+
+/**
+ * LogRow mirrors internal/store/duckdb.LogRow. Used by the turn-detail and
+ * session-detail raw-log panels.
+ */
+export interface LogRow {
+  id: number;
+  timestamp: string;
+  trace_id?: string;
+  span_id?: string;
+  severity_text: string;
+  severity_number: number;
+  body: string;
+  session_id?: string;
+  turn_id?: string;
+  hook_event: string;
+  source_app: string;
+  attributes?: Record<string, unknown>;
+}
+
+/**
+ * PhaseSegment mirrors internal/attention.PhaseSegment. The collector emits
+ * these alongside spans on /v1/turns/:id/spans so the swim lane can colour
+ * the phase row without re-implementing the heuristic in TypeScript.
+ */
+export interface PhaseSegment {
+  name: Phase | string;
+  started_at: string;
+  ended_at: string;
+}
+
+export interface TurnSpansResponse {
+  spans: Span[];
+  phases: PhaseSegment[];
+}
+
+export interface SessionTurnsResponse {
+  turns: Turn[];
+}
+
+export interface TurnLogsResponse {
+  logs: LogRow[];
+}
+
+export interface SessionLogsResponse {
+  logs: LogRow[];
+}
+
+/**
+ * AttentionSignal is one piece of evidence the engine considered while
+ * scoring a turn. Mirrors internal/attention.Signal.
+ */
+export interface AttentionSignal {
+  kind: string;
+  value?: unknown;
+  threshold?: unknown;
+  weight: number;
+}
+
+/**
+ * AttentionDetail is the response shape of GET /v1/turns/:id/attention.
+ * Surfaces the engine's stored decision plus the full signal slice so the
+ * turn-detail page can explain *why* a turn is flagged.
+ */
+export interface AttentionDetail {
+  turn_id: string;
+  state?: AttentionState | string;
+  tone?: AttentionTone | string;
+  reason?: string;
+  score?: number;
+  phase?: Phase | string;
+  signals: AttentionSignal[];
+  updated_at: string;
+}
+
+/**
+ * SpanTreeNode is the recursive in-page projection of a Span with its
+ * children attached. Built on the client from the flat span list using
+ * parent_span_id.
+ */
+export type SpanTreeNode = Span & { children: SpanTreeNode[] };
+
+/**
+ * TurnDetail bundles every payload the turn-detail page renders into one
+ * convenience type. Components inside the page receive narrower slices.
+ */
+export interface TurnDetail {
+  turn: Turn;
+  spans: Span[];
+  phases: PhaseSegment[];
+  logs: LogRow[];
+  attention: AttentionDetail | null;
+}
+
+/**
+ * FilterKey is the union of swim-lane / span-tree filter chips. Persisted in
+ * the URL `?filter=` query param so deep links are shareable.
+ */
+export type FilterKey =
+  | "all"
+  | "commands"
+  | "messages"
+  | "tools"
+  | "errors"
+  | "hitl"
+  | "subagents";
+
+export const FILTER_KEYS: FilterKey[] = [
+  "all",
+  "commands",
+  "messages",
+  "tools",
+  "errors",
+  "hitl",
+  "subagents",
+];

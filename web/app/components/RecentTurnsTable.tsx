@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Orbit } from "lucide-react";
 
 import type { AttentionState, Turn } from "../lib/api-types";
@@ -96,46 +97,76 @@ export default function RecentTurnsTable({ turns }: RecentTurnsTableProps) {
         <tbody>
           {turns.map((turn) => {
             const attention = normaliseAttention(turn);
+            const turnHref = `/sessions/${turn.session_id}/turns/${turn.turn_id}`;
+            const sessionHref = `/sessions/${turn.session_id}`;
             return (
               <tr
                 key={turn.turn_id}
-                className="border-b border-[var(--border)] transition-colors hover:bg-[var(--bg-raised)]"
+                className="group border-b border-[var(--border)] transition-colors hover:bg-[var(--bg-raised)] focus-within:bg-[var(--bg-raised)]"
               >
                 <td className="px-3 py-2">
-                  <AttentionDot
-                    state={attention}
-                    tone={turn.attention_tone}
-                    reason={turn.attention_reason}
-                  />
+                  <Link
+                    href={turnHref}
+                    className="block focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--border-bright)]"
+                  >
+                    <AttentionDot
+                      state={attention}
+                      tone={turn.attention_tone}
+                      reason={turn.attention_reason}
+                    />
+                  </Link>
                 </td>
                 <td className="px-3 py-2 font-mono text-[11px] text-[var(--text-muted)]">
-                  {formatClock(turn.started_at)}
+                  <Link href={turnHref} className="block">
+                    {formatClock(turn.started_at)}
+                  </Link>
                 </td>
                 <td className="px-3 py-2 font-mono text-[11px] text-gray-200">
-                  {shortId(turn.session_id)}
+                  <Link
+                    href={sessionHref}
+                    className="hover:text-[var(--accent)] focus:outline-none focus-visible:underline"
+                  >
+                    {shortId(turn.session_id)}
+                  </Link>
                 </td>
-                <td className="px-3 py-2 text-gray-200">{turn.source_app || "—"}</td>
+                <td className="px-3 py-2 text-gray-200">
+                  <Link href={turnHref} className="block">
+                    {turn.source_app || "—"}
+                  </Link>
+                </td>
                 <td className="px-3 py-2 font-mono text-[11px] text-[var(--text-muted)]">
-                  {turn.phase || "—"}
+                  <Link href={turnHref} className="block">
+                    {turn.phase || "—"}
+                  </Link>
                 </td>
                 <td className="px-3 py-2">
-                  <StatusPill tone={statusTone(turn.status)}>{turn.status}</StatusPill>
+                  <Link href={turnHref} className="block">
+                    <StatusPill tone={statusTone(turn.status)}>{turn.status}</StatusPill>
+                  </Link>
                 </td>
                 <td className="px-3 py-2 text-right font-mono tabular-nums text-gray-200">
-                  {turn.tool_call_count}
+                  <Link href={turnHref} className="block">
+                    {turn.tool_call_count}
+                  </Link>
                 </td>
                 <td className="px-3 py-2 text-right font-mono tabular-nums text-gray-200">
-                  {turn.subagent_count}
+                  <Link href={turnHref} className="block">
+                    {turn.subagent_count}
+                  </Link>
                 </td>
                 <td
                   className={`px-3 py-2 text-right font-mono tabular-nums ${
                     turn.error_count > 0 ? "text-[var(--status-critical)]" : "text-gray-200"
                   }`}
                 >
-                  {turn.error_count}
+                  <Link href={turnHref} className="block">
+                    {turn.error_count}
+                  </Link>
                 </td>
                 <td className="px-3 py-2 font-mono text-[11px] text-[var(--text-muted)]">
-                  {turn.model || "—"}
+                  <Link href={turnHref} className="block">
+                    {turn.model || "—"}
+                  </Link>
                 </td>
               </tr>
             );

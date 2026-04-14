@@ -36,6 +36,10 @@ type Turn struct {
 	Phase           string     `json:"phase,omitempty"`
 	PhaseConfidence *float64   `json:"phase_confidence,omitempty"`
 	PhaseSince      *time.Time `json:"phase_since,omitempty"`
+	// AttentionSignalsJSON is the raw JSON serialization of the attention
+	// engine's full signal slice. Empty string when the engine has not run
+	// against this turn yet.
+	AttentionSignalsJSON string `json:"attention_signals_json,omitempty"`
 }
 
 // InsertTurn creates a new turn row. The caller is expected to have already
@@ -230,17 +234,20 @@ func (s *Store) CountRunningTurns(ctx context.Context) (int64, error) {
 }
 
 // UpdateTurnAttention writes the engine's classification onto a turn row.
-// Called by the reconstructor after every meaningful mutation.
-func (s *Store) UpdateTurnAttention(ctx context.Context, turnID string, state, reason, tone string, score float64, phase string, phaseConfidence float64, phaseSince time.Time) error {
+// Called by the reconstructor after every meaningful mutation. signalsJSON is
+// the raw JSON serialization of the engine's Signal slice; pass an empty
+// string when there is nothing to record.
+func (s *Store) UpdateTurnAttention(ctx context.Context, turnID string, state, reason, tone string, score float64, phase string, phaseConfidence float64, phaseSince time.Time, signalsJSON string) error {
 	const q = `
 UPDATE turns SET
-  attention_state   = ?,
-  attention_reason  = ?,
-  attention_score   = ?,
-  attention_tone    = ?,
-  phase             = ?,
-  phase_confidence  = ?,
-  phase_since       = ?
+  attention_state         = ?,
+  attention_reason        = ?,
+  attention_score         = ?,
+  attention_tone          = ?,
+  phase                   = ?,
+  phase_confidence        = ?,
+  phase_since             = ?,
+  attention_signals_json  = ?
 WHERE turn_id = ?
 `
 	_, err := s.db.ExecContext(ctx, q,
@@ -251,6 +258,7 @@ WHERE turn_id = ?
 		nullString(phase),
 		phaseConfidence,
 		phaseSince,
+		nullString(signalsJSON),
 		turnID,
 	)
 	if err != nil {
@@ -288,7 +296,7 @@ SELECT
   input_tokens, output_tokens,
   headline, outcome_summary,
   attention_state, attention_reason, attention_score, attention_tone,
-  phase, phase_confidence, phase_since
+  phase, phase_confidence, phase_since, attention_signals_json
 FROM turns
 `
 
@@ -317,6 +325,7 @@ func scanTurn(r rowScanner) (*Turn, error) {
 		phase           sql.NullString
 		phaseConfidence sql.NullFloat64
 		phaseSince      sql.NullTime
+		attentionSignal sql.NullString
 	)
 	if err := r.Scan(
 		&t.TurnID, &t.TraceID, &t.SessionID, &t.SourceApp, &t.StartedAt, &endedAt, &durationMs,
@@ -325,7 +334,7 @@ func scanTurn(r rowScanner) (*Turn, error) {
 		&inputTokens, &outputTokens,
 		&headline, &outcomeSummary,
 		&attentionState, &attentionReas, &attentionScore, &attentionTone,
-		&phase, &phaseConfidence, &phaseSince,
+		&phase, &phaseConfidence, &phaseSince, &attentionSignal,
 	); err != nil {
 		return nil, err
 	}
@@ -388,6 +397,9 @@ func scanTurn(r rowScanner) (*Turn, error) {
 	if phaseSince.Valid {
 		v := phaseSince.Time
 		t.PhaseSince = &v
+	}
+	if attentionSignal.Valid {
+		t.AttentionSignalsJSON = attentionSignal.String
 	}
 	return &t, nil
 }

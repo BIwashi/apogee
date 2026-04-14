@@ -227,6 +227,12 @@ func (r *Reconstructor) rescoreAttention(ctx context.Context, turnID string, evT
 		since = turn.StartedAt
 	}
 	score := decision.Score
+	signalsJSON := ""
+	if len(decision.Signals) > 0 {
+		if b, err := json.Marshal(decision.Signals); err == nil {
+			signalsJSON = string(b)
+		}
+	}
 	if err := r.store.UpdateTurnAttention(ctx,
 		turnID,
 		decision.State.String(),
@@ -236,6 +242,7 @@ func (r *Reconstructor) rescoreAttention(ctx context.Context, turnID string, evT
 		string(decision.Phase.Name),
 		confidence,
 		since,
+		signalsJSON,
 	); err != nil {
 		r.logger.Debug("rescore: update turn", "err", err)
 		return

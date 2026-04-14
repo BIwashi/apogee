@@ -30,7 +30,7 @@ interface NavItem {
 const NAV: NavItem[] = [
   { href: "/", label: "Overview", icon: LayoutGrid },
   { href: "/timeline", label: "Timeline", icon: Activity, disabled: true },
-  { href: "/sessions", label: "Sessions", icon: GitBranch, disabled: true },
+  { href: "/sessions", label: "Sessions", icon: GitBranch },
   { href: "/agents", label: "Agents", icon: Users, disabled: true },
   { href: "/settings", label: "Settings", icon: Settings, disabled: true },
   { href: "/styleguide", label: "Styleguide", icon: Palette },

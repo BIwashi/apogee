@@ -141,6 +141,124 @@ func classifyTool(t toolSpan) Phase {
 	return PhaseRunning
 }
 
+// PhaseSegment is a contiguous run of one Phase value across a turn's span
+// timeline. Emitted by PhaseSegments and surfaced through the
+// /v1/turns/:id/spans response so the swim-lane renderer can colour the phase
+// row exactly the same way the dashboard does.
+type PhaseSegment struct {
+	Name      Phase     `json:"name"`
+	StartedAt time.Time `json:"started_at"`
+	EndedAt   time.Time `json:"ended_at"`
+}
+
+// PhaseSegments runs ComputePhase incrementally over the span timeline and
+// returns the list of contiguous phase segments. The algorithm advances
+// chronologically through the spans, recomputes the phase after each
+// successive span, and emits a new segment whenever the phase value changes.
+//
+// `turnStart` and `turnEnd` define the bounds the segments will be clipped
+// against. When turnEnd is zero the function uses the latest span end (or
+// start) as the right edge.
+func PhaseSegments(spans []duckdb.SpanRow, turnStart, turnEnd time.Time) []PhaseSegment {
+	if len(spans) == 0 {
+		return nil
+	}
+	// Ordered tool slice plus their original index so we can pin segment
+	// boundaries to actual wall-clock moments.
+	tools := collectTools(spans)
+	if len(tools) == 0 {
+		return nil
+	}
+	rightEdge := turnEnd
+	if rightEdge.IsZero() {
+		for _, sp := range spans {
+			if sp.EndTime != nil && sp.EndTime.After(rightEdge) {
+				rightEdge = *sp.EndTime
+			}
+			if sp.StartTime.After(rightEdge) {
+				rightEdge = sp.StartTime
+			}
+		}
+	}
+	if rightEdge.IsZero() {
+		rightEdge = tools[len(tools)-1].StartTime
+	}
+
+	var segments []PhaseSegment
+	var current PhaseSegment
+	have := false
+
+	for i := 1; i <= len(tools); i++ {
+		window := tools[:i]
+		now := window[len(window)-1].StartTime
+		phase := computePhaseFromTools(window, now)
+		segStart := window[0].StartTime
+		if !have {
+			current = PhaseSegment{Name: phase.Name, StartedAt: segStart, EndedAt: now}
+			have = true
+			continue
+		}
+		if phase.Name == current.Name {
+			current.EndedAt = now
+			continue
+		}
+		// Phase changed: close the previous segment at this span's start time.
+		current.EndedAt = now
+		segments = append(segments, current)
+		current = PhaseSegment{Name: phase.Name, StartedAt: now, EndedAt: now}
+	}
+	if have {
+		if rightEdge.After(current.EndedAt) {
+			current.EndedAt = rightEdge
+		}
+		segments = append(segments, current)
+	}
+	// Clip the leading edge to turnStart so the swim lane lines up with the
+	// turn bar.
+	if !turnStart.IsZero() && len(segments) > 0 && segments[0].StartedAt.Before(turnStart) {
+		segments[0].StartedAt = turnStart
+	}
+	return segments
+}
+
+// computePhaseFromTools is the same heuristic as ComputePhase but operates on
+// the pre-collected tool slice, sparing PhaseSegments from re-collecting on
+// every pass.
+func computePhaseFromTools(tools []toolSpan, now time.Time) PhaseResult {
+	if len(tools) == 0 {
+		return PhaseResult{Name: PhaseIdle, Confidence: 1, Since: now}
+	}
+	window := tools
+	if len(window) > phaseWindow {
+		window = window[len(window)-phaseWindow:]
+	}
+	counts := map[Phase]int{}
+	for _, t := range window {
+		counts[classifyTool(t)]++
+	}
+	total := len(window)
+	for _, p := range []Phase{
+		PhaseDelegating,
+		PhaseTesting,
+		PhaseCommitting,
+		PhaseEditing,
+		PhaseExploring,
+	} {
+		if counts[p]*2 > total {
+			return PhaseResult{
+				Name:       p,
+				Confidence: float64(counts[p]) / float64(total),
+				Since:      sinceFor(tools, p, now),
+			}
+		}
+	}
+	last := tools[len(tools)-1]
+	if !last.StartTime.IsZero() && now.Sub(last.StartTime) <= recentToolWindow {
+		return PhaseResult{Name: PhaseRunning, Confidence: 0.5, Since: last.StartTime}
+	}
+	return PhaseResult{Name: PhaseIdle, Confidence: 0.5, Since: now}
+}
+
 // sinceFor walks backwards from the most recent tool span and returns the
 // start time of the earliest contiguous run that still classifies as `p`.
 // That timestamp is the attention engine's "phase started at" value.
