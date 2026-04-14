@@ -1,19 +1,23 @@
 # apogee — developer Makefile
 #
 # Common targets:
-#   make dev            # run collector + web dev server together
-#   make build          # build the apogee binary into ./bin/apogee
-#   make build-web      # build the Next.js UI into web/.next
-#   make test           # run Go tests with race detector
-#   make tidy           # go mod tidy
-#   make fmt            # go fmt
-#   make clean          # remove build artefacts
+#   make dev               # run collector + web dev server together
+#   make build             # build the apogee binary into ./bin/apogee
+#   make build-collector   # build only the Go binary
+#   make build-web         # build the Next.js UI into web/.next
+#   make run-collector     # build then run the collector against ./.local/apogee.duckdb
+#   make test              # run Go tests with race detector
+#   make test-integration  # run only collector integration tests
+#   make tidy              # go mod tidy
+#   make fmt               # go fmt
+#   make clean             # remove build artefacts
 
 GO            ?= go
 BIN_DIR       ?= bin
 BINARY        ?= $(BIN_DIR)/apogee
 PKG           ?= ./...
 WEB_DIR       ?= web
+LOCAL_DB      ?= $(PWD)/.local/apogee.duckdb
 
 .PHONY: all
 all: build
@@ -34,6 +38,11 @@ build-collector:
 	@mkdir -p $(BIN_DIR)
 	$(GO) build -o $(BINARY) ./cmd/apogee
 
+.PHONY: run-collector
+run-collector: build-collector
+	@mkdir -p $(dir $(LOCAL_DB))
+	$(BINARY) serve -addr=:4100 -db=$(LOCAL_DB)
+
 .PHONY: build-web
 build-web: web-install
 	cd $(WEB_DIR) && npm run build
@@ -48,7 +57,11 @@ web-install:
 
 .PHONY: test
 test:
-	$(GO) test $(PKG) -race
+	$(GO) test $(PKG) -race -count=1
+
+.PHONY: test-integration
+test-integration:
+	$(GO) test ./internal/collector/... -race -count=1 -run Integration
 
 .PHONY: tidy
 tidy:

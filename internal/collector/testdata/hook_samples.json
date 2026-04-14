@@ -1,0 +1,130 @@
+[
+  {
+    "source_app": "demo-app",
+    "session_id": "sess-alpha",
+    "hook_event_type": "SessionStart",
+    "timestamp": 1735689600000,
+    "model_name": "claude-sonnet-4",
+    "payload": {"cwd": "/Users/dev/repo", "machine_id": "mac-01"}
+  },
+  {
+    "source_app": "demo-app",
+    "session_id": "sess-alpha",
+    "hook_event_type": "UserPromptSubmit",
+    "timestamp": 1735689601000,
+    "model_name": "claude-sonnet-4",
+    "prompt": "List files in this repo and summarise the README.",
+    "payload": {"prompt": "List files in this repo and summarise the README."}
+  },
+  {
+    "source_app": "demo-app",
+    "session_id": "sess-alpha",
+    "hook_event_type": "PreToolUse",
+    "timestamp": 1735689602000,
+    "tool_name": "Bash",
+    "tool_use_id": "tu-bash-1",
+    "payload": {"command": "ls -la"}
+  },
+  {
+    "source_app": "demo-app",
+    "session_id": "sess-alpha",
+    "hook_event_type": "PostToolUse",
+    "timestamp": 1735689603000,
+    "tool_name": "Bash",
+    "tool_use_id": "tu-bash-1",
+    "payload": {"output": "drwxr-xr-x ..."}
+  },
+  {
+    "source_app": "demo-app",
+    "session_id": "sess-alpha",
+    "hook_event_type": "PreToolUse",
+    "timestamp": 1735689604000,
+    "tool_name": "Read",
+    "tool_use_id": "tu-read-1",
+    "payload": {"file_path": "README.md"}
+  },
+  {
+    "source_app": "demo-app",
+    "session_id": "sess-alpha",
+    "hook_event_type": "PostToolUseFailure",
+    "timestamp": 1735689605000,
+    "tool_name": "Read",
+    "tool_use_id": "tu-read-1",
+    "error": "ENOENT: no such file"
+  },
+  {
+    "source_app": "demo-app",
+    "session_id": "sess-alpha",
+    "hook_event_type": "PermissionRequest",
+    "timestamp": 1735689606000,
+    "tool_name": "Bash",
+    "permission_suggestions": ["allow once", "always allow ls"],
+    "payload": {"command": "rm -rf /tmp/junk"}
+  },
+  {
+    "source_app": "demo-app",
+    "session_id": "sess-alpha",
+    "hook_event_type": "Notification",
+    "timestamp": 1735689607000,
+    "notification_type": "user-input",
+    "summary": "Awaiting user input",
+    "reason": "permission required"
+  },
+  {
+    "source_app": "demo-app",
+    "session_id": "sess-alpha",
+    "hook_event_type": "SubagentStart",
+    "timestamp": 1735689608000,
+    "agent_id": "sub-1",
+    "agent_type": "Explore",
+    "agent_transcript_path": "/tmp/sub-1.jsonl",
+    "payload": {"goal": "find tests"}
+  },
+  {
+    "source_app": "demo-app",
+    "session_id": "sess-alpha",
+    "hook_event_type": "PreToolUse",
+    "timestamp": 1735689609000,
+    "tool_name": "Grep",
+    "tool_use_id": "tu-grep-1",
+    "agent_id": "sub-1",
+    "payload": {"pattern": "Test"}
+  },
+  {
+    "source_app": "demo-app",
+    "session_id": "sess-alpha",
+    "hook_event_type": "PostToolUse",
+    "timestamp": 1735689610000,
+    "tool_name": "Grep",
+    "tool_use_id": "tu-grep-1",
+    "agent_id": "sub-1",
+    "payload": {"matches": 12}
+  },
+  {
+    "source_app": "demo-app",
+    "session_id": "sess-alpha",
+    "hook_event_type": "SubagentStop",
+    "timestamp": 1735689611000,
+    "agent_id": "sub-1"
+  },
+  {
+    "source_app": "demo-app",
+    "session_id": "sess-alpha",
+    "hook_event_type": "PreCompact",
+    "timestamp": 1735689612000,
+    "reason": "context window full"
+  },
+  {
+    "source_app": "demo-app",
+    "session_id": "sess-alpha",
+    "hook_event_type": "Stop",
+    "timestamp": 1735689613000,
+    "stop_hook_active": false
+  },
+  {
+    "source_app": "demo-app",
+    "session_id": "sess-alpha",
+    "hook_event_type": "SessionEnd",
+    "timestamp": 1735689614000
+  }
+]
