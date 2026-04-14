@@ -13,9 +13,12 @@ builds:
     binary: apogee
     env:
       - CGO_ENABLED=1
+    # v0.1.0 is darwin-only. Linux cgo cross-compile of the DuckDB
+    # static lib collides with libstdc++ symbols under zig cc; a
+    # proper GCC cross toolchain (or a native ubuntu matrix runner)
+    # lands in v0.2.0.
     goos:
       - darwin
-      - linux
     goarch:
       - amd64
       - arm64
@@ -30,16 +33,6 @@ builds:
         env:
           - CC=clang -arch x86_64
           - CXX=clang++ -arch x86_64
-      - goos: linux
-        goarch: amd64
-        env:
-          - CC=zig cc -target x86_64-linux-gnu
-          - CXX=zig c++ -target x86_64-linux-gnu
-      - goos: linux
-        goarch: arm64
-        env:
-          - CC=zig cc -target aarch64-linux-gnu
-          - CXX=zig c++ -target aarch64-linux-gnu
 
 archives:
   - formats: [tar.gz]
