@@ -94,22 +94,35 @@ subagent run, and HITL request inside the turn is a child span. Subagent tool
 calls are parented to the subagent span, which is parented to the turn root.
 
 Storage is DuckDB, with OTel-shaped tables for `spans`, `logs`, and
-`metric_points`, plus denormalized `sessions` and `turns` tables for fast
-dashboard rendering. Attention state is derived and written back onto the
-`turns` row (populated by PR #4).
+`metric_points`, plus denormalized `sessions`, `turns`, `hitl_events`, and
+`session_rollups` tables for fast dashboard rendering. Attention state and
+the per-turn recap blob are derived and written back onto the `turns` row.
+Per-session narrative digests live in `session_rollups`, written by the
+summarizer's second tier (`internal/summarizer/rollup.go`).
 
-## What is in scope for each PR
+## Screenshots
 
-PRs land in order. Each PR is small and reviewable. Current status:
+Real dashboard screenshots live under [`assets/screenshots/`](assets/screenshots/)
+and are referenced from the README. Regenerate them end-to-end with:
 
-- PR #1 — scaffold + design system (merged)
-- PR #2 — collector core: DuckDB + trace reconstructor + ingest HTTP
-- PR #3 — SSE fan-out + live dashboard skeleton
-- PR #4 — attention engine + KPI strip
-- PR #5 — turn detail + swim lane + filter chips
-- PR #6 — LLM summarizer (Haiku via claude CLI subprocess)
-- PR #7 — HITL as structured record
-- PR #8 — OTel registry + OTLP integration
-- PR #9 — Python hook library + install UX
-- PR #10 — embed frontend + CLI + distribution
-- PR #11 — polish: README, screenshots, session rollup
+```sh
+bash scripts/capture-screenshots.sh
+```
+
+The script boots the collector against an in-memory DB, posts a fixture
+batch from `scripts/screenshot_fixtures.json`, and drives Chromium via
+playwright (installed locally into `scripts/node_modules/`).
+
+## PR arc — all 11 shipped
+
+- PR #1 — scaffold + design system (shipped)
+- PR #2 — collector core: DuckDB + trace reconstructor + ingest HTTP (shipped)
+- PR #3 — SSE fan-out + live dashboard skeleton (shipped)
+- PR #4 — attention engine + KPI strip (shipped)
+- PR #5 — turn detail + swim lane + filter chips (shipped)
+- PR #6 — LLM summarizer: per-turn recap via Haiku CLI subprocess (shipped)
+- PR #7 — HITL as structured record (shipped)
+- PR #8 — OTel registry + OTLP integration (shipped)
+- PR #9 — Python hook library + install UX (shipped)
+- PR #10 — embed frontend + CLI + distribution (shipped)
+- PR #11 — polish: README, screenshots, session rollup (shipped)

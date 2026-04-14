@@ -97,6 +97,27 @@ export interface RecapResponse {
   model?: string;
 }
 
+/**
+ * Rollup mirrors internal/summarizer.Rollup. Populated by the Sonnet-powered
+ * session rollup worker; one row per session.
+ */
+export interface Rollup {
+  headline: string;
+  narrative: string;
+  highlights: string[];
+  patterns: string[];
+  open_threads: string[];
+  generated_at: string;
+  model: string;
+  turn_count: number;
+}
+
+export interface RollupResponse {
+  rollup: Rollup | null;
+  generated_at: string | null;
+  model: string | null;
+}
+
 export interface Turn {
   turn_id: string;
   trace_id: string;

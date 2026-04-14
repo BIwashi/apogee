@@ -6,7 +6,13 @@
   <strong>The highest vantage point over your Claude Code agents.</strong>
 </p>
 
-apogee is a single-binary observability dashboard for multi-agent [Claude Code](https://docs.claude.com/en/docs/claude-code) sessions. It captures every hook event, builds OpenTelemetry-shaped traces out of them, stores everything in DuckDB, and streams the result to a dark, NASA-inspired Next.js dashboard that ships embedded in the Go binary. Each Claude Code user turn becomes one OTel trace; every tool call, subagent run, and HITL request inside that turn becomes a child span.
+<p align="center">
+  <img src="assets/screenshots/dashboard-overview.png" alt="apogee live triage dashboard" width="100%">
+  <br>
+  <em>Live triage dashboard — sort turns by attention state, scope to a session with ⌘K.</em>
+</p>
+
+apogee is a single-binary observability dashboard for multi-agent [Claude Code](https://docs.claude.com/en/docs/claude-code) sessions. It captures every hook event, builds OpenTelemetry-shaped traces out of them, stores everything in DuckDB, and streams the result to a dark, NASA-inspired Next.js dashboard that ships embedded in the Go binary.
 
 > [!WARNING]
 > apogee is under active development. APIs, schemas, and the on-disk format can break between commits until the first tagged release.
@@ -15,28 +21,34 @@ apogee is a single-binary observability dashboard for multi-agent [Claude Code](
 
 ## Why apogee
 
-Running multi-agent Claude Code workflows means losing sight of what each agent is actually doing — which tools fire, which permissions get asked, which commands get blocked, which subagent is stuck. apogee answers four questions at a glance:
+Running multi-agent Claude Code workflows means losing sight of what each agent is actually doing — which tools fire, which permissions get asked, which commands get blocked, which subagent is stuck. apogee answers three questions at a glance:
 
-1. **Where should I look right now?** — a rule-based attention engine buckets every turn into `healthy / watchlist / watch / intervene_now` and sorts the live list accordingly.
-2. **What is this turn doing at this moment?** — phase heuristics (plan / explore / edit / test / commit / delegate) plus a live swim-lane render every tool, subagent, and HITL event on a shared time axis.
-3. **What happened in the session I just ran?** — per-turn recap (planned for PR #6, powered by Claude Haiku via the local `claude` CLI — no API key required).
-4. **What are all the raw events behind this?** — a lossless raw log pane keeps the full hook stream available when you need it.
+- **Where should I look right now?** A rule-based attention engine buckets every running turn into `healthy / watchlist / watch / intervene_now` and sorts the live list accordingly, so the noisiest thing is always at the top.
+- **What is this turn doing at this exact moment?** Phase heuristics (plan / explore / edit / test / commit / delegate) and a live swim lane render every tool, subagent, and HITL request on a shared time axis.
+- **What just happened across the whole session?** A two-tier LLM summarizer fills in a per-turn recap (Haiku) and a per-session narrative rollup (Sonnet), both via the local `claude` CLI — no extra API key required.
 
 ---
 
-## Design
+## Key features
 
-apogee is designed, not decorated. The visual identity is a first-class feature.
-
-- **Typography** — Artemis Inter for display, system stack for body, SF Mono for code.
-- **Palette** — NASA-inspired Artemis colors (`#FC3D21` Artemis Red, `#0B3D91` Artemis Blue, `#27AAE1` Earth Blue) on a deep-space dark background.
-- **Icons** — [lucide-react](https://lucide.dev) exclusively, size 16, stroke 1.5. Zero emoji in the UI chrome.
-- **Components** — no component library beyond lucide. Every primitive is custom and lives in [`web/app/components/`](web/app/components/).
-
-See [`docs/design-tokens.md`](docs/design-tokens.md) for the complete spec.
+| Surface | What you get |
+|---|---|
+| Triage dashboard | Live ATTN-sorted turn list, KPI strip, event ticker, scoped filter chips |
+| Session detail | Per-session rollup, scoped KPIs, every turn ordered by attention |
+| Turn detail | Swim lane, span tree, recap panels, attention reasoning, HITL queue |
+| Command palette | Fuzzy search across sessions, scopes, and recent prompts (⌘K) |
+| Recap worker | Per-turn structured recap via the local `claude` CLI (Haiku) |
+| Rollup worker | Per-session narrative digest via the local `claude` CLI (Sonnet) |
+| HITL queue | Permission requests as first-class records with operator decisions |
+| OpenTelemetry | OTLP gRPC/HTTP export, full claude_code.* semconv registry |
+| Hooks library | Stdlib-only Python hooks shipped via `apogee init` |
+| CLI | `serve`, `init`, `doctor`, `version` — one binary, no Node runtime |
 
 <p align="center">
-  <img src="assets/branding/apogee-logo-dark.png" alt="apogee wordmark" width="360">
+  <img src="assets/screenshots/session-detail.png" alt="session detail" width="49%">
+  <img src="assets/screenshots/turn-detail.png" alt="turn detail" width="49%">
+  <br>
+  <em>Session rollup and per-turn swim lane — both populated by the local claude CLI.</em>
 </p>
 
 ---
@@ -55,12 +67,17 @@ See [`docs/design-tokens.md`](docs/design-tokens.md) for the complete spec.
                                 │                   │                         │
                                 │  ┌─ store/duckdb ─▼────────────────────┐    │
                                 │  │ sessions · turns · spans · logs ·   │    │
-                                │  │ metric_points · task_type_history    │    │
+                                │  │ metric_points · hitl · rollups       │    │
                                 │  └────────────────┬────────────────────┘    │
                                 │                   │                         │
                                 │  ┌─ attention ────▼────────────────────┐    │
                                 │  │ rule engine + phase heuristic +      │    │
                                 │  │ history-based pre-emptive watchlist  │    │
+                                │  └────────────────┬────────────────────┘    │
+                                │                   │                         │
+                                │  ┌─ summarizer ───▼────────────────────┐    │
+                                │  │ recap worker  (Haiku, per turn)      │    │
+                                │  │ rollup worker (Sonnet, per session)  │    │
                                 │  └────────────────┬────────────────────┘    │
                                 │                   │                         │
                                 │  ┌─ sse ──────────▼────────────────────┐    │
@@ -91,7 +108,7 @@ trace = claude_code.turn  (root span, opens at UserPromptSubmit, closes at Stop)
 └── span event  claude_code.notification
 ```
 
-Backing storage is DuckDB: `sessions`, `turns`, `spans`, `logs`, `metric_points`, `task_type_history`. `turns` is denormalized for fast dashboard reads and holds the derived `attention_state`, `attention_reason`, and `phase` columns. See [`docs/architecture.md`](docs/architecture.md) and [`internal/store/duckdb/schema.sql`](internal/store/duckdb/schema.sql).
+Backing storage is DuckDB with OTel-shaped tables for `spans`, `logs`, `metric_points`, plus denormalized `sessions`, `turns`, `hitl_events`, and `session_rollups` for fast dashboard reads. The `turns` row also holds the derived `attention_state`, `attention_reason`, `phase`, and `recap_json` columns. See [`docs/architecture.md`](docs/architecture.md) and [`internal/store/duckdb/schema.sql`](internal/store/duckdb/schema.sql).
 
 ---
 
@@ -104,13 +121,67 @@ Backing storage is DuckDB: `sessions`, `turns`, `spans`, `logs`, `metric_points`
 | SSE fan-out + live dashboard skeleton | shipped |
 | Attention engine + KPI strip | shipped |
 | Turn detail + swim lane + filter chips | shipped |
-| LLM summarizer (Haiku via `claude` CLI) | planned |
-| HITL as structured record | planned |
-| OpenTelemetry semconv registry + OTLP export | planned |
-| Python hook library + install UX | planned |
-| Embedded frontend + CLI distribution | planned |
+| LLM summarizer (Haiku per turn, Sonnet per session) | shipped |
+| HITL as structured record | shipped |
+| OpenTelemetry semconv registry + OTLP export | shipped |
+| Python hook library + install UX | shipped |
+| Embedded frontend + CLI distribution | shipped |
+| README + screenshots + session rollup polish | shipped |
 
-See [open pull requests](https://github.com/BIwashi/apogee/pulls) for what is actively landing.
+See [open pull requests](https://github.com/BIwashi/apogee/pulls) for what is actively landing next.
+
+---
+
+## Quickstart
+
+```sh
+# 1. Install (Homebrew tap, go install, or build from source).
+brew install BIwashi/tap/apogee
+# or
+go install github.com/BIwashi/apogee/cmd/apogee@latest
+
+# 2. Start the collector and install hooks into the current project.
+apogee serve &
+apogee init --source-app my-project
+
+# 3. Open the dashboard.
+open http://localhost:4100
+```
+
+> [!NOTE]
+> `go install` produces a binary whose embedded dashboard is a placeholder page: the API is fully functional, but the UI is a stub that instructs you to run `make web-build` locally or install a release binary. This is because the Next.js static export is not distributed through the Go module proxy. `brew install` and the release tarballs always carry the full dashboard.
+
+Once the collector is running, restart Claude Code in your project and every hook event begins streaming into the dashboard.
+
+---
+
+## Configuration
+
+apogee reads an optional TOML file at `~/.apogee/config.toml`. Every value has a default so the file is purely additive.
+
+```toml
+[telemetry]
+enabled       = true
+endpoint      = "https://otlp.example.com"
+protocol      = "grpc"           # "grpc" or "http"
+service_name  = "apogee"
+sample_ratio  = 1.0
+
+[summarizer]
+enabled       = true
+recap_model   = "claude-haiku-4-5"
+rollup_model  = "claude-sonnet-4-6"
+concurrency   = 1
+timeout_seconds = 120
+```
+
+Every value is also overridable via environment variables (e.g. `APOGEE_RECAP_MODEL`, `APOGEE_ROLLUP_MODEL`, `OTEL_EXPORTER_OTLP_ENDPOINT`). See `internal/summarizer/config.go` and `internal/telemetry/config.go` for the full list.
+
+---
+
+## OpenTelemetry integration
+
+Every reconstructor write is mirrored onto a real OTel span via the SDK, so apogee doubles as an OTLP source for any backend (Tempo, Honeycomb, Datadog, etc.). The `claude_code.*` attributes follow a versioned semconv registry shipped in [`semconv/`](semconv/) and documented in [`docs/otel-semconv.md`](docs/otel-semconv.md). Set `OTEL_EXPORTER_OTLP_ENDPOINT` (or the TOML equivalent) and the collector exports automatically.
 
 ---
 
@@ -120,95 +191,30 @@ See [open pull requests](https://github.com/BIwashi/apogee/pulls) for what is ac
 cmd/apogee/         Go entry point (CLI + embedded server)
 internal/
   attention/        rule engine, phase heuristic, history reader
+  cli/              cobra commands (serve / init / doctor / version)
   collector/        chi router, server wiring, SSE endpoint
+  hitl/             HITL service: lifecycle, expiration, response API
   ingest/           hook payload types, stateful trace reconstructor
   metrics/          background sampler writing to metric_points
   otel/             OTel-shaped Go models
   sse/              fan-out hub + event envelopes
   store/duckdb/     DuckDB schema + queries
+  summarizer/       recap worker (Haiku) + rollup worker (Sonnet)
+  telemetry/        OTel SDK provider, OTLP exporter
+  webassets/        embed.FS for the Next.js static export
   version/          build-version constant
 web/                Next.js 16 dashboard (App Router, Tailwind v4)
   app/              routes and React components
   app/lib/          typed API client, SWR hooks, design tokens
   public/fonts/     Artemis Inter display font
 assets/branding/    apogee banner, logo, and icon
+assets/screenshots/ committed dashboard screenshots
+scripts/            screenshot capture (playwright) and fixtures
 semconv/            OpenTelemetry semantic conventions for claude_code.*
-hooks/              Python reference hooks (PR #9)
-docs/               architecture + design-token specifications
+hooks/              Python reference hooks (stdlib-only)
+docs/               architecture + design-token + semconv specs
 .github/workflows/  CI (Go vet/build/test, web typecheck/lint/build)
 ```
-
----
-
-## Install
-
-apogee ships as a single self-contained binary. The dashboard is embedded inside the Go binary via `embed.FS`, so there is no runtime Node.js dependency and no separate frontend to deploy.
-
-```sh
-# Homebrew (when the tap is set up)
-brew install BIwashi/tap/apogee
-
-# Go (installs the binary with the placeholder UI — see note below)
-go install github.com/BIwashi/apogee/cmd/apogee@latest
-
-# Download a tagged release from GitHub
-#   https://github.com/BIwashi/apogee/releases
-
-# Build from source
-git clone https://github.com/BIwashi/apogee.git
-cd apogee
-make build
-./bin/apogee serve
-```
-
-> [!NOTE]
-> `go install` produces a binary whose embedded dashboard is a placeholder page: the API is fully functional, but the UI is a stub that instructs you to run `make web-build` locally or install a release binary. This is because the Next.js static export is not distributed through the Go module proxy. `brew install` and the release tarballs always carry the full dashboard.
-
-Once installed, run the collector and install the hooks into your project:
-
-```sh
-apogee serve &
-apogee init --source-app my-project
-apogee doctor   # quick environment check (python3, claude CLI, db writable)
-apogee version  # prints build info (commit, date, Go version)
-```
-
-## Install the hooks
-
-apogee is wire-compatible with Claude Code's native hook system. Once the collector is running, one command installs the Python hook library into any project's `.claude/settings.json`:
-
-```sh
-# 1. Build or install the binary (see "Local development" below; `brew`/`go install` will land in PR #10).
-make build
-
-# 2. Start the collector.
-./bin/apogee serve &
-
-# 3. Install hooks into the current project.
-./bin/apogee init
-#   Target: /path/to/project/.claude/settings.json (project scope)
-#   Source app: project (derived from directory name)
-#   Hooks dir: ~/.apogee/hooks/0.0.0-dev (will be extracted)
-#   Hook events to install:
-#     + PreToolUse
-#     + PostToolUse
-#     ... (12 total)
-```
-
-`apogee init` extracts the embedded Python hook library into `~/.apogee/hooks/<version>/` and points `.claude/settings.json` at it. Restart Claude Code and every hook event begins flowing to the collector.
-
-Flags worth knowing:
-
-| Flag | Purpose |
-|---|---|
-| `--target <path>` | Override the `.claude` directory (default: `./.claude`). |
-| `--source-app <name>` | Label stamped onto every event. |
-| `--server-url <url>` | Collector endpoint (default: `http://localhost:4100/v1/events`). |
-| `--scope <user\|project>` | Install into `~/.claude` or `./.claude`. |
-| `--dry-run` | Print the plan without writing. |
-| `--force` | Overwrite existing apogee hook entries. |
-
-The hook scripts themselves are stdlib-only Python. Run `apogee hooks extract --to <dir>` to drop the library anywhere on disk, and see [`hooks/README.md`](hooks/README.md) for the full wire contract and failure semantics.
 
 ---
 
@@ -220,7 +226,7 @@ Requirements: Go 1.24+, Node 20+, and a C toolchain (DuckDB is accessed through 
 # Go
 go build ./...
 go vet ./...
-go test ./... -race
+go test ./... -race -count=1
 
 # Web (from web/)
 npm install
@@ -230,7 +236,7 @@ npm run lint
 npm run build
 
 # Run the collector (from repo root)
-go run ./cmd/apogee serve -addr :4100 -db .local/apogee.duckdb
+go run ./cmd/apogee serve --addr :4100 --db .local/apogee.duckdb
 ```
 
 Or use the Makefile:
@@ -241,6 +247,14 @@ make run-collector    # runs the collector against .local/apogee.duckdb
 make test             # go vet + race tests
 make dev              # collector and Next.js dev server together
 ```
+
+To regenerate the screenshots committed under `assets/screenshots/`:
+
+```sh
+bash scripts/capture-screenshots.sh
+```
+
+The script boots the collector against an in-memory DB, posts a fixture batch, and drives Chromium via playwright.
 
 ---
 

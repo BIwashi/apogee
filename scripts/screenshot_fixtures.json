@@ -1,0 +1,299 @@
+[
+  {
+    "source_app": "apogee",
+    "session_id": "sess-platform",
+    "hook_event_type": "SessionStart",
+    "timestamp": 1742400000000,
+    "model_name": "claude-sonnet-4-5",
+    "payload": {"cwd": "/Users/dev/apogee", "machine_id": "macbook-01"}
+  },
+  {
+    "source_app": "apogee",
+    "session_id": "sess-platform",
+    "hook_event_type": "UserPromptSubmit",
+    "timestamp": 1742400001000,
+    "model_name": "claude-sonnet-4-5",
+    "prompt": "Add a session rollup worker that summarises every closed turn into a narrative digest.",
+    "payload": {"prompt": "Add a session rollup worker that summarises every closed turn into a narrative digest."}
+  },
+  {
+    "source_app": "apogee",
+    "session_id": "sess-platform",
+    "hook_event_type": "PreToolUse",
+    "timestamp": 1742400002000,
+    "tool_name": "Read",
+    "tool_use_id": "tu-pl-1",
+    "payload": {"file_path": "internal/summarizer/worker.go"}
+  },
+  {
+    "source_app": "apogee",
+    "session_id": "sess-platform",
+    "hook_event_type": "PostToolUse",
+    "timestamp": 1742400004500,
+    "tool_name": "Read",
+    "tool_use_id": "tu-pl-1",
+    "payload": {"bytes": 7421}
+  },
+  {
+    "source_app": "apogee",
+    "session_id": "sess-platform",
+    "hook_event_type": "PreToolUse",
+    "timestamp": 1742400005200,
+    "tool_name": "Edit",
+    "tool_use_id": "tu-pl-2",
+    "payload": {"file_path": "internal/summarizer/rollup.go"}
+  },
+  {
+    "source_app": "apogee",
+    "session_id": "sess-platform",
+    "hook_event_type": "PostToolUse",
+    "timestamp": 1742400008800,
+    "tool_name": "Edit",
+    "tool_use_id": "tu-pl-2",
+    "payload": {"diff_lines": 184}
+  },
+  {
+    "source_app": "apogee",
+    "session_id": "sess-platform",
+    "hook_event_type": "PreToolUse",
+    "timestamp": 1742400009500,
+    "tool_name": "Bash",
+    "tool_use_id": "tu-pl-3",
+    "payload": {"command": "go test ./internal/summarizer/..."}
+  },
+  {
+    "source_app": "apogee",
+    "session_id": "sess-platform",
+    "hook_event_type": "PostToolUse",
+    "timestamp": 1742400015000,
+    "tool_name": "Bash",
+    "tool_use_id": "tu-pl-3",
+    "payload": {"exit_code": 0, "stdout_tail": "ok  github.com/BIwashi/apogee/internal/summarizer 5.467s"}
+  },
+  {
+    "source_app": "apogee",
+    "session_id": "sess-platform",
+    "hook_event_type": "Stop",
+    "timestamp": 1742400016000,
+    "stop_hook_active": false
+  },
+  {
+    "source_app": "apogee",
+    "session_id": "sess-platform",
+    "hook_event_type": "UserPromptSubmit",
+    "timestamp": 1742400020000,
+    "model_name": "claude-sonnet-4-5",
+    "prompt": "Wire the rollup worker into Service.Start and add a scheduler that fires once an hour.",
+    "payload": {"prompt": "Wire the rollup worker into Service.Start and add a scheduler that fires once an hour."}
+  },
+  {
+    "source_app": "apogee",
+    "session_id": "sess-platform",
+    "hook_event_type": "PreToolUse",
+    "timestamp": 1742400021000,
+    "tool_name": "Edit",
+    "tool_use_id": "tu-pl-4",
+    "payload": {"file_path": "internal/summarizer/service.go"}
+  },
+  {
+    "source_app": "apogee",
+    "session_id": "sess-platform",
+    "hook_event_type": "PostToolUse",
+    "timestamp": 1742400024500,
+    "tool_name": "Edit",
+    "tool_use_id": "tu-pl-4",
+    "payload": {"diff_lines": 92}
+  },
+  {
+    "source_app": "apogee",
+    "session_id": "sess-platform",
+    "hook_event_type": "PreToolUse",
+    "timestamp": 1742400025000,
+    "tool_name": "Bash",
+    "tool_use_id": "tu-pl-5",
+    "payload": {"command": "go vet ./..."}
+  },
+  {
+    "source_app": "apogee",
+    "session_id": "sess-platform",
+    "hook_event_type": "PostToolUse",
+    "timestamp": 1742400027000,
+    "tool_name": "Bash",
+    "tool_use_id": "tu-pl-5",
+    "payload": {"exit_code": 0}
+  },
+  {
+    "source_app": "apogee",
+    "session_id": "sess-platform",
+    "hook_event_type": "Stop",
+    "timestamp": 1742400028000,
+    "stop_hook_active": false
+  },
+
+  {
+    "source_app": "claude-orchestra",
+    "session_id": "sess-orchestra",
+    "hook_event_type": "SessionStart",
+    "timestamp": 1742400100000,
+    "model_name": "claude-opus-4-6",
+    "payload": {"cwd": "/Users/dev/claude-orchestra", "machine_id": "macbook-01"}
+  },
+  {
+    "source_app": "claude-orchestra",
+    "session_id": "sess-orchestra",
+    "hook_event_type": "UserPromptSubmit",
+    "timestamp": 1742400101000,
+    "model_name": "claude-opus-4-6",
+    "prompt": "Migrate the conductor to use the new SSE event envelope.",
+    "payload": {"prompt": "Migrate the conductor to use the new SSE event envelope."}
+  },
+  {
+    "source_app": "claude-orchestra",
+    "session_id": "sess-orchestra",
+    "hook_event_type": "PreToolUse",
+    "timestamp": 1742400102500,
+    "tool_name": "Grep",
+    "tool_use_id": "tu-or-1",
+    "payload": {"pattern": "broadcastTurn"}
+  },
+  {
+    "source_app": "claude-orchestra",
+    "session_id": "sess-orchestra",
+    "hook_event_type": "PostToolUse",
+    "timestamp": 1742400103200,
+    "tool_name": "Grep",
+    "tool_use_id": "tu-or-1",
+    "payload": {"matches": 12}
+  },
+  {
+    "source_app": "claude-orchestra",
+    "session_id": "sess-orchestra",
+    "hook_event_type": "PreToolUse",
+    "timestamp": 1742400104000,
+    "tool_name": "Edit",
+    "tool_use_id": "tu-or-2",
+    "payload": {"file_path": "internal/conductor/sse.go"}
+  },
+  {
+    "source_app": "claude-orchestra",
+    "session_id": "sess-orchestra",
+    "hook_event_type": "PostToolUseFailure",
+    "timestamp": 1742400106500,
+    "tool_name": "Edit",
+    "tool_use_id": "tu-or-2",
+    "error": "string not found in file (whitespace mismatch)"
+  },
+  {
+    "source_app": "claude-orchestra",
+    "session_id": "sess-orchestra",
+    "hook_event_type": "PermissionRequest",
+    "timestamp": 1742400107000,
+    "tool_name": "Bash",
+    "permission_suggestions": ["allow once", "always allow"],
+    "payload": {"command": "rm internal/conductor/sse.go.bak"}
+  },
+  {
+    "source_app": "claude-orchestra",
+    "session_id": "sess-orchestra",
+    "hook_event_type": "Notification",
+    "timestamp": 1742400107500,
+    "notification_type": "user-input",
+    "summary": "Awaiting permission for Bash",
+    "reason": "Bash command requires approval"
+  },
+
+  {
+    "source_app": "demo-cli",
+    "session_id": "sess-demo",
+    "hook_event_type": "SessionStart",
+    "timestamp": 1742400200000,
+    "model_name": "claude-haiku-4-5",
+    "payload": {"cwd": "/Users/dev/demo", "machine_id": "macbook-01"}
+  },
+  {
+    "source_app": "demo-cli",
+    "session_id": "sess-demo",
+    "hook_event_type": "UserPromptSubmit",
+    "timestamp": 1742400201000,
+    "model_name": "claude-haiku-4-5",
+    "prompt": "Generate a CHANGELOG entry from the last ten commits.",
+    "payload": {"prompt": "Generate a CHANGELOG entry from the last ten commits."}
+  },
+  {
+    "source_app": "demo-cli",
+    "session_id": "sess-demo",
+    "hook_event_type": "PreToolUse",
+    "timestamp": 1742400201800,
+    "tool_name": "Bash",
+    "tool_use_id": "tu-dm-1",
+    "payload": {"command": "git log --oneline -n 10"}
+  },
+  {
+    "source_app": "demo-cli",
+    "session_id": "sess-demo",
+    "hook_event_type": "PostToolUse",
+    "timestamp": 1742400202200,
+    "tool_name": "Bash",
+    "tool_use_id": "tu-dm-1",
+    "payload": {"exit_code": 0}
+  },
+  {
+    "source_app": "demo-cli",
+    "session_id": "sess-demo",
+    "hook_event_type": "PreToolUse",
+    "timestamp": 1742400202500,
+    "tool_name": "Edit",
+    "tool_use_id": "tu-dm-2",
+    "payload": {"file_path": "CHANGELOG.md"}
+  },
+  {
+    "source_app": "demo-cli",
+    "session_id": "sess-demo",
+    "hook_event_type": "PostToolUse",
+    "timestamp": 1742400204800,
+    "tool_name": "Edit",
+    "tool_use_id": "tu-dm-2",
+    "payload": {"diff_lines": 24}
+  },
+  {
+    "source_app": "demo-cli",
+    "session_id": "sess-demo",
+    "hook_event_type": "Stop",
+    "timestamp": 1742400205500,
+    "stop_hook_active": false
+  },
+  {
+    "source_app": "demo-cli",
+    "session_id": "sess-demo",
+    "hook_event_type": "UserPromptSubmit",
+    "timestamp": 1742400220000,
+    "model_name": "claude-haiku-4-5",
+    "prompt": "Run the full test suite and report failures.",
+    "payload": {"prompt": "Run the full test suite and report failures."}
+  },
+  {
+    "source_app": "demo-cli",
+    "session_id": "sess-demo",
+    "hook_event_type": "PreToolUse",
+    "timestamp": 1742400221000,
+    "tool_name": "Bash",
+    "tool_use_id": "tu-dm-3",
+    "payload": {"command": "npm test"}
+  },
+  {
+    "source_app": "demo-cli",
+    "session_id": "sess-demo",
+    "hook_event_type": "PostToolUseFailure",
+    "timestamp": 1742400229000,
+    "tool_name": "Bash",
+    "tool_use_id": "tu-dm-3",
+    "error": "exit code 1: 2 failing tests in suite/api"
+  },
+  {
+    "source_app": "demo-cli",
+    "session_id": "sess-demo",
+    "hook_event_type": "Stop",
+    "timestamp": 1742400230000,
+    "stop_hook_active": false
+  }
+]

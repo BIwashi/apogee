@@ -41,6 +41,11 @@ type Config struct {
 	MaxSpanCount int
 	// MaxLogCount caps how many log records get serialised into the prompt.
 	MaxLogCount int
+	// MaxRollupTurns caps how many turns the session rollup tier loads.
+	MaxRollupTurns int
+	// RollupSchedulerEnabled toggles the once-an-hour background scheduler
+	// that picks stale sessions and enqueues them for a rollup.
+	RollupSchedulerEnabled bool
 	// ConfigPath is the TOML file Load was asked to read, useful for
 	// diagnostics. Populated by Load; empty when the file was absent.
 	ConfigPath string
@@ -59,6 +64,8 @@ func Default() Config {
 		MinTurnDurationMs: 1500,
 		MaxSpanCount:      500,
 		MaxLogCount:       300,
+		MaxRollupTurns:    40,
+		RollupSchedulerEnabled: true,
 	}
 }
 

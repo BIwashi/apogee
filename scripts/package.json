@@ -1,0 +1,13 @@
+{
+  "name": "apogee-screenshots",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Standalone playwright runner used to capture dashboard screenshots for the README. Kept out of web/ so the main frontend workspace does not pull playwright as a dependency.",
+  "type": "module",
+  "scripts": {
+    "capture": "node capture.mjs"
+  },
+  "dependencies": {
+    "playwright": "^1.50.0"
+  }
+}
