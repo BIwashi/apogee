@@ -18,6 +18,16 @@ import (
 	"github.com/BIwashi/apogee/internal/store/duckdb"
 )
 
+// InterventionsObserver is the subset of the interventions service the
+// reconstructor uses. Kept as an interface so the ingest package does not
+// have to import internal/interventions (which would create a cycle if the
+// service later needed to reach into the reconstructor).
+type InterventionsObserver interface {
+	ExpireForTurn(ctx context.Context, turnID string) error
+	ExpireForSession(ctx context.Context, sessionID string) error
+	ObservePostHookConsumption(ctx context.Context, sessionID, hookEvent string, logID int64)
+}
+
 func jsonUnmarshal(b []byte, v any) error { return json.Unmarshal(b, v) }
 
 // agentFrame is one entry on a per-agent span stack.
@@ -135,6 +145,11 @@ type Reconstructor struct {
 	// otelmirror.go for the helpers that own this side of the
 	// reconstructor.
 	Tracer oteltrace.Tracer
+
+	// InterventionsSvc, when non-nil, observes every inbound hook event
+	// for downstream consumption of operator interventions and receives
+	// turn/session-close notifications so pending rows can be expired.
+	InterventionsSvc InterventionsObserver
 }
 
 // NewReconstructor returns a Reconstructor backed by the given store. logger
@@ -227,6 +242,16 @@ func (r *Reconstructor) Apply(ctx context.Context, ev *HookEvent) error {
 	// so the dashboard still gets a broadcast.
 	r.rescoreAttention(ctx, chooseTurnID(preTurnID, st.TurnID), ev.Time())
 
+	// Observation pass for operator interventions: if any intervention was
+	// previously delivered on this session, the current downstream hook is
+	// a plausible proxy that Claude Code has now processed the block/
+	// additionalContext. The service flips it to consumed. The log id is
+	// not threaded through InsertLog, so we pass 0; consumption records
+	// it as NULL which the brief tolerates as a best-effort observation.
+	if r.InterventionsSvc != nil {
+		r.InterventionsSvc.ObservePostHookConsumption(ctx, ev.SessionID, ev.HookEventType, 0)
+	}
+
 	return err
 }
 
@@ -271,12 +296,17 @@ func (r *Reconstructor) rescoreAttention(ctx context.Context, turnID string, evT
 	if err != nil {
 		r.logger.Debug("rescore: load hitl", "err", err)
 	}
+	interventions, err := r.store.ListPendingInterventionsByTurn(ctx, turnID)
+	if err != nil {
+		r.logger.Debug("rescore: load interventions", "err", err)
+	}
 
 	decision := r.Engine.Score(attention.Input{
-		Turn:  *turn,
-		Spans: spans,
-		HITL:  hitlRows,
-		Now:   now,
+		Turn:          *turn,
+		Spans:         spans,
+		HITL:          hitlRows,
+		Interventions: interventions,
+		Now:           now,
 	})
 
 	var confidence float64
@@ -360,6 +390,13 @@ func (r *Reconstructor) handleSessionStart(ctx context.Context, st *sessionState
 func (r *Reconstructor) handleSessionEnd(ctx context.Context, st *sessionState, ev *HookEvent) error {
 	if err := r.store.MarkSessionEnded(ctx, ev.SessionID, ev.Time()); err != nil {
 		return err
+	}
+	// Expire any pending operator interventions queued against this
+	// session before we forget the in-memory state.
+	if r.InterventionsSvc != nil {
+		if err := r.InterventionsSvc.ExpireForSession(ctx, ev.SessionID); err != nil {
+			r.logger.Debug("interventions: expire for session", "err", err)
+		}
 	}
 	r.broadcastSession(ctx, ev.SessionID)
 	delete(r.sessions, ev.SessionID)
@@ -1173,6 +1210,13 @@ func (r *Reconstructor) closeTurn(ctx context.Context, st *sessionState, end tim
 	}
 	if turnWriteOK && r.OnTurnClosed != nil {
 		r.OnTurnClosed(closedTurnID)
+	}
+	// Expire any pending turn-scoped interventions now that the turn
+	// has moved to a terminal state.
+	if r.InterventionsSvc != nil && closedTurnID != "" {
+		if err := r.InterventionsSvc.ExpireForTurn(ctx, closedTurnID); err != nil {
+			r.logger.Debug("interventions: expire for turn", "err", err)
+		}
 	}
 	st.TurnRoot = nil
 	st.TurnRootOTel = nil

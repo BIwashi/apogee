@@ -249,6 +249,12 @@ export const SSE_EVENT_TYPES = {
   HITLRequested: "hitl.requested",
   HITLResponded: "hitl.responded",
   HITLExpired: "hitl.expired",
+  InterventionSubmitted: "intervention.submitted",
+  InterventionClaimed: "intervention.claimed",
+  InterventionDelivered: "intervention.delivered",
+  InterventionConsumed: "intervention.consumed",
+  InterventionExpired: "intervention.expired",
+  InterventionCancelled: "intervention.cancelled",
 } as const;
 
 export type SSEEventType =
@@ -288,7 +294,8 @@ export type AnyApogeeEvent =
   | ApogeeEvent<TurnPayload>
   | ApogeeEvent<SpanPayload>
   | ApogeeEvent<SessionPayload>
-  | ApogeeEvent<HITLPayload>;
+  | ApogeeEvent<HITLPayload>
+  | ApogeeEvent<InterventionPayload>;
 
 export interface RecentTurnsResponse {
   turns: Turn[];
@@ -472,6 +479,65 @@ export interface HITLPayload {
 
 export interface HITLListResponse {
   hitl: HITLEvent[];
+}
+
+/**
+ * Intervention types — mirror internal/store/duckdb/interventions.go and
+ * internal/sse/event.go. Operators push text into a live Claude Code session
+ * via POST /v1/interventions; the hook at next PreToolUse / UserPromptSubmit
+ * claims the row and returns the decision JSON to the agent.
+ */
+export type InterventionMode = "interrupt" | "context" | "both";
+export type InterventionScope = "this_turn" | "this_session";
+export type InterventionUrgency = "high" | "normal" | "low";
+export type InterventionStatus =
+  | "queued"
+  | "claimed"
+  | "delivered"
+  | "consumed"
+  | "expired"
+  | "cancelled";
+
+export interface Intervention {
+  intervention_id: string;
+  session_id: string;
+  turn_id?: string;
+  operator_id?: string;
+  created_at: string;
+  claimed_at?: string;
+  delivered_at?: string;
+  consumed_at?: string;
+  expired_at?: string;
+  cancelled_at?: string;
+  auto_expire_at: string;
+  message: string;
+  delivery_mode: InterventionMode;
+  scope: InterventionScope;
+  urgency: InterventionUrgency;
+  status: InterventionStatus;
+  delivered_via?: string;
+  consumed_event_id?: number;
+  notes?: string;
+}
+
+export interface InterventionPayload {
+  intervention: Intervention;
+}
+
+export interface InterventionListResponse {
+  interventions: Intervention[];
+}
+
+export interface InterventionCreateRequest {
+  session_id: string;
+  turn_id?: string;
+  operator_id?: string;
+  message: string;
+  delivery_mode: InterventionMode;
+  scope: InterventionScope;
+  urgency: InterventionUrgency;
+  notes?: string;
+  ttl_seconds?: number;
 }
 
 /**

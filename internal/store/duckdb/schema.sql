@@ -160,6 +160,36 @@ CREATE TABLE IF NOT EXISTS session_rollups (
 );
 CREATE INDEX IF NOT EXISTS idx_rollups_generated ON session_rollups(generated_at DESC);
 
+-- Interventions: operator-initiated messages pushed into a live Claude Code
+-- session. The lifecycle is queued -> claimed -> delivered -> consumed,
+-- with cancelled / expired as terminal off-ramps. A claim is an atomic
+-- flip executed by the hook at PreToolUse/UserPromptSubmit time.
+CREATE TABLE IF NOT EXISTS interventions (
+  intervention_id    VARCHAR PRIMARY KEY,
+  session_id         VARCHAR NOT NULL,
+  turn_id            VARCHAR,
+  operator_id        VARCHAR,
+  created_at         TIMESTAMP NOT NULL,
+  claimed_at         TIMESTAMP,
+  delivered_at       TIMESTAMP,
+  consumed_at        TIMESTAMP,
+  expired_at         TIMESTAMP,
+  cancelled_at       TIMESTAMP,
+  auto_expire_at     TIMESTAMP NOT NULL,
+  message            VARCHAR NOT NULL,
+  delivery_mode      VARCHAR NOT NULL,
+  scope              VARCHAR NOT NULL,
+  urgency            VARCHAR NOT NULL,
+  status             VARCHAR NOT NULL,
+  delivered_via      VARCHAR,
+  consumed_event_id  BIGINT,
+  notes              VARCHAR
+);
+CREATE INDEX IF NOT EXISTS idx_interventions_session_created ON interventions(session_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_interventions_pending ON interventions(session_id, status);
+CREATE INDEX IF NOT EXISTS idx_interventions_status ON interventions(status);
+CREATE INDEX IF NOT EXISTS idx_interventions_auto_expire ON interventions(auto_expire_at);
+
 -- Metric points: OTel metric data. Write-optimized columnar.
 CREATE SEQUENCE IF NOT EXISTS metric_points_id_seq;
 CREATE TABLE IF NOT EXISTS metric_points (

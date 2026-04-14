@@ -26,6 +26,12 @@ const (
 	EventHITLRequested      = "hitl.requested"
 	EventHITLResponded      = "hitl.responded"
 	EventHITLExpired        = "hitl.expired"
+	EventInterventionSubmitted = "intervention.submitted"
+	EventInterventionClaimed   = "intervention.claimed"
+	EventInterventionDelivered = "intervention.delivered"
+	EventInterventionConsumed  = "intervention.consumed"
+	EventInterventionExpired   = "intervention.expired"
+	EventInterventionCancelled = "intervention.cancelled"
 )
 
 // Event is the broadcast wire message shape. Every SSE frame on the stream
@@ -139,6 +145,94 @@ func SnapshotFromHITL(ev duckdb.HITLEvent) HITLSnapshot {
 // NewHITLEvent builds an SSE Event for one of the hitl.* lifecycle types.
 func NewHITLEvent(kind string, now time.Time, ev duckdb.HITLEvent) Event {
 	data, _ := json.Marshal(HITLPayload{HITL: SnapshotFromHITL(ev)})
+	return Event{Type: kind, At: now, Data: data}
+}
+
+// InterventionSnapshot is the flat JSON projection of an intervention row.
+// Keeps in lockstep with web/app/lib/api-types.ts :: Intervention.
+type InterventionSnapshot struct {
+	InterventionID  string     `json:"intervention_id"`
+	SessionID       string     `json:"session_id"`
+	TurnID          string     `json:"turn_id,omitempty"`
+	OperatorID      string     `json:"operator_id,omitempty"`
+	CreatedAt       time.Time  `json:"created_at"`
+	ClaimedAt       *time.Time `json:"claimed_at,omitempty"`
+	DeliveredAt     *time.Time `json:"delivered_at,omitempty"`
+	ConsumedAt      *time.Time `json:"consumed_at,omitempty"`
+	ExpiredAt       *time.Time `json:"expired_at,omitempty"`
+	CancelledAt     *time.Time `json:"cancelled_at,omitempty"`
+	AutoExpireAt    time.Time  `json:"auto_expire_at"`
+	Message         string     `json:"message"`
+	DeliveryMode    string     `json:"delivery_mode"`
+	Scope           string     `json:"scope"`
+	Urgency         string     `json:"urgency"`
+	Status          string     `json:"status"`
+	DeliveredVia    string     `json:"delivered_via,omitempty"`
+	ConsumedEventID int64      `json:"consumed_event_id,omitempty"`
+	Notes           string     `json:"notes,omitempty"`
+}
+
+// InterventionPayload is the SSE wrapper for intervention lifecycle events.
+type InterventionPayload struct {
+	Intervention InterventionSnapshot `json:"intervention"`
+}
+
+// SnapshotFromIntervention projects a stored row onto its wire shape,
+// unwrapping nullable columns and zeroing fields that were not set.
+func SnapshotFromIntervention(iv duckdb.Intervention) InterventionSnapshot {
+	snap := InterventionSnapshot{
+		InterventionID: iv.InterventionID,
+		SessionID:      iv.SessionID,
+		CreatedAt:      iv.CreatedAt,
+		AutoExpireAt:   iv.AutoExpireAt,
+		Message:        iv.Message,
+		DeliveryMode:   iv.DeliveryMode,
+		Scope:          iv.Scope,
+		Urgency:        iv.Urgency,
+		Status:         iv.Status,
+	}
+	if iv.TurnID.Valid {
+		snap.TurnID = iv.TurnID.String
+	}
+	if iv.OperatorID.Valid {
+		snap.OperatorID = iv.OperatorID.String
+	}
+	if iv.ClaimedAt.Valid {
+		t := iv.ClaimedAt.Time
+		snap.ClaimedAt = &t
+	}
+	if iv.DeliveredAt.Valid {
+		t := iv.DeliveredAt.Time
+		snap.DeliveredAt = &t
+	}
+	if iv.ConsumedAt.Valid {
+		t := iv.ConsumedAt.Time
+		snap.ConsumedAt = &t
+	}
+	if iv.ExpiredAt.Valid {
+		t := iv.ExpiredAt.Time
+		snap.ExpiredAt = &t
+	}
+	if iv.CancelledAt.Valid {
+		t := iv.CancelledAt.Time
+		snap.CancelledAt = &t
+	}
+	if iv.DeliveredVia.Valid {
+		snap.DeliveredVia = iv.DeliveredVia.String
+	}
+	if iv.ConsumedEventID.Valid {
+		snap.ConsumedEventID = iv.ConsumedEventID.Int64
+	}
+	if iv.Notes.Valid {
+		snap.Notes = iv.Notes.String
+	}
+	return snap
+}
+
+// NewInterventionEvent builds an SSE Event for one of the intervention.*
+// lifecycle types.
+func NewInterventionEvent(kind string, now time.Time, iv duckdb.Intervention) Event {
+	data, _ := json.Marshal(InterventionPayload{Intervention: SnapshotFromIntervention(iv)})
 	return Event{Type: kind, At: now, Data: data}
 }
 

@@ -164,6 +164,54 @@ const (
 )
 
 // ----------------------------------------------------------------------------
+// claude_code.intervention.*
+// ----------------------------------------------------------------------------
+
+var (
+	InterventionID           = attribute.Key("claude_code.intervention.id")
+	InterventionDeliveryMode = attribute.Key("claude_code.intervention.delivery_mode")
+	InterventionScope        = attribute.Key("claude_code.intervention.scope")
+	InterventionUrgency      = attribute.Key("claude_code.intervention.urgency")
+	InterventionStatus       = attribute.Key("claude_code.intervention.status")
+	InterventionDeliveredVia = attribute.Key("claude_code.intervention.delivered_via")
+	InterventionOperatorID   = attribute.Key("claude_code.intervention.operator_id")
+)
+
+// Intervention delivery mode enum values.
+const (
+	InterventionDeliveryInterrupt = "interrupt"
+	InterventionDeliveryContext   = "context"
+	InterventionDeliveryBoth      = "both"
+)
+
+// Intervention scope enum values.
+const (
+	InterventionScopeThisTurn    = "this_turn"
+	InterventionScopeThisSession = "this_session"
+)
+
+// Intervention urgency enum values.
+const (
+	InterventionUrgencyHigh   = "high"
+	InterventionUrgencyNormal = "normal"
+	InterventionUrgencyLow    = "low"
+)
+
+// Intervention status enum values.
+const (
+	InterventionStatusQueued    = "queued"
+	InterventionStatusClaimed   = "claimed"
+	InterventionStatusDelivered = "delivered"
+	InterventionStatusConsumed  = "consumed"
+	InterventionStatusExpired   = "expired"
+	InterventionStatusCancelled = "cancelled"
+)
+
+// EventInterventionDelivered is the span event name emitted by the
+// reconstructor when an operator intervention lands on Claude Code.
+const EventInterventionDelivered = "claude_code.intervention.delivered"
+
+// ----------------------------------------------------------------------------
 // claude_code.attention.*
 // ----------------------------------------------------------------------------
 

@@ -169,6 +169,9 @@ func extractTags(ev Event) eventTags {
 		HITL *struct {
 			SessionID string `json:"session_id"`
 		} `json:"hitl"`
+		Intervention *struct {
+			SessionID string `json:"session_id"`
+		} `json:"intervention"`
 	}
 	if err := json.Unmarshal(ev.Data, &env); err != nil {
 		return tags
@@ -184,6 +187,8 @@ func extractTags(ev Event) eventTags {
 		tags.SessionID = env.Span.SessionID
 	case env.HITL != nil:
 		tags.SessionID = env.HITL.SessionID
+	case env.Intervention != nil:
+		tags.SessionID = env.Intervention.SessionID
 	}
 	return tags
 }

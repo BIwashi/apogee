@@ -17,6 +17,7 @@ import (
 	"github.com/BIwashi/apogee/internal/attention"
 	"github.com/BIwashi/apogee/internal/hitl"
 	"github.com/BIwashi/apogee/internal/ingest"
+	"github.com/BIwashi/apogee/internal/interventions"
 	"github.com/BIwashi/apogee/internal/metrics"
 	"github.com/BIwashi/apogee/internal/sse"
 	"github.com/BIwashi/apogee/internal/store/duckdb"
@@ -38,6 +39,7 @@ type Server struct {
 	metrics       *metrics.Collector
 	summarizer    *summarizer.Service
 	hitl          *hitl.Service
+	interventions *interventions.Service
 	telemetry     *telemetry.Provider
 }
 
@@ -102,6 +104,18 @@ func New(cfg Config, store *duckdb.Store, logger *slog.Logger) *Server {
 		hitlSvc.BroadcastRequested(ev)
 	}
 
+	// Wire the interventions lifecycle owner. Submit/cancel flow through
+	// the HTTP layer, Claim is driven by the Python hook, and the sweeper
+	// ticker is started inside Server.Run. Config load is best-effort —
+	// a missing TOML falls through to defaults.
+	interventionCfg, err := interventions.Load("")
+	if err != nil {
+		logger.Warn("interventions: config load failed — using defaults", "err", err)
+		interventionCfg = interventions.DefaultConfig()
+	}
+	interventionSvc := interventions.NewService(interventionCfg, store, hub, logger)
+	rec.InterventionsSvc = interventionSvc
+
 	if webassets.IsPlaceholder() {
 		logger.Warn(
 			"webassets: embedded dashboard is the placeholder stub — run `make web-build` or install a release binary for the full UI",
@@ -117,6 +131,7 @@ func New(cfg Config, store *duckdb.Store, logger *slog.Logger) *Server {
 		metrics:       metrics.New(store, metrics.DefaultInterval, logger),
 		summarizer:    summarizerSvc,
 		hitl:          hitlSvc,
+		interventions: interventionSvc,
 		telemetry:     telProv,
 	}
 	s.router = s.buildRouter()
@@ -163,6 +178,12 @@ func (s *Server) Run(ctx context.Context) error {
 	// for the lifetime of ctx.
 	if s.hitl != nil {
 		s.hitl.Start(ctx)
+	}
+
+	// Boot the interventions auto-expire sweeper.
+	if s.interventions != nil {
+		s.interventions.Start(ctx)
+		defer s.interventions.Stop()
 	}
 
 	errCh := make(chan error, 1)
@@ -235,6 +256,17 @@ func (s *Server) buildRouter() chi.Router {
 	r.Post("/v1/hitl/{hitl_id}/respond", s.respondHITL)
 	r.Get("/v1/sessions/{id}/hitl/pending", s.listPendingHITLBySession)
 	r.Get("/v1/turns/{turn_id}/hitl", s.listHITLByTurn)
+
+	// Operator intervention routes.
+	r.Post("/v1/interventions", s.submitIntervention)
+	r.Get("/v1/interventions/{id}", s.getIntervention)
+	r.Post("/v1/interventions/{id}/cancel", s.cancelIntervention)
+	r.Post("/v1/interventions/{id}/delivered", s.deliveredIntervention)
+	r.Post("/v1/interventions/{id}/consumed", s.consumedIntervention)
+	r.Post("/v1/sessions/{id}/interventions/claim", s.claimSessionIntervention)
+	r.Get("/v1/sessions/{id}/interventions", s.listSessionInterventions)
+	r.Get("/v1/sessions/{id}/interventions/pending", s.listPendingSessionInterventions)
+	r.Get("/v1/turns/{turn_id}/interventions", s.listTurnInterventions)
 
 	// Embedded Next.js static export. The SPA handler is mounted as the
 	// 404 fallback so every /v1/* route above takes precedence. Anything

@@ -113,6 +113,14 @@ func constantAttrIDs(t *testing.T) map[string]struct{} {
 		apogeesemconv.HITLReasonCategory,
 		apogeesemconv.HITLOperatorNote,
 		apogeesemconv.HITLResumeMode,
+		// intervention
+		apogeesemconv.InterventionID,
+		apogeesemconv.InterventionDeliveryMode,
+		apogeesemconv.InterventionScope,
+		apogeesemconv.InterventionUrgency,
+		apogeesemconv.InterventionStatus,
+		apogeesemconv.InterventionDeliveredVia,
+		apogeesemconv.InterventionOperatorID,
 		// attention
 		apogeesemconv.AttentionState,
 		apogeesemconv.AttentionScore,
