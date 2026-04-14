@@ -1,11 +1,13 @@
 package cli
 
 import (
+	"context"
 	"errors"
 	"flag"
 	"io"
 	"os"
 
+	"github.com/charmbracelet/fang"
 	"github.com/spf13/cobra"
 
 	"github.com/BIwashi/apogee/internal/version"
@@ -54,11 +56,16 @@ this very binary.`,
 
 // Execute is the process entry point wrapper used by cmd/apogee/main.go.
 // It returns an error instead of calling os.Exit so the caller can decide
-// how to render it.
+// how to render it. The root command is wrapped in charmbracelet/fang so
+// `--help` and error output get styled section headers and lipgloss colors
+// when stdout/stderr is a TTY, and degrades cleanly to plain text when
+// piped.
 func Execute(args []string, stdout, stderr io.Writer) error {
 	root := NewRootCmd(stdout, stderr)
 	root.SetArgs(args)
-	return root.Execute()
+	root.SetOut(stdout)
+	root.SetErr(stderr)
+	return fang.Execute(context.Background(), root)
 }
 
 // newInitCmd adapts the existing RunInit flag-driven helper into a cobra
@@ -81,7 +88,7 @@ func newInitCmd(stdout, stderr io.Writer) *cobra.Command {
 func newHooksCmd(stdout, stderr io.Writer) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "hooks",
-		Short: "Manage the embedded Python hook library",
+		Short: "Manage the embedded hook library",
 	}
 	cmd.AddCommand(newHooksExtractCmd(stdout, stderr))
 	return cmd
