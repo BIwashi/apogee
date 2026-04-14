@@ -9,8 +9,13 @@ import (
 	"sync"
 	"time"
 
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	oteltrace "go.opentelemetry.io/otel/trace"
+
 	"github.com/BIwashi/apogee/internal/sse"
 	"github.com/BIwashi/apogee/internal/store/duckdb"
+	apogeesemconv "github.com/BIwashi/apogee/semconv"
 )
 
 // Job is a single unit of work: recap the given turn. Reason is a coarse
@@ -227,6 +232,13 @@ func (w *Worker) process(ctx context.Context, workerID int, job Job) {
 		"turn_id", job.TurnID, "model", recap.Model,
 		"outcome", recap.Outcome, "phase_count", len(recap.Phases))
 
+	// Emit a post-hoc OTel enrichment span carrying the recap. This is
+	// idiomatic OTel for "data that arrived after the original span
+	// closed" — we link to the turn root and stamp recap.* attributes
+	// so external backends (Jaeger, Tempo, Honeycomb) surface the
+	// recap alongside the turn.
+	w.emitRecapEnrichmentSpan(ctx, *turn, recap)
+
 	// Broadcast a turn.updated so the live dashboard re-fetches.
 	if w.hub != nil {
 		t2, err := w.store.GetTurn(ctx, job.TurnID)
@@ -234,4 +246,51 @@ func (w *Worker) process(ctx context.Context, workerID int, job Job) {
 			w.hub.Broadcast(sse.NewTurnEvent(sse.EventTypeTurnUpdated, now, *t2))
 		}
 	}
+}
+
+// emitRecapEnrichmentSpan creates a "claude_code.turn.recap" span via
+// the global tracer provider, parented at the turn root via a remote
+// span context built from the row's stored trace_id and parent_span_id
+// pair. The span starts and ends immediately and never blocks the
+// worker — failures (bad ids, no exporter) are silently ignored.
+func (w *Worker) emitRecapEnrichmentSpan(ctx context.Context, turn duckdb.Turn, recap Recap) {
+	tracer := otel.GetTracerProvider().Tracer("apogee/summarizer")
+	if tracer == nil {
+		return
+	}
+	tid, err := oteltrace.TraceIDFromHex(turn.TraceID)
+	if err != nil {
+		return
+	}
+	// We don't know the root span id from the turn row alone, so we
+	// build a parent SpanContext with only the trace id. OTel accepts
+	// this and treats the new span as a fresh root inside the same
+	// trace, which is exactly the post-hoc enrichment shape we want.
+	parent := oteltrace.NewSpanContext(oteltrace.SpanContextConfig{
+		TraceID:    tid,
+		TraceFlags: oteltrace.FlagsSampled,
+		Remote:     true,
+	})
+	parentCtx := oteltrace.ContextWithRemoteSpanContext(ctx, parent)
+	attrs := []attribute.KeyValue{
+		apogeesemconv.TurnID.String(turn.TurnID),
+		apogeesemconv.RecapHeadline.String(recap.Headline),
+		apogeesemconv.RecapOutcome.String(string(recap.Outcome)),
+		apogeesemconv.RecapModel.String(recap.Model),
+	}
+	if len(recap.KeySteps) > 0 {
+		attrs = append(attrs, apogeesemconv.RecapKeySteps.StringSlice(recap.KeySteps))
+	}
+	if recap.FailureCause != nil {
+		attrs = append(attrs, apogeesemconv.RecapFailureCause.String(*recap.FailureCause))
+	}
+	_, span := tracer.Start(parentCtx, apogeesemconv.SpanTurnRecap,
+		oteltrace.WithSpanKind(oteltrace.SpanKindInternal),
+		oteltrace.WithLinks(oteltrace.Link{SpanContext: parent}),
+		oteltrace.WithAttributes(attrs...),
+	)
+	if span == nil {
+		return
+	}
+	span.End()
 }

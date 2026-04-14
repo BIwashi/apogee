@@ -1,0 +1,409 @@
+# apogee Claude Code semantic conventions registry.
+# Status: Development (experimental).
+#
+# Following the OpenTelemetry semconv YAML format documented at
+# https://github.com/open-telemetry/semantic-conventions/blob/main/model/.
+# This registry is the authoritative source for the `claude_code.*`
+# attribute namespace surfaced by the apogee collector. The Go constants
+# in `semconv/attrs.go` MUST stay in sync with the attribute ids defined
+# below — `attrs_test.go` enforces that link.
+groups:
+  # ============================================================
+  # Session attributes
+  # ============================================================
+  - id: registry.claude_code.session
+    type: attribute_group
+    stability: development
+    brief: >
+      Attributes describing a Claude Code session (a long-lived interactive
+      workspace).
+    attributes:
+      - id: claude_code.session.id
+        type: string
+        requirement_level: required
+        stability: development
+        brief: Stable Claude Code session UUID.
+        examples: ["7b3a3a3b-1d2e-4c2a-8f6f-0a4f3a3b1d2e"]
+      - id: claude_code.session.source_app
+        type: string
+        requirement_level: recommended
+        stability: development
+        brief: >
+          Logical source application that owns the session
+          (e.g. my-api, cc-hook-multi-agent-obvs).
+      - id: claude_code.session.machine_id
+        type: string
+        requirement_level: opt_in
+        stability: development
+        brief: Machine identifier the session originated on.
+      - id: claude_code.session.model
+        type: string
+        requirement_level: recommended
+        stability: development
+        brief: Model alias active for the session at the time of the event.
+
+  # ============================================================
+  # Turn attributes
+  # ============================================================
+  - id: registry.claude_code.turn
+    type: attribute_group
+    stability: development
+    brief: >
+      Attributes describing one user turn — the unit of a single OpenTelemetry
+      trace.
+    attributes:
+      - id: claude_code.turn.id
+        type: string
+        requirement_level: required
+        stability: development
+        brief: Stable identifier for the turn.
+      - id: claude_code.turn.status
+        stability: development
+        type:
+          allow_custom_values: false
+          members:
+            - id: running
+              stability: development
+              value: "running"
+              brief: Turn is in flight.
+            - id: completed
+              stability: development
+              value: "completed"
+              brief: Turn finished cleanly.
+            - id: errored
+              stability: development
+              value: "errored"
+              brief: Turn finished with an error.
+            - id: stopped
+              stability: development
+              value: "stopped"
+              brief: Turn was stopped before completion.
+            - id: compacted
+              stability: development
+              value: "compacted"
+              brief: Turn was compacted into the next trace.
+        brief: Lifecycle status of the turn.
+      - id: claude_code.turn.prompt_chars
+        type: int
+        stability: development
+        brief: Length of the user prompt in characters.
+      - id: claude_code.turn.output_chars
+        type: int
+        stability: development
+        brief: Length of the assistant output in characters.
+      - id: claude_code.turn.tool_call_count
+        type: int
+        stability: development
+        brief: Number of tool calls executed inside the turn.
+      - id: claude_code.turn.subagent_count
+        type: int
+        stability: development
+        brief: Number of subagents spawned inside the turn.
+      - id: claude_code.turn.error_count
+        type: int
+        stability: development
+        brief: Number of failed tool calls inside the turn.
+
+  # ============================================================
+  # Agent attributes
+  # ============================================================
+  - id: registry.claude_code.agent
+    type: attribute_group
+    stability: development
+    brief: Attributes describing an agent (main or subagent) inside a turn.
+    attributes:
+      - id: claude_code.agent.id
+        type: string
+        stability: development
+        brief: Stable agent identifier.
+      - id: claude_code.agent.kind
+        stability: development
+        type:
+          allow_custom_values: false
+          members:
+            - id: main
+              stability: development
+              value: "main"
+              brief: The top-level Claude Code agent.
+            - id: subagent
+              stability: development
+              value: "subagent"
+              brief: A delegated subagent inside a turn.
+        brief: Whether the agent is the main agent or a subagent.
+      - id: claude_code.agent.parent_id
+        type: string
+        stability: development
+        brief: Identifier of the parent agent for a subagent.
+      - id: claude_code.agent.type
+        type: string
+        stability: development
+        brief: >
+          Subagent type declared by Claude Code (e.g. general-purpose,
+          Explore, Plan).
+
+  # ============================================================
+  # Tool call attributes
+  # ============================================================
+  - id: registry.claude_code.tool
+    type: attribute_group
+    stability: development
+    brief: Attributes describing one Claude Code tool call.
+    attributes:
+      - id: claude_code.tool.name
+        type: string
+        requirement_level: required
+        stability: development
+        brief: Tool name as advertised by Claude Code.
+      - id: claude_code.tool.use_id
+        type: string
+        stability: development
+        brief: Tool use identifier emitted by the assistant message.
+      - id: claude_code.tool.mcp.server
+        type: string
+        stability: development
+        brief: MCP server name when the tool is provided over MCP.
+      - id: claude_code.tool.mcp.name
+        type: string
+        stability: development
+        brief: MCP tool name when the tool is provided over MCP.
+      - id: claude_code.tool.input_summary
+        type: string
+        stability: development
+        brief: Compact rendering of the tool input arguments.
+      - id: claude_code.tool.output_summary
+        type: string
+        stability: development
+        brief: Compact rendering of the tool output payload.
+      - id: claude_code.tool.blocked_reason
+        type: string
+        stability: development
+        brief: Reason a tool call was blocked by policy or HITL gate.
+
+  # ============================================================
+  # Phase attributes
+  # ============================================================
+  - id: registry.claude_code.phase
+    type: attribute_group
+    stability: development
+    brief: Derived execution phase for the turn.
+    attributes:
+      - id: claude_code.phase.name
+        stability: development
+        type:
+          allow_custom_values: true
+          members:
+            - { id: plan, stability: development, value: "plan" }
+            - { id: explore, stability: development, value: "explore" }
+            - { id: edit, stability: development, value: "edit" }
+            - { id: test, stability: development, value: "test" }
+            - { id: run, stability: development, value: "run" }
+            - { id: commit, stability: development, value: "commit" }
+            - { id: debug, stability: development, value: "debug" }
+            - { id: delegate, stability: development, value: "delegate" }
+            - { id: verify, stability: development, value: "verify" }
+            - { id: idle, stability: development, value: "idle" }
+        brief: Inferred or declared phase the turn is currently in.
+      - id: claude_code.phase.inferred_by
+        stability: development
+        type:
+          allow_custom_values: false
+          members:
+            - { id: heuristic, stability: development, value: "heuristic" }
+            - { id: llm, stability: development, value: "llm" }
+            - { id: agent_declared, stability: development, value: "agent_declared" }
+        brief: How the phase value was assigned.
+
+  # ============================================================
+  # HITL attributes
+  # ============================================================
+  - id: registry.claude_code.hitl
+    type: attribute_group
+    stability: development
+    brief: Human-In-The-Loop request/response attributes.
+    attributes:
+      - id: claude_code.hitl.id
+        type: string
+        stability: development
+        brief: Stable identifier for the HITL request.
+      - id: claude_code.hitl.kind
+        stability: development
+        type:
+          allow_custom_values: false
+          members:
+            - { id: permission, stability: development, value: "permission" }
+            - { id: tool_approval, stability: development, value: "tool_approval" }
+            - { id: prompt, stability: development, value: "prompt" }
+            - { id: choice, stability: development, value: "choice" }
+        brief: Kind of HITL interaction.
+      - id: claude_code.hitl.status
+        stability: development
+        type:
+          allow_custom_values: false
+          members:
+            - { id: pending, stability: development, value: "pending" }
+            - { id: responded, stability: development, value: "responded" }
+            - { id: timeout, stability: development, value: "timeout" }
+            - { id: error, stability: development, value: "error" }
+            - { id: expired, stability: development, value: "expired" }
+        brief: Lifecycle status of the HITL request.
+      - id: claude_code.hitl.decision
+        stability: development
+        type:
+          allow_custom_values: false
+          members:
+            - { id: allow, stability: development, value: "allow" }
+            - { id: deny, stability: development, value: "deny" }
+            - { id: custom, stability: development, value: "custom" }
+            - { id: timeout, stability: development, value: "timeout" }
+        brief: Operator's decision on the HITL request.
+      - id: claude_code.hitl.reason_category
+        type: string
+        stability: development
+        brief: Coarse reason category attached to the operator response.
+      - id: claude_code.hitl.operator_note
+        type: string
+        stability: development
+        brief: Free-form note left by the responding operator.
+      - id: claude_code.hitl.resume_mode
+        stability: development
+        type:
+          allow_custom_values: false
+          members:
+            - { id: continue, stability: development, value: "continue" }
+            - { id: retry, stability: development, value: "retry" }
+            - { id: abort, stability: development, value: "abort" }
+            - { id: alternative, stability: development, value: "alternative" }
+        brief: How Claude Code should resume after the HITL is finalised.
+
+  # ============================================================
+  # Attention attributes
+  # ============================================================
+  - id: registry.claude_code.attention
+    type: attribute_group
+    stability: development
+    brief: Derived attention state surfaced by the apogee rule engine.
+    attributes:
+      - id: claude_code.attention.state
+        stability: development
+        type:
+          allow_custom_values: false
+          members:
+            - { id: healthy, stability: development, value: "healthy" }
+            - { id: watchlist, stability: development, value: "watchlist" }
+            - { id: watch, stability: development, value: "watch" }
+            - { id: intervene_now, stability: development, value: "intervene_now" }
+        brief: Coarse attention bucket the turn currently sits in.
+      - id: claude_code.attention.score
+        type: double
+        stability: development
+        brief: Numeric attention score in the range 0..1.
+      - id: claude_code.attention.reason
+        type: string
+        stability: development
+        brief: Short human-readable rationale for the attention state.
+
+  # ============================================================
+  # Recap attributes (PR #6 summarizer)
+  # ============================================================
+  - id: registry.claude_code.recap
+    type: attribute_group
+    stability: development
+    brief: LLM-generated turn recap produced by the apogee summarizer.
+    attributes:
+      - id: claude_code.recap.headline
+        type: string
+        stability: development
+        brief: One-line headline describing the turn outcome.
+      - id: claude_code.recap.outcome
+        stability: development
+        type:
+          allow_custom_values: false
+          members:
+            - { id: success, stability: development, value: "success" }
+            - { id: partial, stability: development, value: "partial" }
+            - { id: failure, stability: development, value: "failure" }
+            - { id: aborted, stability: development, value: "aborted" }
+        brief: Coarse outcome bucket assigned by the summarizer.
+      - id: claude_code.recap.model
+        type: string
+        stability: development
+        brief: Model that produced the recap.
+      - id: claude_code.recap.key_steps
+        type: string[]
+        stability: development
+        brief: Ordered list of key steps the turn performed.
+      - id: claude_code.recap.failure_cause
+        type: string
+        stability: development
+        brief: Free-form description of the failure cause when outcome is not success.
+
+  # ============================================================
+  # Compaction attributes
+  # ============================================================
+  - id: registry.claude_code.compaction
+    type: attribute_group
+    stability: development
+    brief: Attributes describing turn compaction events.
+    attributes:
+      - id: claude_code.compaction.trigger
+        type: string
+        stability: development
+        brief: Trigger that initiated the compaction (e.g. context_window).
+
+  # ============================================================
+  # Span guidance
+  # ============================================================
+  - id: registry.claude_code.span
+    type: span
+    stability: development
+    brief: Span naming and kind guidance for Claude Code execution.
+    attributes:
+      - ref: claude_code.session.id
+      - ref: claude_code.turn.id
+
+events:
+  - id: claude_code.prompt
+    type: event
+    stability: development
+    brief: User prompt text attached to the turn root span.
+    attributes:
+      - id: claude_code.prompt.text
+        type: string
+        stability: development
+        brief: Verbatim prompt text submitted by the user.
+      - id: claude_code.prompt.chars
+        type: int
+        stability: development
+        brief: Length of the user prompt in characters.
+  - id: claude_code.assistant_message
+    type: event
+    stability: development
+    brief: Assistant message emitted during the turn.
+    attributes:
+      - id: claude_code.assistant_message.text
+        type: string
+        stability: development
+        brief: Verbatim assistant message text.
+      - id: claude_code.assistant_message.chars
+        type: int
+        stability: development
+        brief: Length of the assistant message in characters.
+  - id: claude_code.notification
+    type: event
+    stability: development
+    brief: Notification surfaced by Claude Code during a turn.
+    attributes:
+      - id: claude_code.notification.type
+        type: string
+        stability: development
+        brief: Notification kind (e.g. permission_request, idle).
+      - id: claude_code.notification.message
+        type: string
+        stability: development
+        brief: Free-form notification body.
+  - id: claude_code.tool.blocked
+    type: event
+    stability: development
+    brief: A tool call was blocked by a policy gate or HITL request.
+    attributes:
+      - ref: claude_code.tool.blocked_reason

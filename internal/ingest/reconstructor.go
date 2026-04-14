@@ -9,6 +9,9 @@ import (
 	"sync"
 	"time"
 
+	"go.opentelemetry.io/otel/codes"
+	oteltrace "go.opentelemetry.io/otel/trace"
+
 	"github.com/BIwashi/apogee/internal/attention"
 	"github.com/BIwashi/apogee/internal/otel"
 	"github.com/BIwashi/apogee/internal/sse"
@@ -21,6 +24,12 @@ func jsonUnmarshal(b []byte, v any) error { return json.Unmarshal(b, v) }
 type agentFrame struct {
 	Span      *otel.Span
 	StartedAt time.Time
+	// OTel-side mirror of this span. nil when no tracer is wired or when
+	// the OTel span could not be created. Children of this frame use
+	// OTelCtx as the parent context for Tracer.Start so the exported
+	// trace tree matches the apogee internal tree.
+	OTelSpan oteltrace.Span
+	OTelCtx  context.Context
 }
 
 const mainAgentKey = "main"
@@ -42,12 +51,28 @@ type sessionState struct {
 	TurnStartedAt time.Time
 	PromptText    string
 
+	// TurnRootOTel is the OTel-side mirror of TurnRoot. nil when the
+	// reconstructor has no tracer wired. closeTurn finishes this span
+	// after the apogee row has been written. Tracked outside of Stacks
+	// because closeTurn drains Stacks before the root is closed.
+	TurnRootOTel oteltrace.Span
+	// TurnRootOTelCtx is the context returned by Tracer.Start for the
+	// turn root. Used by EmitRecapEnrichment so the post-hoc recap
+	// span carries a parent link to the right trace.
+	TurnRootOTelCtx context.Context
+
 	Stacks       map[string][]*agentFrame
 	PendingTools map[string]*otel.Span // tool_use_id -> open tool span
 	// PendingHITL is the set of open HITL spans for this turn keyed by
 	// span_id. Tracked separately from Stacks so HITL requests do not
 	// hijack the parent frame for subsequent tool calls.
 	PendingHITL map[string]*otel.Span
+	// OTel mirror tracking. ToolOTelSpans/HITLOTelSpans hold the OTel
+	// span handle keyed the same way as PendingTools/PendingHITL so the
+	// Post* / response paths can call End on the right one. Nil when
+	// the reconstructor's tracer is nil.
+	ToolOTelSpans map[string]oteltrace.Span
+	HITLOTelSpans map[string]oteltrace.Span
 
 	ToolCallCount int
 	SubagentCount int
@@ -98,6 +123,13 @@ type Reconstructor struct {
 	// hitl.requested event without the reconstructor depending on the
 	// service package directly.
 	OnHITLRequested func(ev duckdb.HITLEvent)
+
+	// Tracer, when non-nil, mirrors every reconstructor span to an
+	// OpenTelemetry trace via the OTel SDK. Errors on the OTel side are
+	// logged at WARN and never propagate back to the caller. See
+	// otelmirror.go for the helpers that own this side of the
+	// reconstructor.
+	Tracer oteltrace.Tracer
 }
 
 // NewReconstructor returns a Reconstructor backed by the given store. logger
@@ -292,12 +324,14 @@ func (r *Reconstructor) getOrCreateSession(ev *HookEvent) *sessionState {
 	st, ok := r.sessions[ev.SessionID]
 	if !ok {
 		st = &sessionState{
-			SourceApp:    ev.SourceApp,
-			StartedAt:    ev.Time(),
-			LastSeen:     ev.Time(),
-			Stacks:       map[string][]*agentFrame{},
-			PendingTools: map[string]*otel.Span{},
-			PendingHITL:  map[string]*otel.Span{},
+			SourceApp:     ev.SourceApp,
+			StartedAt:     ev.Time(),
+			LastSeen:      ev.Time(),
+			Stacks:        map[string][]*agentFrame{},
+			PendingTools:  map[string]*otel.Span{},
+			PendingHITL:   map[string]*otel.Span{},
+			ToolOTelSpans: map[string]oteltrace.Span{},
+			HITLOTelSpans: map[string]oteltrace.Span{},
 		}
 		r.sessions[ev.SessionID] = st
 	}
@@ -379,13 +413,27 @@ func (r *Reconstructor) handleUserPromptSubmit(ctx context.Context, st *sessionS
 		})
 	}
 
+	// Open the OTel-side mirror first so the apogee Span TraceID/SpanID
+	// reflect the OTel-generated values. We then persist with the SDK
+	// ids so DuckDB rows and exported spans share the same ids — no
+	// drift between the two side channels.
+	rootCtx, rootOTel := r.startOTelSpan(ctx, root, oteltrace.SpanKindServer)
+
 	if err := r.store.InsertSpan(ctx, root); err != nil {
+		if rootOTel != nil {
+			rootOTel.SetStatus(codes.Error, "insert turn root: "+err.Error())
+			rootOTel.End()
+		}
 		return err
 	}
 	r.broadcastSpan(sse.EventTypeSpanInserted, root)
 
-	st.TraceID = traceID
-	st.TurnID = turnID
+	// When the OTel mirror is enabled, root.TraceID/SpanID were
+	// rewritten to the SDK-generated values inside startOTelSpan, so
+	// the persisted ids match the exported trace. The apogee turn id
+	// (UUIDv7) is dashboard-facing and stays unchanged.
+	st.TraceID = root.TraceID
+	st.TurnID = root.TurnID
 	st.TurnRoot = root
 	st.TurnStartedAt = ev.Time()
 	st.PromptText = prompt
@@ -393,10 +441,19 @@ func (r *Reconstructor) handleUserPromptSubmit(ctx context.Context, st *sessionS
 	st.SubagentCount = 0
 	st.ErrorCount = 0
 	st.Stacks = map[string][]*agentFrame{
-		mainAgentKey: {{Span: root, StartedAt: ev.Time()}},
+		mainAgentKey: {{
+			Span:      root,
+			StartedAt: ev.Time(),
+			OTelSpan:  rootOTel,
+			OTelCtx:   rootCtx,
+		}},
 	}
+	st.TurnRootOTel = rootOTel
+	st.TurnRootOTelCtx = rootCtx
 	st.PendingTools = map[string]*otel.Span{}
 	st.PendingHITL = map[string]*otel.Span{}
+	st.ToolOTelSpans = map[string]oteltrace.Span{}
+	st.HITLOTelSpans = map[string]oteltrace.Span{}
 
 	turn := duckdb.Turn{
 		TurnID:     turnID,
@@ -485,15 +542,35 @@ func (r *Reconstructor) handlePreToolUse(ctx context.Context, st *sessionState, 
 		span.Attributes["claude_code.tool.input"] = string(ev.Payload)
 	}
 
+	// Open the OTel-side mirror first so the apogee Span TraceID/SpanID
+	// reflect the SDK-generated values before the row is persisted.
+	parentCtx := ctx
+	if parent != nil && parent.OTelCtx != nil {
+		parentCtx = parent.OTelCtx
+	}
+	toolCtx, toolOTel := r.startOTelSpan(parentCtx, span, oteltrace.SpanKindInternal)
+
 	if err := r.store.InsertSpan(ctx, span); err != nil {
+		if toolOTel != nil {
+			toolOTel.SetStatus(codes.Error, "insert tool span: "+err.Error())
+			toolOTel.End()
+		}
 		return err
 	}
 	r.broadcastSpan(sse.EventTypeSpanInserted, span)
 
 	stackKey := stackKeyFor(ev.AgentID)
-	st.Stacks[stackKey] = append(st.Stacks[stackKey], &agentFrame{Span: span, StartedAt: ev.Time()})
+	st.Stacks[stackKey] = append(st.Stacks[stackKey], &agentFrame{
+		Span:      span,
+		StartedAt: ev.Time(),
+		OTelSpan:  toolOTel,
+		OTelCtx:   toolCtx,
+	})
 	if ev.ToolUseID != "" {
 		st.PendingTools[ev.ToolUseID] = span
+		if toolOTel != nil {
+			st.ToolOTelSpans[ev.ToolUseID] = toolOTel
+		}
 	}
 	st.ToolCallCount++
 	r.touchTurnCounters(ctx, st)
@@ -535,6 +612,10 @@ func (r *Reconstructor) handlePostToolUse(ctx context.Context, st *sessionState,
 		return err
 	}
 	r.broadcastSpan(sse.EventTypeSpanUpdated, span)
+	if otSpan, ok := st.ToolOTelSpans[ev.ToolUseID]; ok {
+		r.finishOTelSpan(otSpan, span)
+		delete(st.ToolOTelSpans, ev.ToolUseID)
+	}
 	r.popFrameBySpan(st, span)
 	delete(st.PendingTools, ev.ToolUseID)
 	r.touchTurnCounters(ctx, st)
@@ -576,7 +657,17 @@ func (r *Reconstructor) handlePermissionRequest(ctx context.Context, st *session
 			"claude_code.tool.name":        ev.ToolName,
 		},
 	}
+	parentCtx := ctx
+	if parent != nil && parent.OTelCtx != nil {
+		parentCtx = parent.OTelCtx
+	}
+	hitlCtx, hitlOTel := r.startOTelSpan(parentCtx, span, oteltrace.SpanKindInternal)
+	_ = hitlCtx
 	if err := r.store.InsertSpan(ctx, span); err != nil {
+		if hitlOTel != nil {
+			hitlOTel.SetStatus(codes.Error, "insert hitl span: "+err.Error())
+			hitlOTel.End()
+		}
 		return err
 	}
 	// Track this open HITL span in a dedicated map so closeTurn can find
@@ -587,6 +678,12 @@ func (r *Reconstructor) handlePermissionRequest(ctx context.Context, st *session
 		st.PendingHITL = map[string]*otel.Span{}
 	}
 	st.PendingHITL[string(span.SpanID)] = span
+	if hitlOTel != nil {
+		if st.HITLOTelSpans == nil {
+			st.HITLOTelSpans = map[string]oteltrace.Span{}
+		}
+		st.HITLOTelSpans[string(span.SpanID)] = hitlOTel
+	}
 
 	r.broadcastSpan(sse.EventTypeSpanInserted, span)
 
@@ -719,10 +816,14 @@ func (r *Reconstructor) CloseHITLSpan(ctx context.Context, ev duckdb.HITLEvent) 
 	}
 	r.broadcastSpan(sse.EventTypeSpanUpdated, sp)
 	// Drop the in-memory pending entry so the next closeTurn does not
-	// re-process this span.
+	// re-process this span. Also finish the OTel mirror if one is held.
 	for _, st := range r.sessions {
 		if _, ok := st.PendingHITL[ev.SpanID]; ok {
 			delete(st.PendingHITL, ev.SpanID)
+		}
+		if otSpan, ok := st.HITLOTelSpans[ev.SpanID]; ok {
+			r.finishOTelSpan(otSpan, sp)
+			delete(st.HITLOTelSpans, ev.SpanID)
 		}
 	}
 	// Also nudge the turn row so the dashboard re-renders.
@@ -910,11 +1011,25 @@ func (r *Reconstructor) handleSubagentStart(ctx context.Context, st *sessionStat
 			"claude_code.agent.transcript_path": ev.AgentTranscriptPath,
 		},
 	}
+	parentCtx := ctx
+	if parent != nil && parent.OTelCtx != nil {
+		parentCtx = parent.OTelCtx
+	}
+	subCtx, subOTel := r.startOTelSpan(parentCtx, span, oteltrace.SpanKindInternal)
 	if err := r.store.InsertSpan(ctx, span); err != nil {
+		if subOTel != nil {
+			subOTel.SetStatus(codes.Error, "insert subagent span: "+err.Error())
+			subOTel.End()
+		}
 		return err
 	}
 	r.broadcastSpan(sse.EventTypeSpanInserted, span)
-	st.Stacks[agentID] = []*agentFrame{{Span: span, StartedAt: ev.Time()}}
+	st.Stacks[agentID] = []*agentFrame{{
+		Span:      span,
+		StartedAt: ev.Time(),
+		OTelSpan:  subOTel,
+		OTelCtx:   subCtx,
+	}}
 	st.SubagentCount++
 	r.touchTurnCounters(ctx, st)
 	return nil
@@ -936,6 +1051,9 @@ func (r *Reconstructor) handleSubagentStop(ctx context.Context, st *sessionState
 		return err
 	}
 	r.broadcastSpan(sse.EventTypeSpanUpdated, root.Span)
+	if root.OTelSpan != nil {
+		r.finishOTelSpan(root.OTelSpan, root.Span)
+	}
 	delete(st.Stacks, ev.AgentID)
 	return nil
 }
@@ -987,6 +1105,9 @@ func (r *Reconstructor) closeTurn(ctx context.Context, st *sessionState, end tim
 				continue
 			}
 			r.broadcastSpan(sse.EventTypeSpanUpdated, f.Span)
+			if f.OTelSpan != nil {
+				r.finishOTelSpan(f.OTelSpan, f.Span)
+			}
 		}
 		delete(st.Stacks, key)
 	}
@@ -1010,6 +1131,10 @@ func (r *Reconstructor) closeTurn(ctx context.Context, st *sessionState, end tim
 			continue
 		}
 		r.broadcastSpan(sse.EventTypeSpanUpdated, sp)
+		if otSpan, ok := st.HITLOTelSpans[spanID]; ok {
+			r.finishOTelSpan(otSpan, sp)
+			delete(st.HITLOTelSpans, spanID)
+		}
 		delete(st.PendingHITL, spanID)
 	}
 	// Close the turn root.
@@ -1024,6 +1149,9 @@ func (r *Reconstructor) closeTurn(ctx context.Context, st *sessionState, end tim
 	} else {
 		r.broadcastSpan(sse.EventTypeSpanUpdated, st.TurnRoot)
 	}
+	if st.TurnRootOTel != nil {
+		r.finishOTelSpan(st.TurnRootOTel, st.TurnRoot)
+	}
 	durationMs := end.Sub(st.TurnStartedAt).Milliseconds()
 	closedTurnID := st.TurnID
 	turnWriteOK := true
@@ -1037,10 +1165,14 @@ func (r *Reconstructor) closeTurn(ctx context.Context, st *sessionState, end tim
 		r.OnTurnClosed(closedTurnID)
 	}
 	st.TurnRoot = nil
+	st.TurnRootOTel = nil
+	st.TurnRootOTelCtx = nil
 	st.TurnID = ""
 	st.TraceID = ""
 	st.PendingTools = map[string]*otel.Span{}
 	st.PendingHITL = map[string]*otel.Span{}
+	st.ToolOTelSpans = map[string]oteltrace.Span{}
+	st.HITLOTelSpans = map[string]oteltrace.Span{}
 	st.Stacks = map[string][]*agentFrame{}
 }
 
@@ -1062,6 +1194,18 @@ func (r *Reconstructor) appendSpanEvent(ctx context.Context, span *otel.Span, ev
 		return
 	}
 	r.broadcastSpan(sse.EventTypeSpanUpdated, span)
+	// Mirror the event onto the OTel side. We currently only know the
+	// turn root mapping, which is the only span this helper is used
+	// against today (notification, compaction, unknown_hook). When
+	// that assumption changes we can lift this lookup into a method.
+	if r.otelMirrorEnabled() {
+		for _, st := range r.sessions {
+			if st.TurnRoot == span && st.TurnRootOTel != nil {
+				r.applyOTelEvents(st.TurnRootOTel, &otel.Span{Events: []otel.SpanEvent{ev}})
+				return
+			}
+		}
+	}
 }
 
 // parentFrame returns the top of the relevant stack for a tool or subagent

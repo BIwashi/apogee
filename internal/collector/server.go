@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -20,6 +21,7 @@ import (
 	"github.com/BIwashi/apogee/internal/sse"
 	"github.com/BIwashi/apogee/internal/store/duckdb"
 	"github.com/BIwashi/apogee/internal/summarizer"
+	"github.com/BIwashi/apogee/internal/telemetry"
 )
 
 // Server is the apogee collector HTTP server. It owns the chi router, the
@@ -35,6 +37,7 @@ type Server struct {
 	metrics       *metrics.Collector
 	summarizer    *summarizer.Service
 	hitl          *hitl.Service
+	telemetry     *telemetry.Provider
 }
 
 // New constructs a Server backed by an open store. The caller retains
@@ -46,6 +49,24 @@ func New(cfg Config, store *duckdb.Store, logger *slog.Logger) *Server {
 	hub := sse.NewHub(logger)
 	rec := ingest.NewReconstructor(store, logger, nil)
 	rec.Hub = hub
+
+	// Telemetry: load config (TOML + env), build the tracer provider,
+	// and wire its Tracer into the reconstructor. NewTracerProvider
+	// returns a usable provider even when export is disabled — the
+	// reconstructor's Tracer field tolerates a noop tracer the same
+	// way it tolerates a real one.
+	telCfg, err := telemetry.LoadConfig("")
+	if err != nil {
+		logger.Warn("telemetry: config load failed — using defaults", "err", err)
+		telCfg = telemetry.Config{ServiceName: "apogee", Protocol: telemetry.ProtocolGRPC, SampleRatio: 1.0}
+	}
+	telProv, err := telemetry.NewTracerProvider(context.Background(), telCfg, logger)
+	if err != nil {
+		logger.Warn("telemetry: provider build failed — disabling export", "err", err)
+	}
+	if telProv != nil {
+		rec.Tracer = telProv.Tracer()
+	}
 
 	// Wire the attention engine against the store-backed history reader.
 	history := &attention.StoreHistory{DB: store}
@@ -86,6 +107,7 @@ func New(cfg Config, store *duckdb.Store, logger *slog.Logger) *Server {
 		metrics:       metrics.New(store, metrics.DefaultInterval, logger),
 		summarizer:    summarizerSvc,
 		hitl:          hitlSvc,
+		telemetry:     telProv,
 	}
 	s.router = s.buildRouter()
 	return s
@@ -148,8 +170,19 @@ func (s *Server) Run(ctx context.Context) error {
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		_ = s.httpServer.Shutdown(shutdownCtx)
+		// Flush the OTel batch span processor so any in-flight spans
+		// get exported before we return. Best effort; failures are
+		// logged inside Shutdown.
+		if s.telemetry != nil && s.telemetry.Shutdown != nil {
+			_ = s.telemetry.Shutdown(shutdownCtx)
+		}
 		return nil
 	case err := <-errCh:
+		if s.telemetry != nil && s.telemetry.Shutdown != nil {
+			ctx2, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			_ = s.telemetry.Shutdown(ctx2)
+		}
 		return err
 	}
 }
@@ -165,6 +198,7 @@ func (s *Server) buildRouter() chi.Router {
 	handler := ingest.NewHandler(s.reconstructor, s.logger)
 
 	r.Get("/v1/healthz", s.healthz)
+	r.Get("/v1/telemetry/status", s.telemetryStatus)
 	r.Post("/v1/events", handler.ReceiveEvent)
 	r.Get("/v1/sessions/recent", s.listRecentSessions)
 	r.Get("/v1/sessions/search", s.searchSessions)
@@ -192,10 +226,58 @@ func (s *Server) buildRouter() chi.Router {
 	return r
 }
 
-func (s *Server) healthz(w http.ResponseWriter, _ *http.Request) {
-	w.Header().Set("Content-Type", "text/plain")
-	w.WriteHeader(http.StatusOK)
-	_, _ = fmt.Fprintln(w, "ok")
+func (s *Server) healthz(w http.ResponseWriter, r *http.Request) {
+	// JSON variant carries a small telemetry summary so operators can
+	// see at a glance whether OTLP export is wired up. Curl with
+	// `-H 'Accept: application/json'` to opt in. Plain `curl` keeps
+	// the historical text/plain shape so existing health probes do
+	// not break.
+	if !strings.Contains(r.Header.Get("Accept"), "application/json") {
+		w.Header().Set("Content-Type", "text/plain")
+		w.WriteHeader(http.StatusOK)
+		_, _ = fmt.Fprintln(w, "ok")
+		return
+	}
+	body := map[string]any{
+		"ok":            true,
+		"otel_enabled":  false,
+		"otel_endpoint": "",
+		"otel_protocol": "",
+	}
+	if s.telemetry != nil {
+		body["otel_enabled"] = s.telemetry.Enabled
+		body["otel_endpoint"] = s.telemetry.Cfg.Endpoint
+		body["otel_protocol"] = string(s.telemetry.Cfg.Protocol)
+	}
+	writeJSON(w, http.StatusOK, body)
+}
+
+// telemetryStatus reports the OTel exporter configuration plus the
+// running spans-exported counter. Read-only; safe to poll.
+func (s *Server) telemetryStatus(w http.ResponseWriter, _ *http.Request) {
+	body := map[string]any{
+		"enabled":             false,
+		"endpoint":            "",
+		"protocol":            "",
+		"service_name":        "",
+		"service_version":     "",
+		"service_instance_id": "",
+		"sample_ratio":        0.0,
+		"spans_exported_total": uint64(0),
+	}
+	if s.telemetry != nil {
+		body["enabled"] = s.telemetry.Enabled
+		body["endpoint"] = s.telemetry.Cfg.Endpoint
+		body["protocol"] = string(s.telemetry.Cfg.Protocol)
+		body["service_name"] = s.telemetry.Cfg.ServiceName
+		body["service_version"] = s.telemetry.Cfg.ServiceVersion
+		body["service_instance_id"] = s.telemetry.Cfg.ServiceInstanceID
+		body["sample_ratio"] = s.telemetry.Cfg.SampleRatio
+		if s.telemetry.SpansExported != nil {
+			body["spans_exported_total"] = s.telemetry.SpansExported.Load()
+		}
+	}
+	writeJSON(w, http.StatusOK, body)
 }
 
 func (s *Server) listRecentSessions(w http.ResponseWriter, r *http.Request) {
