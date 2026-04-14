@@ -1,120 +1,170 @@
-import { Radio } from "lucide-react";
+"use client";
+
+import { useCallback, useMemo, useState } from "react";
 
 import Card from "./components/Card";
-import EventTypeBadge from "./components/EventTypeBadge";
+import EventTicker from "./components/EventTicker";
+import LiveIndicator from "./components/LiveIndicator";
+import RecentTurnsTable from "./components/RecentTurnsTable";
 import SectionHeader from "./components/SectionHeader";
-import StatusPill from "./components/StatusPill";
-import { sessionPalette } from "./lib/design-tokens";
-import { EVENT_TYPES } from "./lib/event-types";
+import type {
+  ApogeeEvent,
+  InitialPayload,
+  RecentTurnsResponse,
+  Turn,
+  TurnPayload,
+} from "./lib/api-types";
+import { SSE_EVENT_TYPES } from "./lib/api-types";
+import { useEventStream } from "./lib/sse";
+import { useApi } from "./lib/swr";
 
 /**
- * Landing page — serves double duty as the Overview route and as the
- * design-system showcase. It renders without any backend so `next build`
- * stays self-contained in this scaffold PR.
+ * `/` — the apogee live dashboard. Hydrates from `GET /v1/turns/recent` and
+ * patches itself in real time from the SSE stream at
+ * `GET /v1/events/stream`. Keeps two windows on screen:
+ *   1. The 20 most recent turns, replaced in place on `turn.updated` /
+ *      `turn.ended`, prepended on `turn.started`.
+ *   2. A 40-entry ring buffer of raw SSE events so operators can watch
+ *      activity flow through the collector without a reload.
  */
 
+const RECENT_TURNS_LIMIT = 20;
+const TICKER_HISTORY = 40;
+
 export default function Page() {
+  const { data: recentTurnsData } =
+    useApi<RecentTurnsResponse>("/v1/turns/recent");
+
+  // SSE-derived state. `initialTurns` captures the `initial` payload so we
+  // can use it as the base when SWR has not finished loading. `patches` is
+  // an append-only log of turn updates that we fold onto the base list in
+  // render order. `events` is the ticker ring buffer.
+  const [initialTurns, setInitialTurns] = useState<Turn[] | null>(null);
+  const [patches, setPatches] = useState<Turn[]>([]);
+  const [events, setEvents] = useState<ApogeeEvent[]>([]);
+
+  const onEvent = useCallback((event: ApogeeEvent) => {
+    setEvents((prev) => {
+      const next = [event, ...prev];
+      if (next.length > TICKER_HISTORY) next.length = TICKER_HISTORY;
+      return next;
+    });
+
+    switch (event.type) {
+      case SSE_EVENT_TYPES.Initial: {
+        const payload = event.data as InitialPayload;
+        if (payload?.recent_turns?.length) {
+          setInitialTurns(payload.recent_turns.slice(0, RECENT_TURNS_LIMIT));
+        } else {
+          setInitialTurns([]);
+        }
+        break;
+      }
+      case SSE_EVENT_TYPES.TurnStarted:
+      case SSE_EVENT_TYPES.TurnUpdated:
+      case SSE_EVENT_TYPES.TurnEnded: {
+        const payload = event.data as TurnPayload;
+        if (payload?.turn) {
+          setPatches((prev) => {
+            const next = [...prev, payload.turn];
+            if (next.length > RECENT_TURNS_LIMIT * 4) {
+              return next.slice(next.length - RECENT_TURNS_LIMIT * 4);
+            }
+            return next;
+          });
+        }
+        break;
+      }
+      default:
+        break;
+    }
+  }, []);
+
+  const { status } = useEventStream<ApogeeEvent>("/v1/events/stream", {
+    historyLimit: TICKER_HISTORY,
+    onEvent,
+  });
+
+  const turns = useMemo(() => {
+    // Start from whichever hydration source has arrived first. `initial`
+    // from SSE takes priority over SWR because it is always fresh relative
+    // to the live stream.
+    const base = initialTurns ?? recentTurnsData?.turns ?? [];
+    const byId = new Map<string, Turn>();
+    const order: string[] = [];
+    for (const turn of base) {
+      if (byId.has(turn.turn_id)) continue;
+      byId.set(turn.turn_id, turn);
+      order.push(turn.turn_id);
+    }
+    // Apply patches in arrival order. New turns get prepended; existing
+    // turns are replaced in place.
+    for (const turn of patches) {
+      if (byId.has(turn.turn_id)) {
+        byId.set(turn.turn_id, turn);
+      } else {
+        byId.set(turn.turn_id, turn);
+        order.unshift(turn.turn_id);
+      }
+    }
+    const result: Turn[] = [];
+    for (const id of order) {
+      const turn = byId.get(id);
+      if (turn) result.push(turn);
+      if (result.length >= RECENT_TURNS_LIMIT) break;
+    }
+    return result;
+  }, [initialTurns, recentTurnsData, patches]);
+
+  const runningCount = useMemo(
+    () => turns.filter((t) => t.status === "running").length,
+    [turns],
+  );
+
   return (
-    <div className="mx-auto flex max-w-6xl flex-col gap-10">
-      {/* ── Hero ───────────────────────────────────────── */}
-      <header className="pt-6">
-        <h1 className="font-display text-5xl leading-none tracking-[0.16em] text-white md:text-6xl">
-          APOGEE
-        </h1>
-        <div className="accent-gradient-bar mt-4 h-[3px] w-40 rounded-full" />
-        <p className="mt-4 max-w-2xl text-[15px] text-[var(--text-muted)]">
-          The highest vantage point over your Claude Code agents. apogee
-          captures every hook event from every session, stores them in DuckDB,
-          and streams them live to this console.
-        </p>
+    <div className="mx-auto flex max-w-6xl flex-col gap-6">
+      <header className="flex flex-wrap items-end justify-between gap-4 pt-6">
+        <div>
+          <h1 className="font-display text-4xl leading-none tracking-[0.16em] text-white md:text-5xl">
+            APOGEE
+          </h1>
+          <div className="accent-gradient-bar mt-3 h-[3px] w-32 rounded-full" />
+          <p className="mt-3 max-w-xl text-[13px] text-[var(--text-muted)]">
+            Live telemetry for every Claude Code session reporting to this
+            collector.
+          </p>
+        </div>
+        <div className="flex flex-col items-end gap-1">
+          <LiveIndicator status={status} />
+          <p className="font-mono text-[11px] text-[var(--text-muted)]">
+            {turns.length} turns · {runningCount} running
+          </p>
+        </div>
       </header>
 
-      {/* ── Status pills ───────────────────────────────── */}
       <section>
         <SectionHeader
-          title="Status palette"
-          subtitle="Five semantic tones that every apogee surface speaks."
+          title="Recent turns"
+          subtitle="Latest 20 turns across every session. Live-patched from the collector."
         />
-        <Card>
-          <div className="flex flex-wrap items-center gap-3">
-            <StatusPill tone="critical">critical — tool failure</StatusPill>
-            <StatusPill tone="warning">warning — permission requested</StatusPill>
-            <StatusPill tone="success">success — session complete</StatusPill>
-            <StatusPill tone="info">info — tool invoked</StatusPill>
-            <StatusPill tone="muted">muted — idle</StatusPill>
-          </div>
+        <Card className="p-0">
+          <RecentTurnsTable turns={turns} />
         </Card>
       </section>
 
-      {/* ── Event catalogue ────────────────────────────── */}
       <section>
         <SectionHeader
-          title="Hook events"
-          subtitle="Twelve Claude Code hook events, each with an assigned icon and tone."
+          title="Event ticker"
+          subtitle="Last 40 hook events, newest first."
         />
-        <Card>
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-            {EVENT_TYPES.map((spec) => (
-              <EventTypeBadge key={spec.id} spec={spec} />
-            ))}
-          </div>
+        <Card className="p-0">
+          <EventTicker events={events} />
         </Card>
       </section>
 
-      {/* ── Session palette ────────────────────────────── */}
-      <section>
-        <SectionHeader
-          title="Session palette"
-          subtitle="Ten OKLCH-derived colors for per-session chart series."
-        />
-        <Card>
-          <div className="flex flex-wrap items-center gap-4">
-            {sessionPalette.map((hex, i) => (
-              <div key={hex} className="flex flex-col items-center gap-1.5">
-                <span
-                  className="block h-10 w-10 rounded-full border border-[var(--border-bright)]"
-                  style={{ background: hex }}
-                  aria-label={`Session color ${i + 1}`}
-                />
-                <code className="font-mono text-[10px] text-[var(--text-muted)]">
-                  {hex}
-                </code>
-              </div>
-            ))}
-          </div>
-        </Card>
-      </section>
-
-      {/* ── Live pulse placeholder ─────────────────────── */}
-      <section>
-        <SectionHeader
-          title="Live pulse"
-          subtitle="Event stream from the collector will replace this card."
-        />
-        <Card>
-          <div className="flex flex-col items-center justify-center gap-3 py-10 text-center">
-            <div className="rounded-full border border-[var(--border-bright)] bg-[var(--bg-raised)] p-3">
-              <Radio
-                size={22}
-                strokeWidth={1.5}
-                className="text-[var(--artemis-earth)]"
-              />
-            </div>
-            <p className="font-display text-[12px] text-white">No events yet</p>
-            <p className="max-w-sm text-[12px] text-[var(--text-muted)]">
-              Start the collector and point your Claude Code hooks at
-              <code className="mx-1 font-mono text-[11px] text-[var(--artemis-earth)]">
-                http://localhost:8000/ingest
-              </code>
-              to see events appear here in real time.
-            </p>
-          </div>
-        </Card>
-      </section>
-
-      <footer className="pb-8 pt-4">
+      <footer className="pb-8 pt-2">
         <p className="font-mono text-[10px] text-[var(--text-muted)]">
-          apogee 0.0.0-dev — scaffold preview
+          apogee 0.0.0-dev — live dashboard
         </p>
       </footer>
     </div>

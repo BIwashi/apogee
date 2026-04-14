@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/BIwashi/apogee/internal/otel"
+	"github.com/BIwashi/apogee/internal/sse"
 	"github.com/BIwashi/apogee/internal/store/duckdb"
 )
 
@@ -61,6 +62,10 @@ type Reconstructor struct {
 	store    *duckdb.Store
 	clock    func() time.Time
 	logger   *slog.Logger
+	// Hub, when non-nil, receives a broadcast for every session/turn/span
+	// mutation once the underlying DuckDB write has succeeded. The hub must
+	// never block — see internal/sse for the back-pressure policy.
+	Hub *sse.Hub
 }
 
 // NewReconstructor returns a Reconstructor backed by the given store. logger
@@ -178,6 +183,7 @@ func (r *Reconstructor) handleSessionEnd(ctx context.Context, st *sessionState, 
 	if err := r.store.MarkSessionEnded(ctx, ev.SessionID, ev.Time()); err != nil {
 		return err
 	}
+	r.broadcastSession(ctx, ev.SessionID)
 	delete(r.sessions, ev.SessionID)
 	return nil
 }
@@ -237,6 +243,7 @@ func (r *Reconstructor) handleUserPromptSubmit(ctx context.Context, st *sessionS
 	if err := r.store.InsertSpan(ctx, root); err != nil {
 		return err
 	}
+	r.broadcastSpan(sse.EventTypeSpanInserted, root)
 
 	st.TraceID = traceID
 	st.TurnID = turnID
@@ -271,6 +278,8 @@ func (r *Reconstructor) handleUserPromptSubmit(ctx context.Context, st *sessionS
 	if err := r.store.IncrementSessionTurnCount(ctx, ev.SessionID); err != nil {
 		return err
 	}
+	r.broadcastTurn(ctx, turnID, sse.EventTypeTurnStarted)
+	r.broadcastSession(ctx, ev.SessionID)
 	return nil
 }
 
@@ -339,6 +348,7 @@ func (r *Reconstructor) handlePreToolUse(ctx context.Context, st *sessionState, 
 	if err := r.store.InsertSpan(ctx, span); err != nil {
 		return err
 	}
+	r.broadcastSpan(sse.EventTypeSpanInserted, span)
 
 	stackKey := stackKeyFor(ev.AgentID)
 	st.Stacks[stackKey] = append(st.Stacks[stackKey], &agentFrame{Span: span, StartedAt: ev.Time()})
@@ -384,6 +394,7 @@ func (r *Reconstructor) handlePostToolUse(ctx context.Context, st *sessionState,
 	if err := r.store.UpdateSpan(ctx, span); err != nil {
 		return err
 	}
+	r.broadcastSpan(sse.EventTypeSpanUpdated, span)
 	r.popFrameBySpan(st, span)
 	delete(st.PendingTools, ev.ToolUseID)
 	r.touchTurnCounters(ctx, st)
@@ -417,7 +428,11 @@ func (r *Reconstructor) handlePermissionRequest(ctx context.Context, st *session
 			"claude_code.tool.name":        ev.ToolName,
 		},
 	}
-	return r.store.InsertSpan(ctx, span)
+	if err := r.store.InsertSpan(ctx, span); err != nil {
+		return err
+	}
+	r.broadcastSpan(sse.EventTypeSpanInserted, span)
+	return nil
 }
 
 func (r *Reconstructor) handleNotification(ctx context.Context, st *sessionState, ev *HookEvent) error {
@@ -476,6 +491,7 @@ func (r *Reconstructor) handleSubagentStart(ctx context.Context, st *sessionStat
 	if err := r.store.InsertSpan(ctx, span); err != nil {
 		return err
 	}
+	r.broadcastSpan(sse.EventTypeSpanInserted, span)
 	st.Stacks[agentID] = []*agentFrame{{Span: span, StartedAt: ev.Time()}}
 	st.SubagentCount++
 	r.touchTurnCounters(ctx, st)
@@ -497,6 +513,7 @@ func (r *Reconstructor) handleSubagentStop(ctx context.Context, st *sessionState
 	if err := r.store.UpdateSpan(ctx, root.Span); err != nil {
 		return err
 	}
+	r.broadcastSpan(sse.EventTypeSpanUpdated, root.Span)
 	delete(st.Stacks, ev.AgentID)
 	return nil
 }
@@ -515,6 +532,7 @@ func (r *Reconstructor) handlePreCompact(ctx context.Context, st *sessionState, 
 	if err := r.store.UpdateTurnStatus(ctx, st.TurnID, "compacted", nil, nil, st.ToolCallCount, st.SubagentCount, st.ErrorCount); err != nil {
 		return err
 	}
+	r.broadcastTurn(ctx, st.TurnID, sse.EventTypeTurnUpdated)
 	return nil
 }
 
@@ -546,7 +564,9 @@ func (r *Reconstructor) closeTurn(ctx context.Context, st *sessionState, end tim
 			}
 			if err := r.store.UpdateSpan(ctx, f.Span); err != nil {
 				r.logger.Error("close span", "err", err)
+				continue
 			}
+			r.broadcastSpan(sse.EventTypeSpanUpdated, f.Span)
 		}
 		delete(st.Stacks, key)
 	}
@@ -559,10 +579,15 @@ func (r *Reconstructor) closeTurn(ctx context.Context, st *sessionState, end tim
 	}
 	if err := r.store.UpdateSpan(ctx, st.TurnRoot); err != nil {
 		r.logger.Error("close turn root", "err", err)
+	} else {
+		r.broadcastSpan(sse.EventTypeSpanUpdated, st.TurnRoot)
 	}
 	durationMs := end.Sub(st.TurnStartedAt).Milliseconds()
-	if err := r.store.UpdateTurnStatus(ctx, st.TurnID, status, &end, &durationMs, st.ToolCallCount, st.SubagentCount, st.ErrorCount); err != nil {
+	closedTurnID := st.TurnID
+	if err := r.store.UpdateTurnStatus(ctx, closedTurnID, status, &end, &durationMs, st.ToolCallCount, st.SubagentCount, st.ErrorCount); err != nil {
 		r.logger.Error("close turn", "err", err)
+	} else {
+		r.broadcastTurn(ctx, closedTurnID, sse.EventTypeTurnEnded)
 	}
 	st.TurnRoot = nil
 	st.TurnID = ""
@@ -577,14 +602,18 @@ func (r *Reconstructor) touchTurnCounters(ctx context.Context, st *sessionState)
 	}
 	if err := r.store.UpdateTurnStatus(ctx, st.TurnID, "running", nil, nil, st.ToolCallCount, st.SubagentCount, st.ErrorCount); err != nil {
 		r.logger.Error("update turn counters", "err", err)
+		return
 	}
+	r.broadcastTurn(ctx, st.TurnID, sse.EventTypeTurnUpdated)
 }
 
 func (r *Reconstructor) appendSpanEvent(ctx context.Context, span *otel.Span, ev otel.SpanEvent) {
 	span.Events = append(span.Events, ev)
 	if err := r.store.UpdateSpan(ctx, span); err != nil {
 		r.logger.Error("append span event", "err", err)
+		return
 	}
+	r.broadcastSpan(sse.EventTypeSpanUpdated, span)
 }
 
 // parentFrame returns the top of the relevant stack for a tool or subagent
@@ -630,6 +659,7 @@ func (r *Reconstructor) upsertSession(ctx context.Context, st *sessionState, ev 
 		return err
 	}
 	st.SessionInDB = true
+	r.broadcastSession(ctx, ev.SessionID)
 	return nil
 }
 
@@ -715,6 +745,49 @@ func stackKeyFor(agentID string) string {
 		return mainAgentKey
 	}
 	return agentID
+}
+
+// broadcastSession loads the session row and publishes a session.updated
+// event. No-op when the hub is nil.
+func (r *Reconstructor) broadcastSession(ctx context.Context, sessionID string) {
+	if r.Hub == nil {
+		return
+	}
+	sess, err := r.store.GetSession(ctx, sessionID)
+	if err != nil || sess == nil {
+		if err != nil {
+			r.logger.Debug("broadcast session: load", "err", err)
+		}
+		return
+	}
+	r.Hub.Broadcast(sse.NewSessionEvent(r.clock(), *sess))
+}
+
+// broadcastTurn loads the turn row and publishes a turn.* event using the
+// provided kind.
+func (r *Reconstructor) broadcastTurn(ctx context.Context, turnID, kind string) {
+	if r.Hub == nil {
+		return
+	}
+	t, err := r.store.GetTurn(ctx, turnID)
+	if err != nil || t == nil {
+		if err != nil {
+			r.logger.Debug("broadcast turn: load", "err", err)
+		}
+		return
+	}
+	r.Hub.Broadcast(sse.NewTurnEvent(kind, r.clock(), *t))
+}
+
+// broadcastSpan emits a span.inserted or span.updated event for the given
+// in-memory span. No DB round-trip is needed because reconstructor already
+// holds the full struct.
+func (r *Reconstructor) broadcastSpan(kind string, sp *otel.Span) {
+	if r.Hub == nil || sp == nil {
+		return
+	}
+	row := sse.SpanRowFromOTel(sp)
+	r.Hub.Broadcast(sse.NewSpanEvent(kind, r.clock(), row))
 }
 
 func coalesce(s, fallback string) string {

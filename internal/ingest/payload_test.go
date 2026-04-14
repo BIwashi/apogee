@@ -28,6 +28,53 @@ func TestHookEventUnmarshal(t *testing.T) {
 	require.Equal(t, time.UnixMilli(1700000000000), ev.Time())
 }
 
+func TestDecodeHookEvents(t *testing.T) {
+	single := `{"source_app":"demo","session_id":"s","hook_event_type":"Stop","timestamp":1}`
+	batch := `[
+		{"source_app":"demo","session_id":"s","hook_event_type":"Stop","timestamp":1},
+		{"source_app":"demo","session_id":"s","hook_event_type":"SessionEnd","timestamp":2}
+	]`
+
+	t.Run("single object", func(t *testing.T) {
+		out, err := DecodeHookEvents([]byte(single))
+		require.NoError(t, err)
+		require.Len(t, out, 1)
+		require.Equal(t, "Stop", out[0].HookEventType)
+	})
+
+	t.Run("json array", func(t *testing.T) {
+		out, err := DecodeHookEvents([]byte(batch))
+		require.NoError(t, err)
+		require.Len(t, out, 2)
+		require.Equal(t, "Stop", out[0].HookEventType)
+		require.Equal(t, "SessionEnd", out[1].HookEventType)
+	})
+
+	t.Run("leading whitespace array", func(t *testing.T) {
+		out, err := DecodeHookEvents([]byte("  \n" + batch))
+		require.NoError(t, err)
+		require.Len(t, out, 2)
+	})
+
+	t.Run("empty body", func(t *testing.T) {
+		out, err := DecodeHookEvents(nil)
+		require.NoError(t, err)
+		require.Len(t, out, 0)
+	})
+
+	t.Run("empty array", func(t *testing.T) {
+		out, err := DecodeHookEvents([]byte("[]"))
+		require.NoError(t, err)
+		require.NotNil(t, out)
+		require.Len(t, out, 0)
+	})
+
+	t.Run("invalid json", func(t *testing.T) {
+		_, err := DecodeHookEvents([]byte("{not json"))
+		require.Error(t, err)
+	})
+}
+
 func TestHookEventValidate(t *testing.T) {
 	cases := []struct {
 		name    string

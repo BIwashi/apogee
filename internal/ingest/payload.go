@@ -56,6 +56,42 @@ type HookEvent struct {
 	Chat                  json.RawMessage `json:"chat,omitempty"`
 }
 
+// DecodeHookEvents parses a request body that may be either a single
+// HookEvent JSON object or an array of HookEvent values and returns the
+// resulting slice. An empty body or an empty array both yield a non-nil
+// zero-length slice without an error; the caller decides whether that is
+// valid for its use case.
+func DecodeHookEvents(body []byte) ([]HookEvent, error) {
+	trimmed := trimLeadingWhitespace(body)
+	if len(trimmed) == 0 {
+		return []HookEvent{}, nil
+	}
+	if trimmed[0] == '[' {
+		var out []HookEvent
+		if err := json.Unmarshal(body, &out); err != nil {
+			return nil, err
+		}
+		if out == nil {
+			out = []HookEvent{}
+		}
+		return out, nil
+	}
+	var ev HookEvent
+	if err := json.Unmarshal(body, &ev); err != nil {
+		return nil, err
+	}
+	return []HookEvent{ev}, nil
+}
+
+func trimLeadingWhitespace(b []byte) []byte {
+	for i, c := range b {
+		if c != ' ' && c != '\t' && c != '\n' && c != '\r' {
+			return b[i:]
+		}
+	}
+	return nil
+}
+
 // Time returns the event timestamp as a time.Time. ms-since-epoch is the
 // canonical wire format; we round-trip via UnixMilli.
 func (e *HookEvent) Time() time.Time {

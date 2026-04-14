@@ -13,6 +13,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 
 	"github.com/BIwashi/apogee/internal/ingest"
+	"github.com/BIwashi/apogee/internal/sse"
 	"github.com/BIwashi/apogee/internal/store/duckdb"
 )
 
@@ -22,6 +23,7 @@ type Server struct {
 	cfg           Config
 	store         *duckdb.Store
 	reconstructor *ingest.Reconstructor
+	hub           *sse.Hub
 	router        chi.Router
 	httpServer    *http.Server
 	logger        *slog.Logger
@@ -33,16 +35,22 @@ func New(cfg Config, store *duckdb.Store, logger *slog.Logger) *Server {
 	if logger == nil {
 		logger = slog.Default()
 	}
+	hub := sse.NewHub(logger)
 	rec := ingest.NewReconstructor(store, logger, nil)
+	rec.Hub = hub
 	s := &Server{
 		cfg:           cfg,
 		store:         store,
 		reconstructor: rec,
+		hub:           hub,
 		logger:        logger,
 	}
 	s.router = s.buildRouter()
 	return s
 }
+
+// Hub exposes the SSE hub for tests.
+func (s *Server) Hub() *sse.Hub { return s.hub }
 
 // Reconstructor exposes the reconstructor for tests.
 func (s *Server) Reconstructor() *ingest.Reconstructor { return s.reconstructor }
@@ -98,6 +106,7 @@ func (s *Server) buildRouter() chi.Router {
 	r.Get("/v1/turns/{turn_id}", s.getTurn)
 	r.Get("/v1/turns/{turn_id}/spans", s.listTurnSpans)
 	r.Get("/v1/filter-options", s.getFilterOptions)
+	r.Get("/v1/events/stream", s.streamEvents)
 	return r
 }
 
