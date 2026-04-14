@@ -1,15 +1,17 @@
 import { Orbit } from "lucide-react";
 
-import type { Turn } from "../lib/api-types";
+import type { AttentionState, Turn } from "../lib/api-types";
 import type { StatusKey } from "../lib/design-tokens";
 import { formatClock } from "../lib/time";
+import AttentionDot from "./AttentionDot";
 import StatusPill from "./StatusPill";
 
 /**
- * RecentTurnsTable — dense table of the most recent turns. Layout matches
- * the PR #3 brief: time · session · source_app · status · tool_calls · model.
- * Renders a NASA-ish empty state when the list is empty; everything else is
- * up to the caller (live patching happens at the page level).
+ * RecentTurnsTable — dense, triage-ordered table of the most recent turns.
+ * PR #4 reshuffles the column order: attention → time → session → source →
+ * phase → status → counts → model. Rows come pre-sorted from the backend
+ * (attention priority asc, started_at desc) so the table does no sorting of
+ * its own.
  */
 
 interface RecentTurnsTableProps {
@@ -38,6 +40,23 @@ function shortId(id: string, len = 8): string {
   return id.slice(0, len);
 }
 
+/**
+ * normaliseAttention degrades a possibly-null attention state to a typed
+ * default. Pre-engine rows (older turns written before PR #4 landed) fall
+ * through to `healthy` for display purposes.
+ */
+function normaliseAttention(t: Turn): AttentionState {
+  switch (t.attention_state) {
+    case "intervene_now":
+    case "watch":
+    case "watchlist":
+    case "healthy":
+      return t.attention_state;
+    default:
+      return "healthy";
+  }
+}
+
 export default function RecentTurnsTable({ turns }: RecentTurnsTableProps) {
   if (turns.length === 0) {
     return (
@@ -62,9 +81,11 @@ export default function RecentTurnsTable({ turns }: RecentTurnsTableProps) {
       <table className="w-full border-collapse text-[12px]">
         <thead>
           <tr className="text-left text-[10px] uppercase tracking-[0.14em] text-[var(--text-muted)]">
+            <th className="border-b border-[var(--border)] px-3 py-2 font-medium">Attention</th>
             <th className="border-b border-[var(--border)] px-3 py-2 font-medium">Time</th>
             <th className="border-b border-[var(--border)] px-3 py-2 font-medium">Session</th>
             <th className="border-b border-[var(--border)] px-3 py-2 font-medium">Source App</th>
+            <th className="border-b border-[var(--border)] px-3 py-2 font-medium">Phase</th>
             <th className="border-b border-[var(--border)] px-3 py-2 font-medium">Status</th>
             <th className="border-b border-[var(--border)] px-3 py-2 text-right font-medium">Tools</th>
             <th className="border-b border-[var(--border)] px-3 py-2 text-right font-medium">Subagents</th>
@@ -73,39 +94,52 @@ export default function RecentTurnsTable({ turns }: RecentTurnsTableProps) {
           </tr>
         </thead>
         <tbody>
-          {turns.map((turn) => (
-            <tr
-              key={turn.turn_id}
-              className="border-b border-[var(--border)] transition-colors hover:bg-[var(--bg-raised)]"
-            >
-              <td className="px-3 py-2 font-mono text-[11px] text-[var(--text-muted)]">
-                {formatClock(turn.started_at)}
-              </td>
-              <td className="px-3 py-2 font-mono text-[11px] text-gray-200">
-                {shortId(turn.session_id)}
-              </td>
-              <td className="px-3 py-2 text-gray-200">{turn.source_app || "—"}</td>
-              <td className="px-3 py-2">
-                <StatusPill tone={statusTone(turn.status)}>{turn.status}</StatusPill>
-              </td>
-              <td className="px-3 py-2 text-right font-mono tabular-nums text-gray-200">
-                {turn.tool_call_count}
-              </td>
-              <td className="px-3 py-2 text-right font-mono tabular-nums text-gray-200">
-                {turn.subagent_count}
-              </td>
-              <td
-                className={`px-3 py-2 text-right font-mono tabular-nums ${
-                  turn.error_count > 0 ? "text-[var(--status-critical)]" : "text-gray-200"
-                }`}
+          {turns.map((turn) => {
+            const attention = normaliseAttention(turn);
+            return (
+              <tr
+                key={turn.turn_id}
+                className="border-b border-[var(--border)] transition-colors hover:bg-[var(--bg-raised)]"
               >
-                {turn.error_count}
-              </td>
-              <td className="px-3 py-2 font-mono text-[11px] text-[var(--text-muted)]">
-                {turn.model || "—"}
-              </td>
-            </tr>
-          ))}
+                <td className="px-3 py-2">
+                  <AttentionDot
+                    state={attention}
+                    tone={turn.attention_tone}
+                    reason={turn.attention_reason}
+                  />
+                </td>
+                <td className="px-3 py-2 font-mono text-[11px] text-[var(--text-muted)]">
+                  {formatClock(turn.started_at)}
+                </td>
+                <td className="px-3 py-2 font-mono text-[11px] text-gray-200">
+                  {shortId(turn.session_id)}
+                </td>
+                <td className="px-3 py-2 text-gray-200">{turn.source_app || "—"}</td>
+                <td className="px-3 py-2 font-mono text-[11px] text-[var(--text-muted)]">
+                  {turn.phase || "—"}
+                </td>
+                <td className="px-3 py-2">
+                  <StatusPill tone={statusTone(turn.status)}>{turn.status}</StatusPill>
+                </td>
+                <td className="px-3 py-2 text-right font-mono tabular-nums text-gray-200">
+                  {turn.tool_call_count}
+                </td>
+                <td className="px-3 py-2 text-right font-mono tabular-nums text-gray-200">
+                  {turn.subagent_count}
+                </td>
+                <td
+                  className={`px-3 py-2 text-right font-mono tabular-nums ${
+                    turn.error_count > 0 ? "text-[var(--status-critical)]" : "text-gray-200"
+                  }`}
+                >
+                  {turn.error_count}
+                </td>
+                <td className="px-3 py-2 font-mono text-[11px] text-[var(--text-muted)]">
+                  {turn.model || "—"}
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>

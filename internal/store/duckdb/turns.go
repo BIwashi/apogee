@@ -32,6 +32,10 @@ type Turn struct {
 	AttentionState  string     `json:"attention_state,omitempty"`
 	AttentionReason string     `json:"attention_reason,omitempty"`
 	AttentionScore  *float64   `json:"attention_score,omitempty"`
+	AttentionTone   string     `json:"attention_tone,omitempty"`
+	Phase           string     `json:"phase,omitempty"`
+	PhaseConfidence *float64   `json:"phase_confidence,omitempty"`
+	PhaseSince      *time.Time `json:"phase_since,omitempty"`
 }
 
 // InsertTurn creates a new turn row. The caller is expected to have already
@@ -105,12 +109,32 @@ func (s *Store) GetTurn(ctx context.Context, turnID string) (*Turn, error) {
 	return t, nil
 }
 
-// ListRecentTurns returns up to limit turns ordered by started_at DESC.
+// attentionOrder is the shared ORDER BY clause that sorts turns by attention
+// priority (intervene_now first) then by recency. Rows with a NULL
+// attention_state (pre-engine data) sort after healthy so they degrade
+// gracefully.
+const attentionOrder = `
+ORDER BY
+  CASE attention_state
+    WHEN 'intervene_now' THEN 0
+    WHEN 'watch'         THEN 1
+    WHEN 'watchlist'     THEN 2
+    WHEN 'healthy'       THEN 3
+    ELSE 4
+  END ASC,
+  started_at DESC
+`
+
+// ListRecentTurns returns up to limit turns. Rows are sorted by attention
+// priority then recency. Default limit is 100, max 500.
 func (s *Store) ListRecentTurns(ctx context.Context, limit int) ([]Turn, error) {
 	if limit <= 0 {
-		limit = 200
+		limit = 100
 	}
-	rows, err := s.db.QueryContext(ctx, selectTurn+` ORDER BY started_at DESC LIMIT ?`, limit)
+	if limit > 500 {
+		limit = 500
+	}
+	rows, err := s.db.QueryContext(ctx, selectTurn+attentionOrder+` LIMIT ?`, limit)
 	if err != nil {
 		return nil, fmt.Errorf("list recent turns: %w", err)
 	}
@@ -126,12 +150,121 @@ func (s *Store) ListRecentTurns(ctx context.Context, limit int) ([]Turn, error) 
 	return out, rows.Err()
 }
 
+// ListActiveTurns returns every turn with status='running' sorted by
+// attention priority then started_at desc.
+func (s *Store) ListActiveTurns(ctx context.Context, limit int) ([]Turn, error) {
+	if limit <= 0 {
+		limit = 200
+	}
+	rows, err := s.db.QueryContext(ctx,
+		selectTurn+` WHERE status = 'running' `+attentionOrder+` LIMIT ?`, limit)
+	if err != nil {
+		return nil, fmt.Errorf("list active turns: %w", err)
+	}
+	defer rows.Close()
+	var out []Turn
+	for rows.Next() {
+		t, err := scanTurn(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *t)
+	}
+	return out, rows.Err()
+}
+
+// AttentionCounts is the aggregated output of CountAttention. Missing
+// buckets are zero.
+type AttentionCounts struct {
+	InterveneNow int `json:"intervene_now"`
+	Watch        int `json:"watch"`
+	Watchlist    int `json:"watchlist"`
+	Healthy      int `json:"healthy"`
+	Total        int `json:"total"`
+}
+
+// CountAttention returns the per-bucket count of running turns. When
+// includeEnded is true the query considers every row in the turns table
+// instead of filtering by status.
+func (s *Store) CountAttention(ctx context.Context, includeEnded bool) (AttentionCounts, error) {
+	q := `SELECT COALESCE(attention_state, 'healthy') AS state, COUNT(*) FROM turns`
+	if !includeEnded {
+		q += ` WHERE status = 'running'`
+	}
+	q += ` GROUP BY 1`
+	rows, err := s.db.QueryContext(ctx, q)
+	if err != nil {
+		return AttentionCounts{}, fmt.Errorf("count attention: %w", err)
+	}
+	defer rows.Close()
+	var out AttentionCounts
+	for rows.Next() {
+		var state string
+		var c int
+		if err := rows.Scan(&state, &c); err != nil {
+			return AttentionCounts{}, err
+		}
+		switch state {
+		case "intervene_now":
+			out.InterveneNow = c
+		case "watch":
+			out.Watch = c
+		case "watchlist":
+			out.Watchlist = c
+		default:
+			out.Healthy += c
+		}
+		out.Total += c
+	}
+	return out, rows.Err()
+}
+
+// CountRunningTurns returns the number of turns currently in the running
+// state. Used by the metrics collector.
+func (s *Store) CountRunningTurns(ctx context.Context) (int64, error) {
+	var n int64
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM turns WHERE status = 'running'`).Scan(&n); err != nil {
+		return 0, fmt.Errorf("count running turns: %w", err)
+	}
+	return n, nil
+}
+
+// UpdateTurnAttention writes the engine's classification onto a turn row.
+// Called by the reconstructor after every meaningful mutation.
+func (s *Store) UpdateTurnAttention(ctx context.Context, turnID string, state, reason, tone string, score float64, phase string, phaseConfidence float64, phaseSince time.Time) error {
+	const q = `
+UPDATE turns SET
+  attention_state   = ?,
+  attention_reason  = ?,
+  attention_score   = ?,
+  attention_tone    = ?,
+  phase             = ?,
+  phase_confidence  = ?,
+  phase_since       = ?
+WHERE turn_id = ?
+`
+	_, err := s.db.ExecContext(ctx, q,
+		nullString(state),
+		nullString(reason),
+		score,
+		nullString(tone),
+		nullString(phase),
+		phaseConfidence,
+		phaseSince,
+		turnID,
+	)
+	if err != nil {
+		return fmt.Errorf("update turn attention: %w", err)
+	}
+	return nil
+}
+
 // ListSessionTurns returns turns belonging to a session, newest first.
 func (s *Store) ListSessionTurns(ctx context.Context, sessionID string, limit int) ([]Turn, error) {
 	if limit <= 0 {
 		limit = 200
 	}
-	rows, err := s.db.QueryContext(ctx, selectTurn+` WHERE session_id = ? ORDER BY started_at DESC LIMIT ?`, sessionID, limit)
+	rows, err := s.db.QueryContext(ctx, selectTurn+` WHERE session_id = ? `+attentionOrder+` LIMIT ?`, sessionID, limit)
 	if err != nil {
 		return nil, fmt.Errorf("list session turns: %w", err)
 	}
@@ -154,7 +287,8 @@ SELECT
   tool_call_count, subagent_count, error_count,
   input_tokens, output_tokens,
   headline, outcome_summary,
-  attention_state, attention_reason, attention_score
+  attention_state, attention_reason, attention_score, attention_tone,
+  phase, phase_confidence, phase_since
 FROM turns
 `
 
@@ -165,20 +299,24 @@ type rowScanner interface {
 
 func scanTurn(r rowScanner) (*Turn, error) {
 	var (
-		t              Turn
-		endedAt        sql.NullTime
-		durationMs     sql.NullInt64
-		model          sql.NullString
-		promptText     sql.NullString
-		promptChars    sql.NullInt32
-		outputChars    sql.NullInt32
-		inputTokens    sql.NullInt64
-		outputTokens   sql.NullInt64
-		headline       sql.NullString
-		outcomeSummary sql.NullString
-		attentionState sql.NullString
-		attentionReas  sql.NullString
-		attentionScore sql.NullFloat64
+		t               Turn
+		endedAt         sql.NullTime
+		durationMs      sql.NullInt64
+		model           sql.NullString
+		promptText      sql.NullString
+		promptChars     sql.NullInt32
+		outputChars     sql.NullInt32
+		inputTokens     sql.NullInt64
+		outputTokens    sql.NullInt64
+		headline        sql.NullString
+		outcomeSummary  sql.NullString
+		attentionState  sql.NullString
+		attentionReas   sql.NullString
+		attentionScore  sql.NullFloat64
+		attentionTone   sql.NullString
+		phase           sql.NullString
+		phaseConfidence sql.NullFloat64
+		phaseSince      sql.NullTime
 	)
 	if err := r.Scan(
 		&t.TurnID, &t.TraceID, &t.SessionID, &t.SourceApp, &t.StartedAt, &endedAt, &durationMs,
@@ -186,7 +324,8 @@ func scanTurn(r rowScanner) (*Turn, error) {
 		&t.ToolCallCount, &t.SubagentCount, &t.ErrorCount,
 		&inputTokens, &outputTokens,
 		&headline, &outcomeSummary,
-		&attentionState, &attentionReas, &attentionScore,
+		&attentionState, &attentionReas, &attentionScore, &attentionTone,
+		&phase, &phaseConfidence, &phaseSince,
 	); err != nil {
 		return nil, err
 	}
@@ -235,6 +374,20 @@ func scanTurn(r rowScanner) (*Turn, error) {
 	if attentionScore.Valid {
 		v := attentionScore.Float64
 		t.AttentionScore = &v
+	}
+	if attentionTone.Valid {
+		t.AttentionTone = attentionTone.String
+	}
+	if phase.Valid {
+		t.Phase = phase.String
+	}
+	if phaseConfidence.Valid {
+		v := phaseConfidence.Float64
+		t.PhaseConfidence = &v
+	}
+	if phaseSince.Valid {
+		v := phaseSince.Time
+		t.PhaseSince = &v
 	}
 	return &t, nil
 }

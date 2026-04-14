@@ -36,12 +36,28 @@ CREATE TABLE IF NOT EXISTS turns (
   outcome_summary    VARCHAR,
   attention_state    VARCHAR,
   attention_reason   VARCHAR,
-  attention_score    DOUBLE
+  attention_score    DOUBLE,
+  attention_tone     VARCHAR,
+  phase              VARCHAR,
+  phase_confidence   DOUBLE,
+  phase_since        TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_turns_session ON turns(session_id, started_at DESC);
 CREATE INDEX IF NOT EXISTS idx_turns_recent ON turns(started_at DESC);
 CREATE INDEX IF NOT EXISTS idx_turns_status ON turns(status);
 CREATE INDEX IF NOT EXISTS idx_turns_attention ON turns(attention_state);
+
+-- Task type history: rolling success/failure counts keyed by the canonical
+-- tool signature of a turn. Populated by the attention engine when a turn
+-- closes, and read back for the watchlist bucket.
+CREATE TABLE IF NOT EXISTS task_type_history (
+  pattern        VARCHAR PRIMARY KEY,
+  turn_count     BIGINT NOT NULL DEFAULT 0,
+  success_count  BIGINT NOT NULL DEFAULT 0,
+  failure_count  BIGINT NOT NULL DEFAULT 0,
+  last_updated   TIMESTAMP NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_task_type_history_updated ON task_type_history(last_updated DESC);
 
 -- Spans: OTel trace data.
 CREATE TABLE IF NOT EXISTS spans (

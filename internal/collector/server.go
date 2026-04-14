@@ -7,12 +7,15 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 
+	"github.com/BIwashi/apogee/internal/attention"
 	"github.com/BIwashi/apogee/internal/ingest"
+	"github.com/BIwashi/apogee/internal/metrics"
 	"github.com/BIwashi/apogee/internal/sse"
 	"github.com/BIwashi/apogee/internal/store/duckdb"
 )
@@ -27,6 +30,7 @@ type Server struct {
 	router        chi.Router
 	httpServer    *http.Server
 	logger        *slog.Logger
+	metrics       *metrics.Collector
 }
 
 // New constructs a Server backed by an open store. The caller retains
@@ -38,12 +42,19 @@ func New(cfg Config, store *duckdb.Store, logger *slog.Logger) *Server {
 	hub := sse.NewHub(logger)
 	rec := ingest.NewReconstructor(store, logger, nil)
 	rec.Hub = hub
+
+	// Wire the attention engine against the store-backed history reader.
+	history := &attention.StoreHistory{DB: store}
+	rec.Engine = attention.NewEngine(history)
+	rec.HistoryWrite = history
+
 	s := &Server{
 		cfg:           cfg,
 		store:         store,
 		reconstructor: rec,
 		hub:           hub,
 		logger:        logger,
+		metrics:       metrics.New(store, metrics.DefaultInterval, logger),
 	}
 	s.router = s.buildRouter()
 	return s
@@ -66,6 +77,19 @@ func (s *Server) Run(ctx context.Context) error {
 		Handler:           s.router,
 		ReadHeaderTimeout: 5 * time.Second,
 	}
+
+	// Start the internal metrics sampler. It writes one batch of rows into
+	// metric_points per tick so the dashboard sparklines stay fresh.
+	metricsCtx, stopMetrics := context.WithCancel(ctx)
+	defer stopMetrics()
+	if s.metrics != nil {
+		go func() {
+			if err := s.metrics.Run(metricsCtx); err != nil {
+				s.logger.Debug("metrics collector stopped", "err", err)
+			}
+		}()
+	}
+
 	errCh := make(chan error, 1)
 	go func() {
 		s.logger.Info("collector listening", "addr", s.cfg.HTTPAddr)
@@ -103,8 +127,11 @@ func (s *Server) buildRouter() chi.Router {
 	r.Get("/v1/sessions/{id}", s.getSession)
 	r.Get("/v1/sessions/{id}/turns", s.listSessionTurns)
 	r.Get("/v1/turns/recent", s.listRecentTurns)
+	r.Get("/v1/turns/active", s.listActiveTurns)
 	r.Get("/v1/turns/{turn_id}", s.getTurn)
 	r.Get("/v1/turns/{turn_id}/spans", s.listTurnSpans)
+	r.Get("/v1/attention/counts", s.getAttentionCounts)
+	r.Get("/v1/metrics/series", s.getMetricsSeries)
 	r.Get("/v1/filter-options", s.getFilterOptions)
 	r.Get("/v1/events/stream", s.streamEvents)
 	return r
@@ -156,7 +183,8 @@ func (s *Server) listSessionTurns(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listRecentTurns(w http.ResponseWriter, r *http.Request) {
-	out, err := s.store.ListRecentTurns(r.Context(), 200)
+	limit := parseLimit(r, 100, 500)
+	out, err := s.store.ListRecentTurns(r.Context(), limit)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -165,6 +193,88 @@ func (s *Server) listRecentTurns(w http.ResponseWriter, r *http.Request) {
 		out = []duckdb.Turn{}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"turns": out})
+}
+
+func (s *Server) listActiveTurns(w http.ResponseWriter, r *http.Request) {
+	limit := parseLimit(r, 200, 500)
+	out, err := s.store.ListActiveTurns(r.Context(), limit)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if out == nil {
+		out = []duckdb.Turn{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"turns": out})
+}
+
+func (s *Server) getAttentionCounts(w http.ResponseWriter, r *http.Request) {
+	includeEnded := r.URL.Query().Get("include") == "ended"
+	counts, err := s.store.CountAttention(r.Context(), includeEnded)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, counts)
+}
+
+func (s *Server) getMetricsSeries(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	name := q.Get("name")
+	if name == "" {
+		writeJSONError(w, http.StatusBadRequest, "missing metric name")
+		return
+	}
+	window, _ := time.ParseDuration(coalesceQuery(q.Get("window"), "5m"))
+	step, _ := time.ParseDuration(coalesceQuery(q.Get("step"), "10s"))
+	kind := q.Get("kind")
+	if kind == "" {
+		kind = "gauge"
+	}
+	points, err := s.store.GetMetricSeries(r.Context(), duckdb.MetricSeriesOptions{
+		Name:   name,
+		Window: window,
+		Step:   step,
+		Kind:   kind,
+	})
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if points == nil {
+		points = []duckdb.MetricSeriesPoint{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"name":   name,
+		"window": window.String(),
+		"step":   step.String(),
+		"kind":   kind,
+		"points": points,
+	})
+}
+
+// parseLimit reads ?limit=N and clamps to [1, max]. Falls back to def when
+// the query param is missing or malformed.
+func parseLimit(r *http.Request, def, max int) int {
+	raw := r.URL.Query().Get("limit")
+	if raw == "" {
+		return def
+	}
+	n, err := strconv.Atoi(raw)
+	if err != nil || n <= 0 {
+		return def
+	}
+	if n > max {
+		return max
+	}
+	return n
+}
+
+func coalesceQuery(v, fallback string) string {
+	if v == "" {
+		return fallback
+	}
+	return v
 }
 
 func (s *Server) getTurn(w http.ResponseWriter, r *http.Request) {
