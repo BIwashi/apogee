@@ -7,10 +7,23 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
 )
+
+// semverTokenRE matches a semver-ish version token anywhere in a
+// line of text. It accepts an optional leading "v" and captures
+// "MAJOR.MINOR.PATCH" plus an optional "-suffix" (e.g. 0.1.11-rc.1).
+// We scan the first non-empty line of `<binary> version` output with
+// this regex instead of assuming the version is a specific field
+// position, because the apogee version output evolved from a short
+// "apogee 0.1.7" to the richer
+// "apogee v0.1.11 (commit abc, built …, go1.25.0)" format — the
+// old fields[len-1] heuristic grabbed "go1.25.0)" from the new
+// format and stored it as the available_version.
+var semverTokenRE = regexp.MustCompile(`v?\d+\.\d+\.\d+(?:[-.][A-Za-z0-9.-]+)?`)
 
 // upgradeWatcher notices when the apogee binary on disk has been
 // replaced by `brew upgrade` (or any other out-of-band update) and
@@ -199,9 +212,19 @@ func (w *upgradeWatcher) Snapshot() (available string, detectedAt time.Time) {
 }
 
 // defaultVersionCmd shells out to `<path> version` and returns the
-// first non-empty line of stdout. The apogee version subcommand
-// prints a single "apogee <version>" line, so we extract just the
-// version token.
+// first non-empty line of stdout and extracts the version token via
+// semverTokenRE. The apogee version subcommand's output evolved from
+//
+//	apogee 0.1.7
+//
+// to
+//
+//	apogee v0.1.11 (commit 6248d8d, built 2026-04-15T12:02:27Z, go1.25.0)
+//
+// so a positional heuristic (first/last field) does not work across
+// versions. The regex match grabs "v0.1.11" regardless of its field
+// index and we strip the leading "v" so /v1/info reports the bare
+// version string the dashboard banner compares against.
 func defaultVersionCmd(ctx context.Context, path string) (string, error) {
 	cctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
@@ -212,14 +235,25 @@ func defaultVersionCmd(ctx context.Context, path string) (string, error) {
 	if err := cmd.Run(); err != nil {
 		return "", errors.Join(err, errors.New(strings.TrimSpace(out.String())))
 	}
-	for _, line := range strings.Split(out.String(), "\n") {
+	return extractVersionToken(out.String())
+}
+
+// extractVersionToken scans the first non-empty line of the given
+// output for the first semver-ish token. Exported for tests only
+// (lowercase). Returns a friendly error when no token is found so
+// the watcher can log a meaningful warning instead of silently
+// storing garbage.
+func extractVersionToken(raw string) (string, error) {
+	for _, line := range strings.Split(raw, "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" {
 			continue
 		}
-		// Accept either "apogee 0.1.7" or "0.1.7"
-		fields := strings.Fields(line)
-		return fields[len(fields)-1], nil
+		match := semverTokenRE.FindString(line)
+		if match == "" {
+			continue
+		}
+		return strings.TrimPrefix(match, "v"), nil
 	}
-	return "", errors.New("upgrade-watcher: empty version output")
+	return "", errors.New("upgrade-watcher: empty or unrecognised version output")
 }

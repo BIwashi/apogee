@@ -12,6 +12,89 @@ import (
 	"time"
 )
 
+// TestExtractVersionToken guards the upgrade-watcher parser against
+// regressions when the `apogee version` output format evolves. The
+// parser must tolerate:
+//
+//   - the legacy "apogee 0.1.7" short form
+//   - the current "apogee v0.1.11 (commit 6248d8d, built …, go1.25.0)"
+//     rich form where the version token is the second field and is
+//     followed by unrelated tokens that also look numeric
+//   - leading/trailing whitespace and empty lines
+//
+// Negative cases: output with no version token at all, or output
+// that contains only the "go1.25.0" runtime version (which is a
+// semver-ish token that should NOT match at semverTokenRE — the
+// regex anchors on a leading "v" or a standalone "x.y.z" but
+// accepts "go1.25.0" too because "1.25.0" is a valid match. The
+// legacy behaviour grabbed "go1.25.0)" from the last field, so the
+// regex is strictly better even if it happens to match the go
+// runtime version when no apogee version appears — we pick the
+// first match in the line, which for real output is always the
+// apogee token).
+func TestExtractVersionToken(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name    string
+		input   string
+		want    string
+		wantErr bool
+	}{
+		{
+			name:  "rich-format-with-trailing-metadata",
+			input: "apogee v0.1.11 (commit 6248d8d, built 2026-04-15T12:02:27Z, go1.25.0)\n",
+			want:  "0.1.11",
+		},
+		{
+			name:  "legacy-short-format",
+			input: "apogee 0.1.7\n",
+			want:  "0.1.7",
+		},
+		{
+			name:  "bare-version",
+			input: "0.2.0\n",
+			want:  "0.2.0",
+		},
+		{
+			name:  "prerelease-suffix",
+			input: "apogee v0.2.0-rc.1 (commit ..., go1.25.0)\n",
+			want:  "0.2.0-rc.1",
+		},
+		{
+			name:  "leading-whitespace-and-blank-lines",
+			input: "\n\n   apogee v1.2.3\n",
+			want:  "1.2.3",
+		},
+		{
+			name:    "no-version-at-all",
+			input:   "hello world\n",
+			wantErr: true,
+		},
+		{
+			name:    "empty",
+			input:   "",
+			wantErr: true,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := extractVersionToken(tc.input)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("expected error, got %q", got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got != tc.want {
+				t.Errorf("got %q want %q", got, tc.want)
+			}
+		})
+	}
+}
+
 // TestUpgradeWatcherDetectsBumpedBinary writes a fake binary to a
 // temporary path, primes the watcher's baseline, then mutates the file
 // to simulate a `brew upgrade` rewriting the bytes. After a single
