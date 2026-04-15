@@ -76,6 +76,36 @@ Apogee's hook pipeline is end-to-end Go-typed. To add a new event:
 5. **Tests** — `internal/ingest/reconstructor_test.go` has table-driven coverage for hook lifecycles. Add a row.
 6. **Hook subcommand** — if the new event is fired by Claude Code itself, make sure the Go `apogee hook` entry point in `internal/cli/hook.go` knows about it (the `flatHookFields` list) and that `HookEvents` in `internal/cli/init.go` lists it so `apogee init` wires it into settings.json.
 
+## How to add a new subcommand
+
+The CLI is a cobra command tree rooted at
+[`internal/cli/root.go`](internal/cli/root.go). To add `apogee foo`:
+
+1. Create `internal/cli/foo.go` with a `NewFooCmd(stdout, stderr io.Writer) *cobra.Command` constructor. Follow the conventions of the existing commands: inject stdout / stderr for tests, prefer returning errors from `RunE`, set `SilenceUsage` + `SilenceErrors` so errors render through `fang` only once.
+2. Add a matching `internal/cli/foo_test.go` that exercises the command with a `bytes.Buffer` for stdout / stderr.
+3. Wire the constructor into `NewRootCmd` in [`internal/cli/root.go`](internal/cli/root.go) via `root.AddCommand(NewFooCmd(stdout, stderr))`.
+4. Document the new command in [`docs/cli.md`](docs/cli.md) **and** its Japanese counterpart [`docs/ja/cli.md`](docs/ja/cli.md). Both files have a stable section-per-command layout.
+5. If the command has persistent config, add a matching block to `~/.apogee/config.toml` and document it in the relevant doc (e.g. [`docs/daemon.md`](docs/daemon.md) for the `[daemon]` block).
+
+## How to update docs
+
+Every English doc under `docs/` has a Japanese counterpart under
+`docs/ja/`. Whenever you add or change an English doc:
+
+1. Update the English source file.
+2. Update the Japanese mirror file in the same commit. Keep the same
+   heading structure so deep links survive.
+3. At the top of the Japanese file, keep the `[English version / 英語版](../<file>.md)` link that points back to the English source.
+4. Keep code blocks, commands, identifiers, JSON examples, and API paths
+   in English in both versions. Only the prose is translated.
+5. `README.md` and `README.ja.md` are mirrored the same way. Update both
+   when you ship a user-visible change to the CLI or the dashboard.
+
+If you land a change that is hard to translate in the same sitting, it is
+better to stub the Japanese file with "TODO: translate" than to skip it
+entirely — `grep -L` over `docs/ja/` will catch the gap in the next doc
+refresh PR.
+
 ## How to add a new semconv attribute
 
 The OTel attribute registry is the source of truth for `claude_code.*` semantics.

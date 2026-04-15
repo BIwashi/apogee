@@ -9,15 +9,24 @@ to a dark, NASA-inspired Next.js dashboard that ships embedded in the Go binary.
 ```
 cmd/apogee/         Go entry point (CLI / collector / embedded server)
 internal/version/   Build-version string
-internal/...        Internal Go packages (collector, store, sse, otel)
+internal/...        Internal Go packages (attention, cli, collector,
+                    daemon, hitl, ingest, interventions, metrics, otel,
+                    sse, store/duckdb, summarizer, telemetry, webassets)
 web/                Next.js 16 dashboard (App Router, Tailwind v4)
   app/              Routes and React components
   app/lib/          Typed API client, SWR helpers, design tokens
   public/fonts/     Space Grotesk display font (SIL OFL 1.1)
 semconv/            OpenTelemetry semantic conventions for claude_code.*
-docs/               Architecture and design-token specification
+docs/               Architecture, CLI, hooks, data-model, design-tokens,
+                    daemon, menubar, interventions, otel-semconv, plus
+                    Japanese mirror under docs/ja/
 .github/workflows/  CI (go vet/build/test, web typecheck/lint/build)
 ```
+
+There is NO `hooks/` directory. The Claude Code hook is the `apogee`
+binary itself — `.claude/settings.json` points every hook event at
+`apogee hook --event <X> --server-url ...`. See
+[`docs/hooks.md`](docs/hooks.md) for the full wire contract.
 
 ## Common commands
 
@@ -45,7 +54,8 @@ make build                     # build Go binary and Next.js bundle
 The visual identity is the product's competitive advantage and is documented in
 [`docs/design-tokens.md`](docs/design-tokens.md). Do not introduce alternate
 color scales, emoji, or component libraries. lucide-react is the only icon set.
-Space Grotesk is the only display font; body text uses the native OS stack.
+Space Grotesk is the only display font (SIL OFL 1.1); body text uses the
+native OS stack.
 
 ## Architecture
 
@@ -126,16 +136,35 @@ header carries the shortcut as a `kbd` hint. See
 [`docs/interventions.md`](docs/interventions.md) for the end-to-end
 walkthrough.
 
-## PR arc — all 11 shipped
+## PR arc
+
+Shipped and merged into `main`:
 
 - PR #1 — scaffold + design system (shipped)
 - PR #2 — collector core: DuckDB + trace reconstructor + ingest HTTP (shipped)
 - PR #3 — SSE fan-out + live dashboard skeleton (shipped)
 - PR #4 — attention engine + KPI strip (shipped)
 - PR #5 — turn detail + swim lane + filter chips (shipped)
+- PR #5.5 — branding assets (banner, logo, icon) (shipped)
 - PR #6 — LLM summarizer: per-turn recap via Haiku CLI subprocess (shipped)
+- PR #6.5 — global selectors, scoped views, command palette (shipped)
 - PR #7 — HITL as structured record (shipped)
 - PR #8 — OTel registry + OTLP integration (shipped)
-- PR #9 — Python hook library + install UX (shipped)
+- PR #9 — Python hook library + install UX (shipped, later superseded by PR #20)
 - PR #10 — embed frontend + CLI + distribution (shipped)
 - PR #11 — polish: README, screenshots, session rollup (shipped)
+- PR #14 — operator interventions (backend) (shipped)
+- PR #15 — operator intervention UI (shipped)
+- PR #18 — dynamic source_app + user-scope default for `apogee init` (shipped)
+- PR #19 — fang help styling + README local dev hygiene (shipped)
+- PR #20 — Go-native hook, Python library removed (shipped)
+- PR #21 — daemon core: launchd / systemd `--user` supervisor (shipped)
+- PR #23 — macOS menu bar app (`apogee menubar`) (shipped)
+- PR #24 — UI redesign: Live focus, proper information architecture (shipped)
+
+In flight (may or may not be merged by the time you read this):
+
+- PR #22 — `apogee onboard` interactive setup wizard
+- PR #25 — Replace the display font with Space Grotesk + credits page
+- PR #26 — Persistent SSE via a layout-scoped provider
+- PR #27 — Docs refresh + full Japanese translations

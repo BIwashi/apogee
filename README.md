@@ -1,3 +1,5 @@
+<p align="right">English / <a href="README.ja.md">日本語</a></p>
+
 <p align="center">
   <img src="assets/branding/apogee-banner.png" alt="apogee" width="600">
 </p>
@@ -9,13 +11,8 @@
 <p align="center">
   <img src="assets/screenshots/dashboard-overview.png" alt="apogee live triage dashboard" width="100%">
   <br>
-  <em>Live triage dashboard — sort turns by attention state, scope to a session with ⌘K.</em>
+  <em>Live focus dashboard — the running turn is the hero, with the triage rail listing every session with running turns sorted by attention.</em>
 </p>
-
-> The live dashboard above reflects the previous two-column layout. PR #24
-> introduces a focus-card driven redesign where the running turn is the
-> hero of the landing page; screenshots will be regenerated in the next
-> polish pass.
 
 apogee is a single-binary observability dashboard for multi-agent [Claude Code](https://docs.claude.com/en/docs/claude-code) sessions. It captures every hook event, builds OpenTelemetry-shaped traces out of them, stores everything in DuckDB, and streams the result to a dark, NASA-inspired Next.js dashboard that ships embedded in the Go binary.
 
@@ -52,7 +49,9 @@ Running multi-agent Claude Code workflows means losing sight of what each agent 
 | Operator interventions | Push text into a live Claude Code session; next `PreToolUse` or `UserPromptSubmit` hook delivers it as `{"decision":"block","reason":...}` or additional context |
 | OpenTelemetry | OTLP gRPC/HTTP export, full claude_code.* semconv registry |
 | Hooks entry point | `apogee hook --event X` — the binary itself is the hook, zero Python dependency |
-| CLI | `serve`, `init`, `hook`, `doctor`, `version` — one binary, no Node or Python runtime |
+| Background service | `apogee daemon {install,start,stop,restart,status}` — launchd (macOS) / systemd `--user` (Linux) |
+| macOS menu bar | `apogee menubar` — native status item polling the local collector |
+| CLI | `serve`, `init`, `hook`, `daemon`, `status`, `logs`, `open`, `uninstall`, `menubar`, `doctor`, `version` — one binary, no Node or Python runtime |
 
 <p align="center">
   <img src="assets/screenshots/session-detail.png" alt="session detail" width="49%">
@@ -66,41 +65,63 @@ Running multi-agent Claude Code workflows means losing sight of what each agent 
 ## Architecture
 
 ```
-┌────────────────────────┐      ┌─────────────────────────────────────────────┐
-│  Claude Code hooks     │      │  apogee collector  (single Go binary)        │
-│  `apogee hook --event` │─POST─│                                              │
-│  12 hook events        │ JSON │  ┌─ ingest ────────────────────────────┐    │
-└────────────────────────┘      │  │ reconstructor: hook → OTel spans    │    │
-                                │  │ per-session agent stack + pending   │    │
-                                │  │ tool-use-id map                     │    │
-                                │  └────────────────┬────────────────────┘    │
-                                │                   │                         │
-                                │  ┌─ store/duckdb ─▼────────────────────┐    │
-                                │  │ sessions · turns · spans · logs ·   │    │
-                                │  │ metric_points · hitl · rollups       │    │
-                                │  └────────────────┬────────────────────┘    │
-                                │                   │                         │
-                                │  ┌─ attention ────▼────────────────────┐    │
-                                │  │ rule engine + phase heuristic +      │    │
-                                │  │ history-based pre-emptive watchlist  │    │
-                                │  └────────────────┬────────────────────┘    │
-                                │                   │                         │
-                                │  ┌─ summarizer ───▼────────────────────┐    │
-                                │  │ recap worker  (Haiku, per turn)      │    │
-                                │  │ rollup worker (Sonnet, per session)  │    │
-                                │  └────────────────┬────────────────────┘    │
-                                │                   │                         │
-                                │  ┌─ sse ──────────▼────────────────────┐    │
-                                │  │ hub + /v1/events/stream              │    │
-                                │  └────────────────┬────────────────────┘    │
-                                │                   │                         │
-                                │  ┌─ web (Next.js static, embed.FS) ────▼──┐ │
-                                │  │ /                 live triage          │ │
-                                │  │ /sessions/        session catalog      │ │
-                                │  │ /session/?id=     session detail       │ │
-                                │  │ /turn/?sess=&turn=  turn detail        │ │
-                                │  └────────────────────────────────────────┘ │
-                                └─────────────────────────────────────────────┘
+┌────────────────────────┐      ┌──────────────────────────────────────────────┐
+│  Claude Code hooks     │      │  apogee collector  (single Go binary)         │
+│  `apogee hook --event` │─POST─│                                               │
+│  12 hook events        │ JSON │  ┌─ ingest ──────────────────────────────┐   │
+└────────────────────────┘      │  │ reconstructor: hook → OTel spans      │   │
+                                │  │ per-session agent stack + pending     │   │
+                                │  │ tool-use-id map                       │   │
+                                │  └────────────────┬──────────────────────┘   │
+                                │                   │                           │
+                                │  ┌─ store/duckdb ─▼──────────────────────┐   │
+                                │  │ sessions · turns · spans · logs ·      │   │
+                                │  │ metric_points · hitl_events ·          │   │
+                                │  │ session_rollups · interventions ·      │   │
+                                │  │ task_type_history                      │   │
+                                │  └────────────────┬──────────────────────┘   │
+                                │                   │                           │
+                                │  ┌─ attention ────▼──────────────────────┐   │
+                                │  │ rule engine + phase heuristic +        │   │
+                                │  │ history-based pre-emptive watchlist    │   │
+                                │  └────────────────┬──────────────────────┘   │
+                                │                   │                           │
+                                │  ┌─ summarizer ───▼──────────────────────┐   │
+                                │  │ recap worker   (Haiku, per turn)       │   │
+                                │  │ rollup worker  (Sonnet, per session)   │   │
+                                │  └────────────────┬──────────────────────┘   │
+                                │                   │                           │
+                                │  ┌─ interventions ▼──────────────────────┐   │
+                                │  │ queued → claimed → delivered → consumed│  │
+                                │  │ atomic claim primitive + sweeper       │   │
+                                │  └────────────────┬──────────────────────┘   │
+                                │                   │                           │
+                                │  ┌─ sse ──────────▼──────────────────────┐   │
+                                │  │ hub + /v1/events/stream                │   │
+                                │  └────────────────┬──────────────────────┘   │
+                                │                   │                           │
+                                │  ┌─ telemetry ────▼──────────────────────┐   │
+                                │  │ OTel SDK + OTLP gRPC/HTTP exporter     │   │
+                                │  └────────────────┬──────────────────────┘   │
+                                │                   │                           │
+                                │  ┌─ web (Next.js static, embed.FS) ──────▼─┐ │
+                                │  │ /            live focus dashboard       │ │
+                                │  │ /sessions/   service catalog            │ │
+                                │  │ /session?id= session detail + rollup    │ │
+                                │  │ /turn?sess=  turn detail + operator queue│ │
+                                │  │ /agents      per-agent main/sub view    │ │
+                                │  │ /insights    aggregate analytics        │ │
+                                │  │ /settings    collector info + OTel      │ │
+                                │  └─────────────────────────────────────────┘ │
+                                └──────────────────────────────────────────────┘
+
+                                   ┌────────────┐              ┌─────────────┐
+                                   │ daemon     │──launchctl──▶│ launchd     │
+                                   │ supervisor │──systemctl──▶│ systemd user│
+                                   └────────────┘              └─────────────┘
+                                   ┌────────────┐
+                                   │ menubar    │ (macOS status item, polls /v1/*)
+                                   └────────────┘
 ```
 
 ### Data model
@@ -134,9 +155,13 @@ Backing storage is DuckDB with OTel-shaped tables for `spans`, `logs`, `metric_p
 | LLM summarizer (Haiku per turn, Sonnet per session) | shipped |
 | HITL as structured record | shipped |
 | OpenTelemetry semconv registry + OTLP export | shipped |
-| Go-native hook subcommand + install UX | shipped |
 | Embedded frontend + CLI distribution | shipped |
 | README + screenshots + session rollup polish | shipped |
+| Operator interventions (backend + UI) | shipped |
+| Go-native hook, Python library removed | shipped |
+| Daemon (launchd / systemd `--user`) | shipped |
+| macOS menu bar app | shipped |
+| UI redesign — Live focus, proper information architecture | shipped |
 
 See [open pull requests](https://github.com/BIwashi/apogee/pulls) for what is actively landing next.
 
@@ -219,14 +244,18 @@ Every reconstructor write is mirrored onto a real OTel span via the SDK, so apog
 cmd/apogee/         Go entry point (CLI + embedded server)
 internal/
   attention/        rule engine, phase heuristic, history reader
-  cli/              cobra commands (serve / init / doctor / version)
+  cli/              cobra commands (serve / init / hook / daemon /
+                    status / logs / open / uninstall / menubar /
+                    doctor / version)
   collector/        chi router, server wiring, SSE endpoint
+  daemon/           launchd / systemd --user supervisor
   hitl/             HITL service: lifecycle, expiration, response API
   ingest/           hook payload types, stateful trace reconstructor
+  interventions/    operator interventions service (queued → consumed)
   metrics/          background sampler writing to metric_points
   otel/             OTel-shaped Go models
   sse/              fan-out hub + event envelopes
-  store/duckdb/     DuckDB schema + queries
+  store/duckdb/     DuckDB schema + queries + migrations
   summarizer/       recap worker (Haiku) + rollup worker (Sonnet)
   telemetry/        OTel SDK provider, OTLP exporter
   webassets/        embed.FS for the Next.js static export
@@ -239,8 +268,11 @@ assets/branding/    apogee banner, logo, and icon
 assets/screenshots/ committed dashboard screenshots
 scripts/            screenshot capture (playwright) and fixtures
 semconv/            OpenTelemetry semantic conventions for claude_code.*
-                    (no hooks/ directory — `apogee hook` is the entry point)
-docs/               architecture + design-token + semconv specs
+                    (`apogee hook` is the hook entry point — no hooks/
+                    directory, no Python dependency)
+docs/               architecture, CLI, hooks, data-model, design-tokens,
+                    daemon, menubar, interventions, otel-semconv, and
+                    Japanese mirror under docs/ja/
 .github/workflows/  CI (Go vet/build/test, web typecheck/lint/build)
 ```
 

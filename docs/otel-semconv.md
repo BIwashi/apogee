@@ -96,6 +96,24 @@ specific overrides supplied via `OTEL_RESOURCE_ATTRIBUTES` or
 | `claude_code.hitl.operator_note` | string | Free-form note. |
 | `claude_code.hitl.resume_mode` | enum | `continue` \| `retry` \| `abort` \| `alternative`. |
 
+### `claude_code.intervention.*`
+
+Operator-initiated intervention attributes. An intervention is a free-form
+message that the operator pushes into a live Claude Code session via the
+dashboard; the next `PreToolUse` or `UserPromptSubmit` hook relays it back
+to Claude Code as a hook decision. See [`interventions.md`](interventions.md)
+for the full lifecycle.
+
+| Attribute | Type | Notes |
+| --- | --- | --- |
+| `claude_code.intervention.id` | string | Stable intervention identifier. |
+| `claude_code.intervention.delivery_mode` | enum | `interrupt` \| `context` \| `both`. |
+| `claude_code.intervention.scope` | enum | `this_turn` \| `this_session`. |
+| `claude_code.intervention.urgency` | enum | `high` \| `normal` \| `low`. |
+| `claude_code.intervention.status` | enum | `queued` \| `claimed` \| `delivered` \| `consumed` \| `expired` \| `cancelled`. |
+| `claude_code.intervention.delivered_via` | string | Hook event name that delivered the intervention (`PreToolUse` \| `UserPromptSubmit`). |
+| `claude_code.intervention.operator_id` | string | Operator identifier attached to the intervention. |
+
 ### `claude_code.attention.*`
 
 | Attribute | Type | Notes |
@@ -128,6 +146,7 @@ specific overrides supplied via `OTEL_RESOURCE_ATTRIBUTES` or
 | `claude_code.assistant_message` | Assistant message during the turn. Carries `claude_code.assistant_message.text` and `claude_code.assistant_message.chars`. |
 | `claude_code.notification` | A Claude Code notification surfaced during a turn. Carries `claude_code.notification.type` and `claude_code.notification.message`. |
 | `claude_code.tool.blocked` | A tool call was blocked. Carries `claude_code.tool.blocked_reason`. |
+| `claude_code.intervention.delivered` | Operator intervention was relayed into Claude Code via a hook. Carries `claude_code.intervention.id`, `claude_code.intervention.delivery_mode`, and `claude_code.intervention.delivered_via`. |
 
 ## GenAI semconv reuse
 
