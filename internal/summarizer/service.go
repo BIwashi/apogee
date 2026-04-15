@@ -14,16 +14,17 @@ import (
 // server. One Service per apogee process. Service owns the Runner and
 // Worker lifecycles for both tiers (per-turn recap and per-session rollup).
 type Service struct {
-	cfg       Config
-	runner    Runner
-	worker    *Worker
-	rollup    *RollupWorker
-	narrative *NarrativeWorker
-	store     *duckdb.Store
-	hub       *sse.Hub
-	logger    *slog.Logger
-	prefs     PreferencesReader
-	stopSch   context.CancelFunc
+	cfg        Config
+	runner     Runner
+	worker     *Worker
+	rollup     *RollupWorker
+	narrative  *NarrativeWorker
+	liveStatus *LiveStatusWorker
+	store      *duckdb.Store
+	hub        *sse.Hub
+	logger     *slog.Logger
+	prefs      PreferencesReader
+	stopSch    context.CancelFunc
 }
 
 // NewService wires the Config-derived Runner (a CLIRunner) into both the
@@ -43,6 +44,7 @@ func NewServiceWithRunner(cfg Config, runner Runner, store *duckdb.Store, hub *s
 	worker := NewWorker(cfg, runner, store, hub, logger)
 	rollup := NewRollupWorker(cfg, runner, store, hub, logger)
 	narrative := NewNarrativeWorker(cfg, runner, store, hub, logger)
+	liveStatus := NewLiveStatusWorker(cfg, runner, store, hub, logger)
 	// Default preferences reader pulls from the DuckDB user_preferences
 	// table so language / system prompt / model overrides applied via
 	// the /v1/preferences API or the /settings page take effect on the
@@ -62,15 +64,16 @@ func NewServiceWithRunner(cfg Config, runner Runner, store *duckdb.Store, hub *s
 		narrative.Enqueue(sessionID, NarrativeReasonSessionRollup)
 	})
 	return &Service{
-		cfg:       cfg,
-		runner:    runner,
-		worker:    worker,
-		rollup:    rollup,
-		narrative: narrative,
-		store:     store,
-		hub:       hub,
-		logger:    logger,
-		prefs:     prefs,
+		cfg:        cfg,
+		runner:     runner,
+		worker:     worker,
+		rollup:     rollup,
+		narrative:  narrative,
+		liveStatus: liveStatus,
+		store:      store,
+		hub:        hub,
+		logger:     logger,
+		prefs:      prefs,
 	}
 }
 
@@ -107,6 +110,9 @@ func (s *Service) Rollup() *RollupWorker { return s.rollup }
 // Narrative exposes the underlying narrative worker for advanced tests.
 func (s *Service) Narrative() *NarrativeWorker { return s.narrative }
 
+// LiveStatus exposes the underlying live-status worker for advanced tests.
+func (s *Service) LiveStatus() *LiveStatusWorker { return s.liveStatus }
+
 // Runner exposes the underlying CLI runner so the /v1/models handler
 // can reuse it for the model probe. nil when the service was not
 // constructed.
@@ -133,6 +139,9 @@ func (s *Service) SetAvailability(avail map[string]bool) {
 	if s.narrative != nil {
 		s.narrative.SetAvailability(avail)
 	}
+	if s.liveStatus != nil {
+		s.liveStatus.SetAvailability(avail)
+	}
 }
 
 // Start spawns both worker pools and the rollup scheduler. No-op when
@@ -150,6 +159,7 @@ func (s *Service) Start(ctx context.Context) {
 	s.worker.Start(ctx)
 	s.rollup.Start(ctx)
 	s.narrative.Start(ctx)
+	s.liveStatus.Start(ctx)
 
 	if s.cfg.RollupSchedulerEnabled {
 		schedCtx, cancel := context.WithCancel(ctx)
@@ -169,6 +179,16 @@ func (s *Service) Stop() {
 	s.worker.Stop()
 	s.rollup.Stop()
 	s.narrative.Stop()
+	s.liveStatus.Stop()
+}
+
+// EnqueueLiveStatus is the public API the reconstructor hook calls
+// when a span lands on a live session. Non-blocking.
+func (s *Service) EnqueueLiveStatus(sessionID, reason string) {
+	if s == nil || !s.cfg.Enabled {
+		return
+	}
+	s.liveStatus.Enqueue(sessionID, reason)
 }
 
 // EnqueueNarrative is the public API for tier-3 phase digests. Non-blocking.

@@ -100,6 +100,9 @@ func New(cfg Config, store *duckdb.Store, logger *slog.Logger) *Server {
 	rec.OnSessionEnded = func(sessionID string) {
 		summarizerSvc.EnqueueRollup(sessionID, summarizer.RollupReasonSessionEnd)
 	}
+	rec.OnSessionLiveTick = func(sessionID string) {
+		summarizerSvc.EnqueueLiveStatus(sessionID, summarizer.LiveStatusReasonSpanInserted)
+	}
 
 	// Wire the HITL lifecycle owner. The reconstructor pushes hitl.requested
 	// broadcasts via OnHITLRequested, the service handles auto-expiration

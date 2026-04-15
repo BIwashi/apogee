@@ -7,9 +7,10 @@ type ModelUseCase string
 
 // Recognised summarizer tiers. Extend as new tiers land.
 const (
-	UseCaseRecap     ModelUseCase = "recap"
-	UseCaseRollup    ModelUseCase = "rollup"
-	UseCaseNarrative ModelUseCase = "narrative"
+	UseCaseRecap      ModelUseCase = "recap"
+	UseCaseRollup     ModelUseCase = "rollup"
+	UseCaseNarrative  ModelUseCase = "narrative"
+	UseCaseLiveStatus ModelUseCase = "live_status"
 )
 
 // Status values for a catalog entry. Ordering matters: the resolver
@@ -67,7 +68,7 @@ var KnownModels = []ModelInfo{
 		Display:     "Haiku 4.5",
 		Tier:        0,
 		ContextK:    200,
-		Recommended: []ModelUseCase{UseCaseRecap},
+		Recommended: []ModelUseCase{UseCaseRecap, UseCaseLiveStatus},
 		Status:      StatusCurrent,
 	},
 	{
@@ -102,7 +103,7 @@ var KnownModels = []ModelInfo{
 		Display:     "Haiku 3.5",
 		Tier:        0,
 		ContextK:    200,
-		Recommended: []ModelUseCase{UseCaseRecap},
+		Recommended: []ModelUseCase{UseCaseRecap, UseCaseLiveStatus},
 		Status:      StatusLegacy,
 	},
 	{

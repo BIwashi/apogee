@@ -29,6 +29,14 @@ type Config struct {
 	// NarrativeModel is the model alias used by the tier-3 phase narrative
 	// worker (PR #32). Defaults to the same alias as RollupModel.
 	NarrativeModel string
+	// LiveStatusModel is the model alias used by the live-status worker
+	// that produces the "currently <verb>-ing <noun>" blurb shown on the
+	// Live fleet cards. Defaults to the cheapest UseCaseLiveStatus entry.
+	LiveStatusModel string
+	// LiveStatusDebounce is the minimum age of an existing live_status_at
+	// before a re-enqueue is honoured. Defaults to 10s so a busy session
+	// does not burn Haiku calls for every span.
+	LiveStatusDebounce time.Duration
 	// Concurrency is the number of worker goroutines consuming the queue.
 	Concurrency int
 	// Timeout bounds each individual CLI invocation.
@@ -69,6 +77,8 @@ func Default() Config {
 		RecapModel:             "", // resolved via ResolveModelForUseCase(UseCaseRecap, ...)
 		RollupModel:            "", // resolved via ResolveModelForUseCase(UseCaseRollup, ...)
 		NarrativeModel:         "", // resolved via ResolveModelForUseCase(UseCaseNarrative, ...)
+		LiveStatusModel:        "", // resolved via ResolveModelForUseCase(UseCaseLiveStatus, ...)
+		LiveStatusDebounce:     10 * time.Second,
 		Concurrency:            1,
 		Timeout:                120 * time.Second,
 		CLIPath:                "claude",
