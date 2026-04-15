@@ -23,6 +23,7 @@ import (
 	"github.com/BIwashi/apogee/internal/store/duckdb"
 	"github.com/BIwashi/apogee/internal/summarizer"
 	"github.com/BIwashi/apogee/internal/telemetry"
+	"github.com/BIwashi/apogee/internal/version"
 	"github.com/BIwashi/apogee/internal/webassets"
 )
 
@@ -41,6 +42,7 @@ type Server struct {
 	hitl          *hitl.Service
 	interventions *interventions.Service
 	telemetry     *telemetry.Provider
+	startedAt     time.Time
 }
 
 // New constructs a Server backed by an open store. The caller retains
@@ -133,6 +135,7 @@ func New(cfg Config, store *duckdb.Store, logger *slog.Logger) *Server {
 		hitl:          hitlSvc,
 		interventions: interventionSvc,
 		telemetry:     telProv,
+		startedAt:     time.Now(),
 	}
 	s.router = s.buildRouter()
 	return s
@@ -229,7 +232,10 @@ func (s *Server) buildRouter() chi.Router {
 	handler := ingest.NewHandler(s.reconstructor, s.logger)
 
 	r.Get("/v1/healthz", s.healthz)
+	r.Get("/v1/info", s.getInfo)
 	r.Get("/v1/telemetry/status", s.telemetryStatus)
+	r.Get("/v1/agents/recent", s.listRecentAgents)
+	r.Get("/v1/insights/overview", s.getInsightsOverview)
 	r.Post("/v1/events", handler.ReceiveEvent)
 	r.Get("/v1/sessions/recent", s.listRecentSessions)
 	r.Get("/v1/sessions/search", s.searchSessions)
@@ -841,6 +847,59 @@ func projectHITLList(rows []duckdb.HITLEvent) []sse.HITLSnapshot {
 		out = append(out, sse.SnapshotFromHITL(row))
 	}
 	return out
+}
+
+// listRecentAgents returns the aggregate per-agent view used by the
+// /agents dashboard page. The shape is `{ "agents": [...] }` to match the
+// other list endpoints.
+func (s *Server) listRecentAgents(w http.ResponseWriter, r *http.Request) {
+	limit := parseLimit(r, 100, 500)
+	out, err := s.store.ListRecentAgents(r.Context(), limit)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if out == nil {
+		out = []duckdb.Agent{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"agents": out})
+}
+
+// getInsightsOverview returns the aggregate block rendered by the
+// /insights dashboard page. Uses a 24h rolling window.
+func (s *Server) getInsightsOverview(w http.ResponseWriter, r *http.Request) {
+	since := time.Now().Add(-24 * time.Hour)
+	if raw := r.URL.Query().Get("since"); raw != "" {
+		if t, err := time.Parse(time.RFC3339, raw); err == nil {
+			since = t
+		}
+	}
+	out, err := s.store.InsightsOverview(r.Context(), since)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+// getInfo returns a compact snapshot of the collector's build metadata
+// plus the current OTel export state. Used by the /settings page.
+func (s *Server) getInfo(w http.ResponseWriter, _ *http.Request) {
+	body := map[string]any{
+		"name":           "apogee",
+		"version":        version.Version,
+		"commit":         version.Commit,
+		"build_date":     version.BuildDate,
+		"otel_enabled":   false,
+		"otel_endpoint":  "",
+		"collector_addr": s.cfg.HTTPAddr,
+		"uptime_seconds": int64(time.Since(s.startedAt).Seconds()),
+	}
+	if s.telemetry != nil {
+		body["otel_enabled"] = s.telemetry.Enabled
+		body["otel_endpoint"] = s.telemetry.Cfg.Endpoint
+	}
+	writeJSON(w, http.StatusOK, body)
 }
 
 func (s *Server) requestLogger(next http.Handler) http.Handler {

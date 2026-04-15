@@ -584,3 +584,77 @@ export const FILTER_KEYS: FilterKey[] = [
   "hitl",
   "subagents",
 ];
+
+/**
+ * Agent — per-agent row returned by GET /v1/agents/recent. One row per
+ * `(agent_id, agent_kind, agent_type, session_id)` tuple, aggregated over
+ * the spans table. Used by the /agents catalog page.
+ */
+export interface Agent {
+  agent_id: string;
+  agent_type: string;
+  kind: "main" | "subagent" | string;
+  parent_agent_id?: string | null;
+  session_id: string;
+  last_seen: string;
+  invocation_count: number;
+  total_duration_ms: number;
+}
+
+export interface AgentsResponse {
+  agents: Agent[];
+}
+
+/**
+ * InsightsOverview — aggregate counters returned by
+ * GET /v1/insights/overview. All numeric fields are whole-window totals
+ * (last 24h for rate-based stats). Populates the /insights page.
+ */
+export interface ToolCount {
+  name: string;
+  count: number;
+}
+
+export interface PhaseCount {
+  name: string;
+  count: number;
+}
+
+export interface InsightsOverview {
+  total_sessions: number;
+  total_turns: number;
+  total_events: number;
+  error_rate_last_24h: number;
+  p50_turn_duration_ms: number;
+  p95_turn_duration_ms: number;
+  top_tools: ToolCount[];
+  top_phases: PhaseCount[];
+  watchlist_sessions: number;
+}
+
+/**
+ * ApogeeInfo — collector build + runtime metadata returned by GET /v1/info.
+ * Read-only; used by the /settings page.
+ */
+export interface ApogeeInfo {
+  name: string;
+  version: string;
+  commit: string;
+  build_date: string;
+  otel_enabled: boolean;
+  otel_endpoint: string;
+  collector_addr: string;
+  uptime_seconds: number;
+}
+
+/** TelemetryStatus mirrors the GET /v1/telemetry/status response body. */
+export interface TelemetryStatus {
+  enabled: boolean;
+  endpoint: string;
+  protocol: string;
+  service_name: string;
+  service_version: string;
+  service_instance_id: string;
+  sample_ratio: number;
+  spans_exported_total: number;
+}

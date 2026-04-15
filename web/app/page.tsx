@@ -1,40 +1,47 @@
 "use client";
 
-import Link from "next/link";
-import { useCallback, useMemo, useState } from "react";
-import { X } from "lucide-react";
+import { useCallback, useMemo, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 
-import Card from "./components/Card";
 import CountPills from "./components/CountPills";
 import EventTicker from "./components/EventTicker";
+import FocusCard from "./components/FocusCard";
 import KpiStrip from "./components/KpiStrip";
-import RecentTurnsTable from "./components/RecentTurnsTable";
 import SectionHeader from "./components/SectionHeader";
+import TriageRail from "./components/TriageRail";
 import type {
   ApogeeEvent,
   AttentionCounts,
-  AttentionState,
   InitialPayload,
+  PhaseSegment,
+  RecapResponse,
   RecentTurnsResponse,
-  SessionSummary,
+  Span,
+  SpanPayload,
   Turn,
   TurnPayload,
+  TurnSpansResponse,
 } from "./lib/api-types";
 import { SSE_EVENT_TYPES } from "./lib/api-types";
 import { useEventStream } from "./lib/sse";
 import { useApi } from "./lib/swr";
-import { formatClock, timeAgo } from "./lib/time";
-import { buildQuery, useSelection } from "./lib/url-state";
 
 /**
- * `/` — the apogee live triage dashboard. In fleet mode it hydrates from
- * `GET /v1/turns/active` and patches from SSE. When a session is selected
- * via the TopRibbon / command palette, every SWR hook picks up the
- * scope params (session_id / source_app / since / until) from the URL so
- * the dashboard rescopes itself in place.
+ * `/` — apogee Live. The focus-card driven landing page. PR #24 makes the
+ * currently-running turn the hero of the view: a large FocusCard on the
+ * right displays the flame graph, recap headline, phase, and CTA; a
+ * vertical TriageRail on the left lists every running/recent turn sorted
+ * by attention.
+ *
+ * Data flow:
+ *   - `/v1/turns/active` (SWR, 2s) feeds the triage rail.
+ *   - A cross-session SSE stream patches the rail and the ticker.
+ *   - When a turn is focused, `/v1/turns/:id/spans` + `/v1/turns/:id/recap`
+ *     feed the FocusCard, refreshing while the turn is running.
+ *   - Focus selection persists as `?focus=<turn_id>` for deep linking.
  */
 
-const RECENT_TURNS_LIMIT = 100;
+const ACTIVE_LIMIT = 40;
 const TICKER_HISTORY = 40;
 
 function attentionPriority(turn: Turn): number {
@@ -60,36 +67,43 @@ function sortTurns(turns: Turn[]): Turn[] {
   });
 }
 
-function shortId(id: string, len = 8): string {
-  if (!id) return "—";
-  return id.length <= len ? id : id.slice(0, len);
+/**
+ * pickFocusedTurn returns the turn the FocusCard should render. Preference
+ * order: the `?focus=<id>` override, then the highest-priority running
+ * turn, then the highest-priority non-running turn, then null.
+ */
+function pickFocusedTurn(
+  turns: Turn[],
+  explicitId: string | null,
+): Turn | null {
+  if (explicitId) {
+    const match = turns.find((t) => t.turn_id === explicitId);
+    if (match) return match;
+  }
+  const running = turns.filter((t) => t.status === "running");
+  if (running.length > 0) return running[0];
+  return turns[0] ?? null;
 }
 
-export default function Page() {
-  const { selection, apiParams, clear } = useSelection();
-  const scopedQuery = buildQuery(apiParams);
-  const scopedQueryWithEnded = buildQuery(apiParams, { include: "ended" });
+export default function LivePage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const focusParam = searchParams.get("focus");
 
-  const { data: activeTurnsData } = useApi<RecentTurnsResponse>(
-    `/v1/turns/active${scopedQuery}`,
-  );
+  const { data: activeTurnsData, mutate: mutateActive } =
+    useApi<RecentTurnsResponse>("/v1/turns/active", {
+      refreshInterval: 2_000,
+    });
   const { data: countsData } = useApi<AttentionCounts>(
-    `/v1/attention/counts${scopedQueryWithEnded}`,
+    "/v1/attention/counts?include=ended",
     { refreshInterval: 2_000 },
   );
-  const summaryPath = selection.sess
-    ? `/v1/sessions/${selection.sess}/summary`
-    : null;
-  const { data: summary } = useApi<SessionSummary>(summaryPath, {
-    refreshInterval: 5_000,
-  });
 
-  // SSE-derived state. In scoped mode we pass session_id on the stream so
-  // the server fans out only matching events.
-  const [initialTurns, setInitialTurns] = useState<Turn[] | null>(null);
+  // SSE-derived state — patches the triage rail between SWR polls and
+  // fills the ambient event ticker.
   const [patches, setPatches] = useState<Turn[]>([]);
   const [events, setEvents] = useState<ApogeeEvent[]>([]);
-  const [filter, setFilter] = useState<AttentionState | null>(null);
+  const [initialTurns, setInitialTurns] = useState<Turn[] | null>(null);
 
   const onEvent = useCallback((event: ApogeeEvent) => {
     setEvents((prev) => {
@@ -97,15 +111,12 @@ export default function Page() {
       if (next.length > TICKER_HISTORY) next.length = TICKER_HISTORY;
       return next;
     });
-
     switch (event.type) {
       case SSE_EVENT_TYPES.Initial: {
         const payload = event.data as InitialPayload;
-        if (payload?.recent_turns?.length) {
-          setInitialTurns(payload.recent_turns.slice(0, RECENT_TURNS_LIMIT));
-        } else {
-          setInitialTurns([]);
-        }
+        setInitialTurns(
+          payload?.recent_turns?.slice(0, ACTIVE_LIMIT) ?? [],
+        );
         break;
       }
       case SSE_EVENT_TYPES.TurnStarted:
@@ -113,13 +124,7 @@ export default function Page() {
       case SSE_EVENT_TYPES.TurnEnded: {
         const payload = event.data as TurnPayload;
         if (payload?.turn) {
-          setPatches((prev) => {
-            const next = [...prev, payload.turn];
-            if (next.length > RECENT_TURNS_LIMIT * 4) {
-              return next.slice(next.length - RECENT_TURNS_LIMIT * 4);
-            }
-            return next;
-          });
+          setPatches((prev) => [...prev, payload.turn]);
         }
         break;
       }
@@ -128,8 +133,7 @@ export default function Page() {
     }
   }, []);
 
-  const streamPath = `/v1/events/stream${scopedQuery}`;
-  useEventStream<ApogeeEvent>(streamPath, {
+  useEventStream<ApogeeEvent>("/v1/events/stream", {
     historyLimit: TICKER_HISTORY,
     onEvent,
   });
@@ -137,160 +141,173 @@ export default function Page() {
   const turns = useMemo(() => {
     const base = initialTurns ?? activeTurnsData?.turns ?? [];
     const byId = new Map<string, Turn>();
-    for (const turn of base) {
-      byId.set(turn.turn_id, turn);
-    }
-    for (const turn of patches) {
-      byId.set(turn.turn_id, turn);
-    }
-    // When scoped, drop any patches that leaked from non-matching sessions.
-    let merged = Array.from(byId.values());
-    if (selection.sess) {
-      merged = merged.filter((t) => t.session_id === selection.sess);
-    }
-    return sortTurns(merged).slice(0, RECENT_TURNS_LIMIT);
-  }, [initialTurns, activeTurnsData, patches, selection.sess]);
+    for (const turn of base) byId.set(turn.turn_id, turn);
+    for (const turn of patches) byId.set(turn.turn_id, turn);
+    return sortTurns(Array.from(byId.values())).slice(0, ACTIVE_LIMIT);
+  }, [initialTurns, activeTurnsData, patches]);
 
-  const filteredTurns = useMemo(() => {
-    if (!filter) return turns;
-    return turns.filter((t) => {
-      const state = t.attention_state ?? "healthy";
-      return state === filter;
-    });
-  }, [turns, filter]);
+  const focusedTurn = useMemo(
+    () => pickFocusedTurn(turns, focusParam),
+    [turns, focusParam],
+  );
+
+  const setFocus = useCallback(
+    (turnId: string | null) => {
+      const url = new URL(window.location.href);
+      if (turnId) {
+        url.searchParams.set("focus", turnId);
+      } else {
+        url.searchParams.delete("focus");
+      }
+      router.replace(url.pathname + (url.search || ""), { scroll: false });
+    },
+    [router],
+  );
+
+  const onTriageSelect = useCallback(
+    (_sessionId: string, turnId: string) => {
+      setFocus(turnId);
+    },
+    [setFocus],
+  );
+
+  const onTriageOpen = useCallback(
+    (sessionId: string, turnId: string) => {
+      router.push(`/turn/?sess=${sessionId}&turn=${turnId}`);
+    },
+    [router],
+  );
+
+  // Focused-turn detail data. While running, poll at 2s; when the turn ends
+  // SWR freezes so the rendered state is stable for the operator.
+  const focusedTurnId = focusedTurn?.turn_id ?? null;
+  const isFocusedRunning = focusedTurn?.status === "running";
+  const spansQuery = useApi<TurnSpansResponse>(
+    focusedTurnId ? `/v1/turns/${focusedTurnId}/spans` : null,
+    { refreshInterval: isFocusedRunning ? 2_000 : 0 },
+  );
+  const recapQuery = useApi<RecapResponse>(
+    focusedTurnId ? `/v1/turns/${focusedTurnId}/recap` : null,
+    { refreshInterval: isFocusedRunning ? 5_000 : 0 },
+  );
+
+  // SSE span patching for the focused turn. Keeps the flame graph warm
+  // between SWR polls. Reset-on-focus-change is done during render via a
+  // tracking ref so React doesn't have to chain effects.
+  const [focusedSpanPatches, setFocusedSpanPatches] = useState<Span[]>([]);
+  const lastFocusedTurnIdRef = useRef<string | null>(focusedTurnId);
+  if (lastFocusedTurnIdRef.current !== focusedTurnId) {
+    lastFocusedTurnIdRef.current = focusedTurnId;
+    if (focusedSpanPatches.length > 0) {
+      setFocusedSpanPatches([]);
+    }
+  }
+
+  const focusedSessionId = focusedTurn?.session_id ?? "";
+  const onFocusedSSE = useCallback(
+    (event: ApogeeEvent) => {
+      switch (event.type) {
+        case SSE_EVENT_TYPES.SpanInserted:
+        case SSE_EVENT_TYPES.SpanUpdated: {
+          const payload = event.data as SpanPayload;
+          if (payload?.span?.turn_id === focusedTurnId) {
+            setFocusedSpanPatches((prev) => [...prev, payload.span]);
+          }
+          break;
+        }
+        case SSE_EVENT_TYPES.TurnEnded: {
+          void mutateActive();
+          break;
+        }
+        default:
+          break;
+      }
+    },
+    [focusedTurnId, mutateActive],
+  );
+  useEventStream<ApogeeEvent>(
+    focusedSessionId ? `/v1/events/stream?session_id=${focusedSessionId}` : "",
+    {
+      historyLimit: 32,
+      enabled: !!focusedSessionId,
+      onEvent: onFocusedSSE,
+    },
+  );
+
+  const focusedSpans: Span[] = useMemo(() => {
+    const base = spansQuery.data?.spans ?? [];
+    if (focusedSpanPatches.length === 0) return base;
+    const byId = new Map<string, Span>();
+    for (const sp of base) byId.set(sp.span_id, sp);
+    for (const sp of focusedSpanPatches) byId.set(sp.span_id, sp);
+    return Array.from(byId.values()).sort((a, b) =>
+      a.start_time.localeCompare(b.start_time),
+    );
+  }, [spansQuery.data, focusedSpanPatches]);
+  const focusedPhases: PhaseSegment[] = spansQuery.data?.phases ?? [];
+
+  // Cheapest "current tool" signal: the most recent tool span.
+  const currentTool = useMemo(() => {
+    for (let i = focusedSpans.length - 1; i >= 0; i--) {
+      const span = focusedSpans[i];
+      if (span.tool_name) return span.tool_name;
+    }
+    return undefined;
+  }, [focusedSpans]);
 
   const runningCount = useMemo(
     () => turns.filter((t) => t.status === "running").length,
     [turns],
   );
 
-  const isScoped = !!selection.sess;
-
   return (
-    <div className="mx-auto flex max-w-6xl flex-col gap-6">
+    <div className="mx-auto flex max-w-7xl flex-col gap-6">
       <header className="flex flex-wrap items-end justify-between gap-4 pt-6">
         <div>
-          {isScoped ? (
-            <>
-              <p className="font-display text-[11px] uppercase tracking-[0.2em] text-[var(--artemis-space)]">
-                Session
-              </p>
-              <h1 className="font-display text-3xl leading-none tracking-[0.14em] text-white md:text-4xl">
-                {shortId(selection.sess ?? "")}
-              </h1>
-              <div className="accent-gradient-bar mt-3 h-[3px] w-32 rounded-full" />
-              <p className="mt-3 max-w-xl text-[13px] text-[var(--text-muted)]">
-                {summary?.latest_headline ||
-                  "Scoped view — every chart below reflects just this session."}
-              </p>
-            </>
-          ) : (
-            <>
-              <h1 className="font-display text-4xl leading-none tracking-[0.16em] text-white md:text-5xl">
-                APOGEE
-              </h1>
-              <div className="accent-gradient-bar mt-3 h-[3px] w-32 rounded-full" />
-              <p className="mt-3 max-w-xl text-[13px] text-[var(--text-muted)]">
-                Live triage for every Claude Code session reporting to this
-                collector.
-              </p>
-            </>
-          )}
+          <h1 className="font-display text-4xl leading-none tracking-[0.16em] text-white md:text-5xl">
+            LIVE
+          </h1>
+          <div className="accent-gradient-bar mt-3 h-[3px] w-32 rounded-full" />
+          <p className="mt-3 max-w-xl text-[13px] text-[var(--text-muted)]">
+            Focus card driven triage. The hero is the turn you&apos;re watching
+            right now — pick a different one from the rail on the left.
+          </p>
         </div>
         <div className="flex flex-col items-end gap-1">
           <p className="font-mono text-[11px] text-[var(--text-muted)]">
             {turns.length} turns · {runningCount} running
           </p>
-          <p className="font-mono text-[10px] text-[var(--text-muted)]">
-            window: {selection.time.label}
-          </p>
         </div>
       </header>
 
-      {isScoped && summary && (
-        <section>
-          <Card className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
-            <div className="flex flex-col gap-1">
-              <div className="flex items-center gap-3 font-mono text-[11px] text-[var(--text-muted)]">
-                <span className="text-white">{summary.source_app || "—"}</span>
-                <span>·</span>
-                <span>started {formatClock(summary.started_at)}</span>
-                <span>·</span>
-                <span>last seen {timeAgo(summary.last_seen_at)}</span>
-              </div>
-              <div className="flex items-center gap-3 font-mono text-[11px] text-[var(--text-muted)]">
-                <span>{summary.turn_count} turns</span>
-                <span>·</span>
-                <span className="text-[var(--status-info)]">
-                  {summary.running_count} running
-                </span>
-                <span>·</span>
-                <span className="text-[var(--status-success)]">
-                  {summary.completed_count} completed
-                </span>
-                <span>·</span>
-                <span
-                  className={
-                    summary.errored_count > 0
-                      ? "text-[var(--status-critical)]"
-                      : undefined
-                  }
-                >
-                  {summary.errored_count} errored
-                </span>
-                {summary.model && (
-                  <>
-                    <span>·</span>
-                    <span>{summary.model}</span>
-                  </>
-                )}
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={clear}
-                className="inline-flex items-center gap-1 rounded border border-[var(--border)] bg-[var(--bg-raised)] px-2 py-1 font-mono text-[11px] text-[var(--artemis-space)] hover:bg-[var(--bg-overlay)] hover:text-white"
-              >
-                <X size={12} strokeWidth={1.5} /> clear scope
-              </button>
-              <Link
-                href={`/session/?id=${selection.sess}&tab=overview`}
-                className="inline-flex items-center gap-1 rounded border border-[var(--border-bright)] bg-[var(--bg-raised)] px-2 py-1 font-mono text-[11px] text-white hover:bg-[var(--bg-overlay)]"
-              >
-                View tabbed detail →
-              </Link>
-            </div>
-          </Card>
-        </section>
-      )}
-
-      <section className="flex flex-col gap-3">
+      <section>
         <CountPills
           counts={countsData}
-          activeFilter={filter}
-          onSelect={setFilter}
+          activeFilter={null}
+          onSelect={() => {
+            /* filter handled inside /sessions; here the pills are read-only */
+          }}
         />
       </section>
 
-      <section>
-        <SectionHeader
-          title={isScoped ? "Turns in scope" : "Active turns"}
-          subtitle="Pre-ranked by the attention engine. Click a pill above to filter."
-        />
-        <Card className="p-0">
-          <RecentTurnsTable turns={filteredTurns} />
-        </Card>
-      </section>
-
-      <section>
-        <SectionHeader
-          title="Event ticker"
-          subtitle="Last 40 hook events, newest first."
-        />
-        <Card className="p-0">
-          <EventTicker events={events} />
-        </Card>
+      <section className="grid gap-4 lg:grid-cols-12">
+        <div className="lg:col-span-4">
+          <TriageRail
+            turns={turns}
+            selectedTurnId={focusedTurn?.turn_id ?? null}
+            onSelect={onTriageSelect}
+            onOpen={onTriageOpen}
+          />
+        </div>
+        <div className="lg:col-span-8">
+          <FocusCard
+            turn={focusedTurn}
+            spans={focusedSpans}
+            phases={focusedPhases}
+            recap={recapQuery.data ?? null}
+            currentTool={currentTool}
+          />
+        </div>
       </section>
 
       <section>
@@ -298,15 +315,26 @@ export default function Page() {
           title="Fleet KPIs"
           subtitle="Rolling 5-minute windows from the collector metric sampler."
         />
-        <KpiStrip
-          sessionId={selection.sess}
-          sourceApp={selection.env}
-        />
+        <KpiStrip />
+      </section>
+
+      <section>
+        <details className="group">
+          <summary className="flex cursor-pointer list-none items-center gap-2 rounded border border-[var(--border)] bg-[var(--bg-raised)] px-4 py-2 font-display text-[11px] tracking-[0.14em] text-[var(--text-muted)] hover:text-white">
+            <span className="inline-block transition-transform group-open:rotate-90">
+              ▸
+            </span>
+            EVENT TICKER · {events.length}
+          </summary>
+          <div className="mt-3 rounded border border-[var(--border)] bg-[var(--bg-surface)]">
+            <EventTicker events={events} />
+          </div>
+        </details>
       </section>
 
       <footer className="pb-8 pt-2">
         <p className="font-mono text-[10px] text-[var(--text-muted)]">
-          apogee 0.0.0-dev — live dashboard
+          apogee 0.0.0-dev — Live
         </p>
       </footer>
     </div>
