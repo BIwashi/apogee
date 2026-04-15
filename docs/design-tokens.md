@@ -24,7 +24,7 @@ If you change any one, update the other two in the same commit.
 | ---------------- | --------- | ------------------------------------------------ |
 | `artemis.red`    | `#FC3D21` | Error, critical alerts, intervene-now            |
 | `artemis.blue`   | `#0B3D91` | Primary brand, links, active nav                 |
-| `artemis.earth`  | `#27AAE1` | Secondary accent, info states, chart highlights  |
+| `artemis.earth`  | `#27AAE0` | Secondary accent, info states, chart highlights  |
 | `artemis.shadow` | `#58595B` | Muted text, borders on dark backgrounds          |
 | `artemis.space`  | `#A7A9AC` | Secondary text, labels, placeholders             |
 | `artemis.white`  | `#FFFFFF` | Primary text on dark backgrounds                 |
@@ -48,7 +48,7 @@ If you change any one, update the other two in the same commit.
 | `status.critical` | `#FC3D21` | NASA Red           | Tool failure, intervene now  |
 | `status.warning`  | `#E08B27` | Warm Earth shift   | Permission request, watch    |
 | `status.success`  | `#27E0A1` | Cool complement    | Session complete, healthy    |
-| `status.info`     | `#27AAE1` | Earth Blue         | Running, informational       |
+| `status.info`     | `#27AAE0` | Earth Blue         | Running, informational       |
 | `status.muted`    | `#58595B` | Shadow Gray        | Offline, inactive, idle      |
 
 ### Accent gradient
@@ -57,7 +57,7 @@ Used sparingly, reserved for brand moments (hero headings, brand bar next to
 section headers, active nav indicators):
 
 ```
-linear-gradient(135deg, #0B3D91 0%, #27AAE1 50%, #FC3D21 100%)
+linear-gradient(135deg, #0B3D91 0%, #27AAE0 50%, #FC3D21 100%)
 ```
 
 ---
@@ -96,11 +96,11 @@ the wrong palette.
 | `--artemis-shadow`| `#58595B`  | `#64748b`  | Tertiary text            |
 | `--artemis-red`   | `#FC3D21`  | `#FC3D21`  | Accent (shared)          |
 | `--artemis-blue`  | `#0B3D91`  | `#0B3D91`  | Accent (shared)          |
-| `--artemis-earth` | `#27AAE1`  | `#1d91c9`  | Accent (shifted darker)  |
+| `--artemis-earth` | `#27AAE0`  | `#1d91c9`  | Accent (shifted darker)  |
 | `--status-critical` | `#FC3D21` | `#dc2626` | Critical status          |
 | `--status-warning`  | `#E08B27` | `#d97706` | Warning status           |
 | `--status-success`  | `#27E0A1` | `#15803d` | Success status           |
-| `--status-info`     | `#27AAE1` | `#0e7fbf` | Info status              |
+| `--status-info`     | `#27AAE0` | `#0e7fbf` | Info status              |
 | `--status-muted`    | `#58595B` | `#64748b` | Muted status             |
 
 ### Shadows and overlays
@@ -119,7 +119,7 @@ The light palette uses soft slate drop shadows rather than pure black:
 Both themes share the same three stops, but the light variant pulls the
 midpoint slightly inward so the red does not dominate over a white page:
 
-- **Dark:** `linear-gradient(135deg, #0B3D91 0%, #27AAE1 50%, #FC3D21 100%)`
+- **Dark:** `linear-gradient(135deg, #0B3D91 0%, #27AAE0 50%, #FC3D21 100%)`
 - **Light:** `linear-gradient(135deg, #0B3D91 0%, #1d91c9 55%, #dc2626 100%)`
 
 ### Principles

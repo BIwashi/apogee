@@ -20,7 +20,7 @@ apogee のビジュアル識別は、NASA Artemis Graphic Standards Guide（2021
 | ---------------- | --------- | ------------------------------------------------ |
 | `artemis.red`    | `#FC3D21` | エラー、重大アラート、intervene-now              |
 | `artemis.blue`   | `#0B3D91` | プライマリブランド、リンク、アクティブナビ       |
-| `artemis.earth`  | `#27AAE1` | セカンダリアクセント、情報、チャートハイライト   |
+| `artemis.earth`  | `#27AAE0` | セカンダリアクセント、情報、チャートハイライト   |
 | `artemis.shadow` | `#58595B` | ミュートテキスト、暗い背景上のボーダー           |
 | `artemis.space`  | `#A7A9AC` | セカンダリテキスト、ラベル、プレースホルダー     |
 | `artemis.white`  | `#FFFFFF` | 暗背景のプライマリテキスト                       |
@@ -44,7 +44,7 @@ apogee のビジュアル識別は、NASA Artemis Graphic Standards Guide（2021
 | `status.critical` | `#FC3D21` | NASA Red           | ツール失敗、intervene now    |
 | `status.warning`  | `#E08B27` | Warm Earth shift   | 権限要求、watch              |
 | `status.success`  | `#27E0A1` | Cool complement    | セッション完了、healthy      |
-| `status.info`     | `#27AAE1` | Earth Blue         | 実行中、情報                 |
+| `status.info`     | `#27AAE0` | Earth Blue         | 実行中、情報                 |
 | `status.muted`    | `#58595B` | Shadow Gray        | オフライン、非アクティブ     |
 
 ### アクセントグラデーション
@@ -52,7 +52,7 @@ apogee のビジュアル識別は、NASA Artemis Graphic Standards Guide（2021
 ブランドの瞬間（ヒーロー見出し、セクション見出し横のブランドバー、アクティブなナビインジケーター）にだけ使います。
 
 ```
-linear-gradient(135deg, #0B3D91 0%, #27AAE1 50%, #FC3D21 100%)
+linear-gradient(135deg, #0B3D91 0%, #27AAE0 50%, #FC3D21 100%)
 ```
 
 ---
@@ -91,11 +91,11 @@ apogee は PR #33 までダーク専用でした。2 つめのパレットは
 | `--artemis-shadow`| `#58595B`  | `#64748b`  | ターシャリ文字           |
 | `--artemis-red`   | `#FC3D21`  | `#FC3D21`  | アクセント（共有）       |
 | `--artemis-blue`  | `#0B3D91`  | `#0B3D91`  | アクセント（共有）       |
-| `--artemis-earth` | `#27AAE1`  | `#1d91c9`  | アクセント（少し濃く）   |
+| `--artemis-earth` | `#27AAE0`  | `#1d91c9`  | アクセント（少し濃く）   |
 | `--status-critical` | `#FC3D21` | `#dc2626` | critical                 |
 | `--status-warning`  | `#E08B27` | `#d97706` | warning                  |
 | `--status-success`  | `#27E0A1` | `#15803d` | success                  |
-| `--status-info`     | `#27AAE1` | `#0e7fbf` | info                     |
+| `--status-info`     | `#27AAE0` | `#0e7fbf` | info                     |
 | `--status-muted`    | `#58595B` | `#64748b` | muted                    |
 
 ### シャドウ/オーバーレイ
