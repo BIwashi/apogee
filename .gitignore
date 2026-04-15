@@ -48,3 +48,11 @@ out/
 # Claude Code local state
 .claude/data/
 .claude/logs/
+# Developer-only guidance for Claude Code sessions on this repo. The
+# file documents internal PR conventions, dev commands, and
+# architecture orientation, all of which duplicate information that
+# already lives in README / CONTRIBUTING / docs/ for OSS visitors.
+# Kept local-only so the public repo stays focused on user-facing
+# material. Contributors who run Claude Code against this repo can
+# maintain their own CLAUDE.md — it is no longer a shared artefact.
+CLAUDE.md
