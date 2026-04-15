@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, useSyncExternalStore } from "react";
 
@@ -168,14 +169,27 @@ export default function Sidebar({ children }: { children: React.ReactNode }) {
               : "text-[var(--text-muted)] hover:bg-[var(--surface-raised)] hover:text-[var(--artemis-white)]";
             return (
               <li key={href} className="group relative">
-                <a
+                {/*
+                 * next/link, not a bare <a href>: the bare anchor
+                 * triggers a full-page reload, and full-page reloads
+                 * from inside the Wails WKWebView round-trip through
+                 * the reverse-proxy AssetServer in a way that
+                 * sometimes drops the navigation entirely (observed
+                 * with v0.1.17 on macOS 15). Next.js' Link uses the
+                 * client-side router + history.pushState, which the
+                 * WebView handles reliably and which also matches
+                 * the browser-only usage where the SPA never pays
+                 * the cost of re-downloading the whole bundle on
+                 * every sidebar click.
+                 */}
+                <Link
                   href={href}
                   className={`${base} ${tone}`}
                   aria-label={collapsed ? `${label} — ${hint}` : undefined}
                 >
                   <Icon size={16} strokeWidth={1.5} className="flex-shrink-0" />
                   {!collapsed && <span>{label}</span>}
-                </a>
+                </Link>
                 {/* Hover hint — rendered at sidebar edge so it escapes the
                     nav column without shifting the hit target. Keyboard
                     focus opens the same popover for a11y. */}

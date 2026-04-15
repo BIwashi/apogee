@@ -313,7 +313,25 @@ export default function LivePage() {
         <EventTicker events={events} maxHeightPx={180} />
       </section>
 
-      <section className="grid gap-4 lg:grid-cols-12">
+      {/*
+       * Datadog-style two-column layout for the live view: the
+       * TriageRail on the left grows as the number of running turns
+       * climbs (potentially much taller than the focus card on the
+       * right), so we pin the FocusCard with `sticky` and let the
+       * rail scroll underneath it. `items-start` keeps both grid
+       * tracks top-aligned, which is what `sticky` needs to work —
+       * otherwise the default `stretch` alignment forces every cell
+       * to the grid row's max height and there is nothing for the
+       * sticky element to anchor against.
+       *
+       * The top offset (`lg:top-4`) matches the page gutter, and
+       * the max-height caps the sticky card at one viewport minus
+       * that gutter so its internal scrollbar takes over if the
+       * focused turn's span tree is also long. On narrow
+       * breakpoints the grid collapses to a single column and
+       * `lg:sticky` reverts to the default flow.
+       */}
+      <section className="grid items-start gap-4 lg:grid-cols-12">
         <div className="lg:col-span-4">
           <TriageRail
             turns={turns}
@@ -322,7 +340,7 @@ export default function LivePage() {
             onOpen={onTriageOpen}
           />
         </div>
-        <div className="lg:col-span-8">
+        <div className="lg:sticky lg:top-4 lg:col-span-8 lg:max-h-[calc(100vh-2rem)] lg:self-start lg:overflow-y-auto">
           <FocusCard
             turn={focusedTurn}
             spans={focusedSpans}
