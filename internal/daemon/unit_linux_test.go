@@ -11,6 +11,12 @@ import (
 )
 
 func TestRenderServiceFileGolden(t *testing.T) {
+	// Pass Environment explicitly so the rendered output is fully
+	// deterministic. Without this, renderServiceFile -> applyDefaultEnv
+	// would snapshot HOME and PATH from the caller's process env, and
+	// the goldenfile would drift between local dev (/Users/...) and
+	// GitHub runners (/home/runner/...). The default-env fallback is
+	// covered by the TestApplyDefaultEnv* tests in manager_test.go.
 	cfg := Config{
 		Label:      DefaultLabel,
 		BinaryPath: "/usr/local/bin/apogee",
@@ -23,6 +29,10 @@ func TestRenderServiceFileGolden(t *testing.T) {
 		LogDir:     "/home/me/.apogee/logs",
 		KeepAlive:  true,
 		RunAtLoad:  true,
+		Environment: map[string]string{
+			"HOME": "/home/me",
+			"PATH": "/home/me/.local/bin:/usr/local/bin:/usr/bin:/bin",
+		},
 	}
 	got, err := renderServiceFile(cfg)
 	if err != nil {

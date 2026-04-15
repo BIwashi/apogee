@@ -16,7 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.1.9] - 2026-04-15
+## [v0.1.9] - 2026-04-15
 
 ### Added
 
@@ -41,7 +41,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   library, no extra fetch — the session page already has the
   turns array in memory.
 
-## [0.1.8] - 2026-04-15
+## [v0.1.8] - 2026-04-15
 
 ### Added
 
@@ -132,7 +132,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   row, and corrects the `make desktop-*` comments to match what
   the targets actually do.
 
-## [0.1.7] - 2026-04-15
+## [v0.1.7] - 2026-04-15
 
 ### Added
 
@@ -413,7 +413,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **PR #20 — Go-native hook, Python removed.** `apogee hook --event X` is the new Claude Code hook invocation. The Python hook library (`hooks/`), the `apogee hooks extract` subcommand, and the embedded hooks filesystem (`hooksfs.go`) are deleted. `apogee init` now writes `<binary path> hook --event X --server-url ...` into `.claude/settings.json` and the `python3` PATH check is removed from `apogee doctor`. Cross-platform: one binary, no Python dependency, no extraction step. Existing installs from v0.1.x still pointing at `python3 send_event.py` are not auto-migrated; run `apogee init --force` to replace them.
 - **PR #18 — dynamic source_app + user-scope default for `apogee init`.** The hook derives `source_app` at hook invocation time from `$APOGEE_SOURCE_APP`, then `basename $(git rev-parse --show-toplevel)`, then `basename $PWD`. `apogee init` defaults to user scope and no longer pins `--source-app` into the generated commands, so one install on a machine automatically labels every project with its own repo name. Passing `--source-app foo` still pins a fixed label as before.
 
-## [0.1.0] — 2026-04-15
+## [v0.1.0] — 2026-04-15
 
 First tagged release. darwin amd64 + arm64. Linux deferred to v0.2.0 pending a
 proper cgo cross-toolchain. This is the initial 11-PR development arc that
