@@ -17,7 +17,6 @@ import {
   Wrench,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-
 import { apiUrl } from "../lib/api";
 import type {
   ForecastPhase,
@@ -111,15 +110,47 @@ const KIND_TONE: Record<
   PhaseKind,
   { fill: string; ring: string; label: string }
 > = {
-  implement: { fill: "var(--artemis-earth)", ring: "var(--artemis-earth)", label: "Implement" },
-  review: { fill: "var(--artemis-space)", ring: "var(--artemis-space)", label: "Review" },
-  debug: { fill: "var(--artemis-red)", ring: "var(--artemis-red)", label: "Debug" },
-  plan: { fill: "var(--artemis-blue)", ring: "var(--artemis-blue)", label: "Plan" },
-  test: { fill: "var(--status-warning)", ring: "var(--status-warning)", label: "Test" },
-  commit: { fill: "var(--status-success)", ring: "var(--status-success)", label: "Commit" },
-  delegate: { fill: "var(--artemis-shadow)", ring: "var(--artemis-shadow)", label: "Delegate" },
+  implement: {
+    fill: "var(--artemis-earth)",
+    ring: "var(--artemis-earth)",
+    label: "Implement",
+  },
+  review: {
+    fill: "var(--artemis-space)",
+    ring: "var(--artemis-space)",
+    label: "Review",
+  },
+  debug: {
+    fill: "var(--artemis-red)",
+    ring: "var(--artemis-red)",
+    label: "Debug",
+  },
+  plan: {
+    fill: "var(--artemis-blue)",
+    ring: "var(--artemis-blue)",
+    label: "Plan",
+  },
+  test: {
+    fill: "var(--status-warning)",
+    ring: "var(--status-warning)",
+    label: "Test",
+  },
+  commit: {
+    fill: "var(--status-success)",
+    ring: "var(--status-success)",
+    label: "Commit",
+  },
+  delegate: {
+    fill: "var(--artemis-shadow)",
+    ring: "var(--artemis-shadow)",
+    label: "Delegate",
+  },
   explore: { fill: "var(--accent)", ring: "var(--accent)", label: "Explore" },
-  other: { fill: "var(--border-bright)", ring: "var(--border-bright)", label: "Other" },
+  other: {
+    fill: "var(--border-bright)",
+    ring: "var(--border-bright)",
+    label: "Other",
+  },
 };
 
 // Layout constants for the git-graph. All measurements are in
@@ -173,7 +204,10 @@ export default function MissionMap({ sessionId, turns }: MissionMapProps) {
 
   const rollup: Rollup | null = rollupData?.rollup ?? null;
   const phases: PhaseBlock[] = useMemo(() => rollup?.phases ?? [], [rollup]);
-  const forecast: ForecastPhase[] = useMemo(() => rollup?.forecast ?? [], [rollup]);
+  const forecast: ForecastPhase[] = useMemo(
+    () => rollup?.forecast ?? [],
+    [rollup],
+  );
   const interventions = useMemo(
     () => interventionsData?.interventions ?? [],
     [interventionsData],
@@ -442,7 +476,13 @@ function PhaseRow({
             opacity="0.18"
           />
           {/* Node body */}
-          <circle cx={SPINE_X} cy="50" r={NODE_R} fill={tone.fill} opacity="0.95" />
+          <circle
+            cx={SPINE_X}
+            cy="50"
+            r={NODE_R}
+            fill={tone.fill}
+            opacity="0.95"
+          />
           <circle
             cx={SPINE_X}
             cy="50"
@@ -699,10 +739,7 @@ function MissionEmpty({
 }) {
   return (
     <div className="flex flex-col gap-4">
-      <SectionHeader
-        title="Mission"
-        subtitle="Git graph of the session arc."
-      />
+      <SectionHeader title="Mission" subtitle="Git graph of the session arc." />
       <Card className="relative overflow-hidden p-10">
         <div
           className="mission-starfield pointer-events-none absolute inset-0"

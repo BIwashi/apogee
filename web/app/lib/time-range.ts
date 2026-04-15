@@ -71,7 +71,10 @@ function presetLabel(raw: string): string {
  * the 15-minute default when `raw` is empty or unparseable so callers never
  * have to deal with `null`.
  */
-export function parseTimeRange(raw: string | null | undefined, now: Date = new Date()): TimeRange {
+export function parseTimeRange(
+  raw: string | null | undefined,
+  now: Date = new Date(),
+): TimeRange {
   if (!raw) return defaultTimeRange(now);
 
   // Custom: ISO1|ISO2
@@ -79,7 +82,12 @@ export function parseTimeRange(raw: string | null | undefined, now: Date = new D
     const [a, b] = raw.split("|", 2);
     const since = a ? new Date(a) : null;
     const until = b ? new Date(b) : null;
-    if (since && !Number.isNaN(since.getTime()) && until && !Number.isNaN(until.getTime())) {
+    if (
+      since &&
+      !Number.isNaN(since.getTime()) &&
+      until &&
+      !Number.isNaN(until.getTime())
+    ) {
       return { since, until, label: "Custom", shorthand: null };
     }
     return defaultTimeRange(now);

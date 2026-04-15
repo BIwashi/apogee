@@ -1,7 +1,6 @@
 "use client";
 
 import { Monitor, Moon, Sun } from "lucide-react";
-
 import type { Preference } from "../lib/theme";
 import { useTheme } from "../lib/theme";
 

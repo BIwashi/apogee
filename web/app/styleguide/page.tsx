@@ -1,5 +1,4 @@
 import { Radio } from "lucide-react";
-
 import Card from "../components/Card";
 import EventTypeBadge from "../components/EventTypeBadge";
 import SectionHeader from "../components/SectionHeader";
@@ -47,7 +46,9 @@ export default function StyleguidePage() {
         <Card>
           <div className="flex flex-wrap items-center gap-3">
             <StatusPill tone="critical">critical — tool failure</StatusPill>
-            <StatusPill tone="warning">warning — permission requested</StatusPill>
+            <StatusPill tone="warning">
+              warning — permission requested
+            </StatusPill>
             <StatusPill tone="success">success — session complete</StatusPill>
             <StatusPill tone="info">info — tool invoked</StatusPill>
             <StatusPill tone="muted">muted — idle</StatusPill>
@@ -106,7 +107,9 @@ export default function StyleguidePage() {
                 className="text-[var(--artemis-earth)]"
               />
             </div>
-            <p className="font-display text-[12px] text-[var(--artemis-white)]">No events yet</p>
+            <p className="font-display text-[12px] text-[var(--artemis-white)]">
+              No events yet
+            </p>
             <p className="max-w-sm text-[12px] text-[var(--text-muted)]">
               Start the collector and point your Claude Code hooks at
               <code className="mx-1 font-mono text-[11px] text-[var(--artemis-earth)]">

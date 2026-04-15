@@ -1,28 +1,19 @@
 "use client";
 
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ChevronLeft, ChevronRight, Copy } from "lucide-react";
-
 import Breadcrumb from "../components/Breadcrumb";
 import Card from "../components/Card";
 import EventList from "../components/EventList";
-import FacetPanel, {
-  type FacetSelections,
-} from "../components/FacetPanel";
+import FacetPanel, { type FacetSelections } from "../components/FacetPanel";
 import LogHistogram from "../components/LogHistogram";
 import SideDrawer from "../components/SideDrawer";
 import VersionTag from "../components/VersionTag";
 import type {
   EventFacetsResponse,
-  EventsRecentResponse,
   EventTimeseriesResponse,
+  EventsRecentResponse,
   LogRow,
 } from "../lib/api-types";
 import { useApi } from "../lib/swr";
@@ -130,7 +121,11 @@ export default function EventsPage() {
   const filterKey = useMemo(() => {
     const parts: string[] = [q, windowParam, since, until];
     for (const key of FACET_KEYS) {
-      parts.push(`${key}=${Array.from(selections[key] ?? []).sort().join(",")}`);
+      parts.push(
+        `${key}=${Array.from(selections[key] ?? [])
+          .sort()
+          .join(",")}`,
+      );
     }
     return parts.join("|");
   }, [q, windowParam, since, until, selections]);
@@ -236,10 +231,16 @@ export default function EventsPage() {
     useApi<EventFacetsResponse>(facetsUrl);
   const { data: tsData, isLoading: tsLoading } =
     useApi<EventTimeseriesResponse>(timeseriesUrl);
-  const { data: eventsData, error: eventsError, isLoading: eventsLoading } =
-    useApi<EventsRecentResponse>(recentUrl, { keepPreviousData: true });
+  const {
+    data: eventsData,
+    error: eventsError,
+    isLoading: eventsLoading,
+  } = useApi<EventsRecentResponse>(recentUrl, { keepPreviousData: true });
 
-  const events = useMemo<LogRow[]>(() => eventsData?.events ?? [], [eventsData]);
+  const events = useMemo<LogRow[]>(
+    () => eventsData?.events ?? [],
+    [eventsData],
+  );
   const hasMore = eventsData?.has_more ?? false;
   const nextBefore = eventsData?.next_before ?? null;
 
@@ -437,7 +438,9 @@ function EventDrawerBody({ log }: { log: LogRow }) {
         <dt className="text-[var(--text-muted)]">id</dt>
         <dd className="text-[var(--text-primary)]">{log.id}</dd>
         <dt className="text-[var(--text-muted)]">timestamp</dt>
-        <dd className="text-[var(--text-primary)]">{formatClock(log.timestamp)}</dd>
+        <dd className="text-[var(--text-primary)]">
+          {formatClock(log.timestamp)}
+        </dd>
         <dt className="text-[var(--text-muted)]">hook_event</dt>
         <dd className="text-[var(--text-primary)]">{log.hook_event || "—"}</dd>
         <dt className="text-[var(--text-muted)]">source_app</dt>

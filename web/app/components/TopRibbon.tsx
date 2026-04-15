@@ -13,7 +13,6 @@ import {
   Sun,
 } from "lucide-react";
 import { mutate } from "swr";
-
 import type {
   FilterOptions,
   PreferencesResponse,
@@ -151,7 +150,9 @@ function RibbonDivider() {
 
 function EnvSelector() {
   const { selection, setSelection } = useSelection();
-  const { data } = useApi<FilterOptions>("/v1/filter-options", { refreshInterval: 30_000 });
+  const { data } = useApi<FilterOptions>("/v1/filter-options", {
+    refreshInterval: 30_000,
+  });
   const [open, setOpen] = useState(false);
 
   const apps = data?.source_apps ?? [];
@@ -176,7 +177,9 @@ function EnvSelector() {
               setOpen(false);
             }}
             className={`block w-full px-3 py-1.5 text-left font-mono text-[12px] hover:bg-[var(--bg-raised)] ${
-              !selection.env ? "text-[var(--artemis-white)]" : "text-[var(--artemis-space)]"
+              !selection.env
+                ? "text-[var(--artemis-white)]"
+                : "text-[var(--artemis-space)]"
             }`}
           >
             env: all
@@ -190,7 +193,9 @@ function EnvSelector() {
                 setOpen(false);
               }}
               className={`block w-full px-3 py-1.5 text-left font-mono text-[12px] hover:bg-[var(--bg-raised)] ${
-                selection.env === app ? "text-[var(--artemis-white)]" : "text-[var(--artemis-space)]"
+                selection.env === app
+                  ? "text-[var(--artemis-white)]"
+                  : "text-[var(--artemis-space)]"
               }`}
             >
               {app}
@@ -245,7 +250,9 @@ function TimeRangePicker() {
                   setOpen(false);
                 }}
                 className={`block w-full rounded px-3 py-1.5 text-left font-mono text-[12px] hover:bg-[var(--bg-raised)] ${
-                  active ? "text-[var(--artemis-white)]" : "text-[var(--artemis-space)]"
+                  active
+                    ? "text-[var(--artemis-white)]"
+                    : "text-[var(--artemis-space)]"
                 }`}
               >
                 {preset.label}
@@ -305,7 +312,8 @@ function LanguagePicker() {
 
   const current: SummarizerLanguage =
     pending ?? data?.preferences?.["summarizer.language"] ?? "en";
-  const label = LANGUAGE_OPTIONS.find((o) => o.value === current)?.label ?? "EN";
+  const label =
+    LANGUAGE_OPTIONS.find((o) => o.value === current)?.label ?? "EN";
 
   const apply = useCallback(
     async (next: SummarizerLanguage) => {
@@ -321,9 +329,7 @@ function LanguagePicker() {
         // local hook AND broadcast a global mutate for siblings).
         await revalidate(updated, { revalidate: false });
         await mutate(
-          (key) =>
-            Array.isArray(key) &&
-            key[0] === "/v1/preferences",
+          (key) => Array.isArray(key) && key[0] === "/v1/preferences",
           undefined,
           { revalidate: true },
         );
@@ -380,7 +386,9 @@ function LanguagePicker() {
                 aria-selected={active}
                 onClick={() => apply(opt.value)}
                 className={`block w-full rounded px-3 py-1.5 text-left font-mono text-[12px] hover:bg-[var(--bg-raised)] ${
-                  active ? "text-[var(--artemis-white)]" : "text-[var(--artemis-space)]"
+                  active
+                    ? "text-[var(--artemis-white)]"
+                    : "text-[var(--artemis-space)]"
                 }`}
               >
                 {opt.label}

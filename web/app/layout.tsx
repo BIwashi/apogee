@@ -1,13 +1,12 @@
-import type { Metadata } from "next";
 import { Suspense } from "react";
-
-import "./globals.css";
-import Sidebar from "./sidebar";
+import type { Metadata } from "next";
 import CrossCuttingDrawer from "./components/CrossCuttingDrawer";
 import TopRibbon from "./components/TopRibbon";
+import "./globals.css";
 import { RefreshProvider } from "./lib/refresh";
 import { SSEProvider } from "./lib/sse";
 import { ThemeProvider } from "./lib/theme";
+import Sidebar from "./sidebar";
 
 export const metadata: Metadata = {
   title: "apogee — Claude Code observability",
@@ -56,7 +55,9 @@ export default function RootLayout({
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
       </head>
       <body className="min-h-screen bg-[var(--bg-deepspace)] text-[var(--artemis-white)]">
-        <Suspense fallback={<div className="min-h-screen bg-[var(--bg-deepspace)]" />}>
+        <Suspense
+          fallback={<div className="min-h-screen bg-[var(--bg-deepspace)]" />}
+        >
           <ThemeProvider>
             <SSEProvider>
               <RefreshProvider>

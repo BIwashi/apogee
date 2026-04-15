@@ -2,16 +2,11 @@
 
 import { useMemo, useState } from "react";
 import { ChevronRight, Search, User, Users } from "lucide-react";
-
 import AttentionDot from "../components/AttentionDot";
 import Card from "../components/Card";
 import SectionHeader from "../components/SectionHeader";
 import SessionLabel from "../components/SessionLabel";
-import type {
-  Agent,
-  AgentsResponse,
-  FilterOptions,
-} from "../lib/api-types";
+import type { Agent, AgentsResponse, FilterOptions } from "../lib/api-types";
 import { drawerLinkProps, useDrawerState } from "../lib/drawer";
 import { useApi } from "../lib/swr";
 import { timeAgo } from "../lib/time";
@@ -115,8 +110,8 @@ export default function AgentsPage() {
           <div className="accent-gradient-bar mt-3 h-[3px] w-32 rounded-full" />
           <p className="mt-3 max-w-xl text-[13px] text-[var(--text-muted)]">
             Every main agent and spawned subagent the collector has seen,
-            aggregated by agent id. Click a session to pop over to its
-            detail page.
+            aggregated by agent id. Click a session to pop over to its detail
+            page.
           </p>
         </div>
         <label className="inline-flex items-center gap-2 font-mono text-[11px] text-[var(--text-muted)]">
@@ -181,10 +176,7 @@ export default function AgentsPage() {
               main agent and any spawned subagents appear here.
             </p>
           ) : tree ? (
-            <TreeView
-              roots={grouped.roots}
-              byParent={grouped.byParent}
-            />
+            <TreeView roots={grouped.roots} byParent={grouped.byParent} />
           ) : (
             <FlatTable agents={agents} />
           )}
@@ -255,7 +247,9 @@ function FlatTable({ agents }: { agents: Agent[] }) {
               <tr
                 key={`${a.agent_id}-${a.session_id}`}
                 onClick={(e) =>
-                  rowProps.onClick(e as unknown as React.MouseEvent<HTMLElement>)
+                  rowProps.onClick(
+                    e as unknown as React.MouseEvent<HTMLElement>,
+                  )
                 }
                 className="group cursor-pointer border-b border-[var(--border)] transition-colors hover:bg-[var(--bg-raised)]"
               >
@@ -311,7 +305,12 @@ function TreeView({
   return (
     <ul className="flex flex-col">
       {roots.map((root) => (
-        <TreeRow key={`${root.agent_id}-${root.session_id}`} agent={root} byParent={byParent} depth={0} />
+        <TreeRow
+          key={`${root.agent_id}-${root.session_id}`}
+          agent={root}
+          byParent={byParent}
+          depth={0}
+        />
       ))}
     </ul>
   );

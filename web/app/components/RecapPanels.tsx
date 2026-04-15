@@ -1,7 +1,6 @@
 "use client";
 
 import { RefreshCw } from "lucide-react";
-
 import type { Recap } from "../lib/api-types";
 import { timeAgo } from "../lib/time";
 import Card from "./Card";

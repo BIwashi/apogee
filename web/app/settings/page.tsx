@@ -13,14 +13,13 @@ import {
   Sun,
 } from "lucide-react";
 import { mutate } from "swr";
-
 import Card from "../components/Card";
 import SectionHeader from "../components/SectionHeader";
 import type {
   ApogeeInfo,
   ModelInfo,
-  ModelsResponse,
   ModelUseCase,
+  ModelsResponse,
   PreferencesResponse,
   SummarizerLanguage,
   SummarizerPreferences,
@@ -70,7 +69,13 @@ function KV({ label, value, mono }: KVProps) {
       <span className="font-display text-[10px] tracking-[0.14em] text-[var(--text-muted)]">
         {label}
       </span>
-      <span className={mono ? "font-mono text-[11px] text-[var(--artemis-white)]" : "text-[var(--artemis-white)]"}>
+      <span
+        className={
+          mono
+            ? "font-mono text-[11px] text-[var(--artemis-white)]"
+            : "text-[var(--artemis-white)]"
+        }
+      >
         {value}
       </span>
     </div>
@@ -81,10 +86,9 @@ export default function SettingsPage() {
   const { data: info } = useApi<ApogeeInfo>("/v1/info", {
     refreshInterval: 10_000,
   });
-  const { data: telemetry } = useApi<TelemetryStatus>(
-    "/v1/telemetry/status",
-    { refreshInterval: 10_000 },
-  );
+  const { data: telemetry } = useApi<TelemetryStatus>("/v1/telemetry/status", {
+    refreshInterval: 10_000,
+  });
 
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-6">
@@ -109,31 +113,11 @@ export default function SettingsPage() {
           subtitle="Build + runtime metadata from /v1/info."
         />
         <Card>
-          <KV
-            label="Name"
-            value={info?.name ?? "apogee"}
-            mono
-          />
-          <KV
-            label="Version"
-            value={info?.version ?? "—"}
-            mono
-          />
-          <KV
-            label="Commit"
-            value={info?.commit ?? "—"}
-            mono
-          />
-          <KV
-            label="Build date"
-            value={info?.build_date ?? "—"}
-            mono
-          />
-          <KV
-            label="HTTP address"
-            value={info?.collector_addr ?? "—"}
-            mono
-          />
+          <KV label="Name" value={info?.name ?? "apogee"} mono />
+          <KV label="Version" value={info?.version ?? "—"} mono />
+          <KV label="Commit" value={info?.commit ?? "—"} mono />
+          <KV label="Build date" value={info?.build_date ?? "—"} mono />
+          <KV label="HTTP address" value={info?.collector_addr ?? "—"} mono />
           <KV
             label="Uptime"
             value={humanUptime(info?.uptime_seconds ?? 0)}
@@ -169,16 +153,8 @@ export default function SettingsPage() {
               </span>
             }
           />
-          <KV
-            label="Endpoint"
-            value={telemetry?.endpoint || "—"}
-            mono
-          />
-          <KV
-            label="Protocol"
-            value={telemetry?.protocol || "—"}
-            mono
-          />
+          <KV label="Endpoint" value={telemetry?.endpoint || "—"} mono />
+          <KV label="Protocol" value={telemetry?.protocol || "—"} mono />
           <KV
             label="Service name"
             value={telemetry?.service_name || "—"}
@@ -211,7 +187,9 @@ export default function SettingsPage() {
             label="Path"
             value={
               <span className="inline-flex items-center gap-2">
-                <code className="text-[var(--artemis-white)]">~/.apogee/config.toml</code>
+                <code className="text-[var(--artemis-white)]">
+                  ~/.apogee/config.toml
+                </code>
                 <Copy
                   size={12}
                   strokeWidth={1.5}
@@ -231,8 +209,10 @@ export default function SettingsPage() {
         <Card>
           <p className="text-[12px] text-[var(--text-muted)]">
             Install the daemon with{" "}
-            <code className="font-mono text-[var(--artemis-white)]">apogee daemon install</code>.
-            A dashboard installer UI will land in a follow-up.
+            <code className="font-mono text-[var(--artemis-white)]">
+              apogee daemon install
+            </code>
+            . A dashboard installer UI will land in a follow-up.
           </p>
         </Card>
       </section>
@@ -245,9 +225,11 @@ export default function SettingsPage() {
         <Card>
           <p className="text-[12px] text-[var(--text-muted)]">
             Install hooks with{" "}
-            <code className="font-mono text-[var(--artemis-white)]">apogee init</code>. The
-            init command writes <code>~/.claude/settings.json</code> so every
-            hook event posts to this collector.
+            <code className="font-mono text-[var(--artemis-white)]">
+              apogee init
+            </code>
+            . The init command writes <code>~/.claude/settings.json</code> so
+            every hook event posts to this collector.
           </p>
         </Card>
       </section>
@@ -267,10 +249,9 @@ function SummarizerSection() {
     "/v1/preferences",
     { refreshInterval: 30_000 },
   );
-  const { data: modelsData } = useApi<ModelsResponse>(
-    "/v1/models",
-    { refreshInterval: 60_000 },
-  );
+  const { data: modelsData } = useApi<ModelsResponse>("/v1/models", {
+    refreshInterval: 60_000,
+  });
   const models = modelsData?.models ?? [];
   const defaults = modelsData?.defaults ?? {
     recap: "",
@@ -282,7 +263,8 @@ function SummarizerSection() {
     const p = data?.preferences ?? {};
     return {
       "summarizer.language":
-        p["summarizer.language"] ?? DEFAULT_SUMMARIZER_PREFERENCES["summarizer.language"],
+        p["summarizer.language"] ??
+        DEFAULT_SUMMARIZER_PREFERENCES["summarizer.language"],
       "summarizer.recap_system_prompt":
         p["summarizer.recap_system_prompt"] ??
         DEFAULT_SUMMARIZER_PREFERENCES["summarizer.recap_system_prompt"],
@@ -304,7 +286,8 @@ function SummarizerSection() {
     };
   }, [data]);
 
-  const [draft, setDraft] = useState<Required<SummarizerPreferences>>(persisted);
+  const [draft, setDraft] =
+    useState<Required<SummarizerPreferences>>(persisted);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -392,7 +375,9 @@ function SummarizerSection() {
         <div className="flex flex-col gap-4 p-1 text-[12px]">
           <LanguageRow
             value={draft["summarizer.language"]}
-            onChange={(v) => setDraft((d) => ({ ...d, "summarizer.language": v }))}
+            onChange={(v) =>
+              setDraft((d) => ({ ...d, "summarizer.language": v }))
+            }
           />
 
           <ModelDropdownRow
@@ -559,16 +544,12 @@ function ModelDropdownRow({
   value: string;
   onChange: (v: string) => void;
 }) {
-  const recommended = models.filter((m) =>
-    m.recommended.includes(useCase),
-  );
+  const recommended = models.filter((m) => m.recommended.includes(useCase));
   const defaultEntry = models.find((m) => m.alias === defaultAlias);
   const defaultLabel = defaultEntry
     ? `Use default (${defaultEntry.display})`
     : "Use default";
-  const current = value
-    ? models.find((m) => m.alias === value)
-    : undefined;
+  const current = value ? models.find((m) => m.alias === value) : undefined;
   const warnUnavailable = Boolean(current && !current.available);
   return (
     <div className="grid grid-cols-[160px_1fr] items-start gap-3">

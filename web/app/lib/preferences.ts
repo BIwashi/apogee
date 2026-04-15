@@ -3,7 +3,6 @@
  * persists every key in DuckDB; this module owns the wire shape and the
  * fetch boilerplate so call sites stay tiny.
  */
-
 import { apiFetch, apiUrl } from "./api";
 import type { PreferencesResponse, SummarizerPreferences } from "./api-types";
 

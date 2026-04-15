@@ -1,9 +1,8 @@
 "use client";
 
 import { useCallback, useMemo } from "react";
-
-import FacetGroup from "./FacetGroup";
 import type { FacetDimension } from "../lib/api-types";
+import FacetGroup from "./FacetGroup";
 
 /**
  * FacetPanel — Datadog-style left rail on the /events page. Owns the

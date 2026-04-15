@@ -2,9 +2,13 @@
 
 import { useCallback, useMemo, useState } from "react";
 import { RefreshCw, Sparkles } from "lucide-react";
-
 import { apiUrl } from "../lib/api";
-import type { PhaseBlock, Rollup, RollupResponse, Turn } from "../lib/api-types";
+import type {
+  PhaseBlock,
+  Rollup,
+  RollupResponse,
+  Turn,
+} from "../lib/api-types";
 import { useApi } from "../lib/swr";
 import { timeAgo } from "../lib/time";
 import Card from "./Card";
@@ -27,7 +31,10 @@ interface PhaseTimelineProps {
   turns: Turn[];
 }
 
-export default function PhaseTimeline({ sessionId, turns }: PhaseTimelineProps) {
+export default function PhaseTimeline({
+  sessionId,
+  turns,
+}: PhaseTimelineProps) {
   const { data, mutate } = useApi<RollupResponse>(
     sessionId ? `/v1/sessions/${sessionId}/rollup` : null,
     { refreshInterval: 10_000 },

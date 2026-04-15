@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { ChevronRight, Orbit } from "lucide-react";
-
 import type { AttentionState, Turn } from "../lib/api-types";
 import type { StatusKey } from "../lib/design-tokens";
 import { drawerLinkProps, useDrawerState } from "../lib/drawer";
@@ -68,7 +67,9 @@ export default function RecentTurnsTable({ turns }: RecentTurnsTableProps) {
             className="text-[var(--artemis-earth)]"
           />
         </div>
-        <p className="font-display text-[12px] text-[var(--artemis-white)]">No turns yet</p>
+        <p className="font-display text-[12px] text-[var(--artemis-white)]">
+          No turns yet
+        </p>
         <p className="max-w-sm text-[12px] text-[var(--text-muted)]">
           Start a Claude Code session to see activity appear here in real time.
         </p>
@@ -81,17 +82,40 @@ export default function RecentTurnsTable({ turns }: RecentTurnsTableProps) {
       <table className="w-full border-collapse text-[12px]">
         <thead>
           <tr className="text-left text-[10px] uppercase tracking-[0.14em] text-[var(--text-muted)]">
-            <th className="border-b border-[var(--border)] px-3 py-2 font-medium">Attention</th>
-            <th className="border-b border-[var(--border)] px-3 py-2 font-medium">Time</th>
-            <th className="border-b border-[var(--border)] px-3 py-2 font-medium">Session</th>
-            <th className="border-b border-[var(--border)] px-3 py-2 font-medium">Source App</th>
-            <th className="border-b border-[var(--border)] px-3 py-2 font-medium">Phase</th>
-            <th className="border-b border-[var(--border)] px-3 py-2 font-medium">Status</th>
-            <th className="border-b border-[var(--border)] px-3 py-2 text-right font-medium">Tools</th>
-            <th className="border-b border-[var(--border)] px-3 py-2 text-right font-medium">Subagents</th>
-            <th className="border-b border-[var(--border)] px-3 py-2 text-right font-medium">Errors</th>
-            <th className="border-b border-[var(--border)] px-3 py-2 font-medium">Model</th>
-            <th className="border-b border-[var(--border)] px-3 py-2 font-medium" aria-label="Open" />
+            <th className="border-b border-[var(--border)] px-3 py-2 font-medium">
+              Attention
+            </th>
+            <th className="border-b border-[var(--border)] px-3 py-2 font-medium">
+              Time
+            </th>
+            <th className="border-b border-[var(--border)] px-3 py-2 font-medium">
+              Session
+            </th>
+            <th className="border-b border-[var(--border)] px-3 py-2 font-medium">
+              Source App
+            </th>
+            <th className="border-b border-[var(--border)] px-3 py-2 font-medium">
+              Phase
+            </th>
+            <th className="border-b border-[var(--border)] px-3 py-2 font-medium">
+              Status
+            </th>
+            <th className="border-b border-[var(--border)] px-3 py-2 text-right font-medium">
+              Tools
+            </th>
+            <th className="border-b border-[var(--border)] px-3 py-2 text-right font-medium">
+              Subagents
+            </th>
+            <th className="border-b border-[var(--border)] px-3 py-2 text-right font-medium">
+              Errors
+            </th>
+            <th className="border-b border-[var(--border)] px-3 py-2 font-medium">
+              Model
+            </th>
+            <th
+              className="border-b border-[var(--border)] px-3 py-2 font-medium"
+              aria-label="Open"
+            />
           </tr>
         </thead>
         <tbody>
@@ -109,7 +133,9 @@ export default function RecentTurnsTable({ turns }: RecentTurnsTableProps) {
               <tr
                 key={turn.turn_id}
                 onClick={(e) =>
-                  rowProps.onClick(e as unknown as React.MouseEvent<HTMLElement>)
+                  rowProps.onClick(
+                    e as unknown as React.MouseEvent<HTMLElement>,
+                  )
                 }
                 className="group cursor-pointer border-b border-[var(--border)] transition-colors hover:bg-[var(--bg-raised)] focus-within:bg-[var(--bg-raised)] focus-within:ring-1 focus-within:ring-[var(--border-bright)]"
               >
@@ -136,7 +162,9 @@ export default function RecentTurnsTable({ turns }: RecentTurnsTableProps) {
                   {turn.phase || "—"}
                 </td>
                 <td className="px-3 py-2">
-                  <StatusPill tone={statusTone(turn.status)}>{turn.status}</StatusPill>
+                  <StatusPill tone={statusTone(turn.status)}>
+                    {turn.status}
+                  </StatusPill>
                 </td>
                 <td className="px-3 py-2 text-right font-mono tabular-nums text-[var(--artemis-white)]">
                   {turn.tool_call_count}
@@ -146,7 +174,9 @@ export default function RecentTurnsTable({ turns }: RecentTurnsTableProps) {
                 </td>
                 <td
                   className={`px-3 py-2 text-right font-mono tabular-nums ${
-                    turn.error_count > 0 ? "text-[var(--status-critical)]" : "text-[var(--text-muted)]"
+                    turn.error_count > 0
+                      ? "text-[var(--status-critical)]"
+                      : "text-[var(--text-muted)]"
                   }`}
                 >
                   {turn.error_count}

@@ -29,7 +29,10 @@ export default function Breadcrumb({ segments }: BreadcrumbProps) {
           ? "font-mono text-[var(--accent)]"
           : "font-mono hover:text-[var(--artemis-white)]";
         return (
-          <span key={`${segment.label}-${idx}`} className="inline-flex items-center gap-1">
+          <span
+            key={`${segment.label}-${idx}`}
+            className="inline-flex items-center gap-1"
+          >
             {idx > 0 && (
               <ChevronRight
                 size={12}

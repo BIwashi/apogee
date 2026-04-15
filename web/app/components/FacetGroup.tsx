@@ -2,7 +2,6 @@
 
 import { useMemo, useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
-
 import type { FacetDimension, FacetValue } from "../lib/api-types";
 
 /**

@@ -2,7 +2,6 @@
 
 import { useMemo, useState } from "react";
 import { Activity } from "lucide-react";
-
 import type {
   HITLListResponse,
   RecapResponse,
@@ -10,15 +9,15 @@ import type {
   Turn,
   TurnSpansResponse,
 } from "../lib/api-types";
-import { useApi } from "../lib/swr";
+import type { StatusKey } from "../lib/design-tokens";
 import { useDrawerState } from "../lib/drawer";
+import { useApi } from "../lib/swr";
 import { formatClock, timeAgo } from "../lib/time";
 import DrawerFooterAction from "./DrawerFooterAction";
 import DrawerHeader, { DrawerTabBar } from "./DrawerHeader";
 import DrawerKeyValue, { DrawerSection } from "./DrawerKeyValue";
 import SessionLabel from "./SessionLabel";
 import StatusPill from "./StatusPill";
-import type { StatusKey } from "../lib/design-tokens";
 
 /**
  * TurnDrawer — in-place detail for a single turn. Four tabs cover the
@@ -88,10 +87,9 @@ export default function TurnDrawer({ sessionID, turnID }: TurnDrawerProps) {
   const [tab, setTab] = useState<TabKey>("overview");
   const { open } = useDrawerState();
 
-  const turnQuery = useApi<Turn>(
-    turnID ? `/v1/turns/${turnID}` : null,
-    { refreshInterval: 3_000 },
-  );
+  const turnQuery = useApi<Turn>(turnID ? `/v1/turns/${turnID}` : null, {
+    refreshInterval: 3_000,
+  });
   const spansQuery = useApi<TurnSpansResponse>(
     turnID && tab === "spans" ? `/v1/turns/${turnID}/spans` : null,
   );
@@ -115,7 +113,9 @@ export default function TurnDrawer({ sessionID, turnID }: TurnDrawerProps) {
     [spans],
   );
   const headline =
-    turn?.headline || turn?.prompt_text?.slice(0, 80) || `Turn ${shortId(turnID)}`;
+    turn?.headline ||
+    turn?.prompt_text?.slice(0, 80) ||
+    `Turn ${shortId(turnID)}`;
   const recap = recapQuery.data?.recap ?? null;
   const hitlRows = hitlQuery.data?.hitl ?? [];
 
@@ -136,13 +136,16 @@ export default function TurnDrawer({ sessionID, turnID }: TurnDrawerProps) {
         }
         trailing={
           turn ? (
-            <StatusPill tone={statusTone(turn.status)}>{turn.status}</StatusPill>
+            <StatusPill tone={statusTone(turn.status)}>
+              {turn.status}
+            </StatusPill>
           ) : null
         }
         subtitle={
           turn?.started_at ? (
             <>
-              started {formatClock(turn.started_at)} · {timeAgo(turn.started_at)}
+              started {formatClock(turn.started_at)} ·{" "}
+              {timeAgo(turn.started_at)}
             </>
           ) : null
         }
@@ -207,8 +210,7 @@ export default function TurnDrawer({ sessionID, turnID }: TurnDrawerProps) {
                   label: "errors",
                   value: turn?.error_count ?? 0,
                   mono: true,
-                  tone:
-                    (turn?.error_count ?? 0) > 0 ? "critical" : "default",
+                  tone: (turn?.error_count ?? 0) > 0 ? "critical" : "default",
                 },
                 {
                   label: "attention",
@@ -305,7 +307,8 @@ export default function TurnDrawer({ sessionID, turnID }: TurnDrawerProps) {
             <ul className="flex flex-col gap-1">
               {spans.slice(0, 20).map((span) => {
                 const ms = spanDurationMs(span);
-                const pct = maxSpanMs > 0 ? Math.round((ms / maxSpanMs) * 100) : 0;
+                const pct =
+                  maxSpanMs > 0 ? Math.round((ms / maxSpanMs) * 100) : 0;
                 return (
                   <li key={span.span_id}>
                     <button

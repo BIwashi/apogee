@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { RefreshCw } from "lucide-react";
-
 import { apiUrl } from "../lib/api";
 import type { Rollup, RollupResponse } from "../lib/api-types";
 import { useApi } from "../lib/swr";
@@ -111,7 +110,9 @@ function RollupSection({
 }) {
   if (!items || items.length === 0) return null;
   const color =
-    tone === "critical" ? "text-[var(--status-critical)]" : "text-[var(--artemis-white)]";
+    tone === "critical"
+      ? "text-[var(--status-critical)]"
+      : "text-[var(--artemis-white)]";
   return (
     <div className="flex flex-col gap-1">
       <span className="font-display text-[10px] uppercase tracking-[0.14em] text-[var(--artemis-space)]">

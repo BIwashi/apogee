@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-
 import CountPills from "./components/CountPills";
 import EventTicker from "./components/EventTicker";
 import FocusCard from "./components/FocusCard";
@@ -100,12 +99,9 @@ export default function LivePage() {
   const { apiParams } = useSelection();
 
   const { data: activeTurnsData, mutate: mutateActive } =
-    useApi<RecentTurnsResponse>(
-      "/v1/turns/active" + buildQuery(apiParams),
-      {
-        refreshInterval: 2_000,
-      },
-    );
+    useApi<RecentTurnsResponse>("/v1/turns/active" + buildQuery(apiParams), {
+      refreshInterval: 2_000,
+    });
   const { data: countsData } = useApi<AttentionCounts>(
     "/v1/attention/counts" + buildQuery(apiParams, { include: "ended" }),
     { refreshInterval: 2_000 },
@@ -128,9 +124,7 @@ export default function LivePage() {
     switch (event.type) {
       case SSE_EVENT_TYPES.Initial: {
         const payload = event.data as InitialPayload;
-        setInitialTurns(
-          payload?.recent_turns?.slice(0, ACTIVE_LIMIT) ?? [],
-        );
+        setInitialTurns(payload?.recent_turns?.slice(0, ACTIVE_LIMIT) ?? []);
         break;
       }
       case SSE_EVENT_TYPES.TurnStarted:
@@ -219,7 +213,8 @@ export default function LivePage() {
     () => (focusedSessionId ? { sessionId: focusedSessionId } : undefined),
     [focusedSessionId],
   );
-  const { subscribe: subscribeFocused } = useEventStream<ApogeeEvent>(focusedFilter);
+  const { subscribe: subscribeFocused } =
+    useEventStream<ApogeeEvent>(focusedFilter);
   const onFocusedSSE = useCallback(
     (event: ApogeeEvent) => {
       switch (event.type) {

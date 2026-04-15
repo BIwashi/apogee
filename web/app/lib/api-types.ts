@@ -694,9 +694,7 @@ export interface InterventionCreateRequest {
  * wire protocol namespaces HITL payloads under `hitl.*`, so the prefix
  * check is authoritative.
  */
-export function isHITLEvent(
-  e: AnyApogeeEvent,
-): e is ApogeeEvent<HITLPayload> {
+export function isHITLEvent(e: AnyApogeeEvent): e is ApogeeEvent<HITLPayload> {
   return typeof e.type === "string" && e.type.startsWith("hitl.");
 }
 

@@ -1,13 +1,12 @@
 "use client";
 
 import { useCallback } from "react";
-
+import { type DrawerSpec, useDrawerState } from "../lib/drawer";
 import AgentDrawer from "./AgentDrawer";
 import SessionDrawer from "./SessionDrawer";
+import SideDrawer from "./SideDrawer";
 import SpanDrawer from "./SpanDrawer";
 import TurnDrawer from "./TurnDrawer";
-import SideDrawer from "./SideDrawer";
-import { useDrawerState, type DrawerSpec } from "../lib/drawer";
 
 /**
  * CrossCuttingDrawer — the single mount point that reads the URL-driven

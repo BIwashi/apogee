@@ -22,14 +22,17 @@ export interface LiveIndicatorProps {
   status?: StreamStatus;
 }
 
-const COLOR_BY_STATUS: Record<StreamStatus, { label: string; color: string }> = {
-  open: { label: "LIVE", color: "var(--status-success)" },
-  connecting: { label: "CONNECTING", color: "var(--status-warning)" },
-  error: { label: "DISCONNECTED", color: "var(--status-critical)" },
-  closed: { label: "OFFLINE", color: "var(--status-muted)" },
-};
+const COLOR_BY_STATUS: Record<StreamStatus, { label: string; color: string }> =
+  {
+    open: { label: "LIVE", color: "var(--status-success)" },
+    connecting: { label: "CONNECTING", color: "var(--status-warning)" },
+    error: { label: "DISCONNECTED", color: "var(--status-critical)" },
+    closed: { label: "OFFLINE", color: "var(--status-muted)" },
+  };
 
-export default function LiveIndicator({ status: statusOverride }: LiveIndicatorProps = {}) {
+export default function LiveIndicator({
+  status: statusOverride,
+}: LiveIndicatorProps = {}) {
   const { status: ctxStatus } = useEventStream();
   const status = statusOverride ?? ctxStatus;
   const { label, color } = COLOR_BY_STATUS[status];

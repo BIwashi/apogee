@@ -1,14 +1,7 @@
 "use client";
 
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Check, Circle, Clock, Layers, Search, X } from "lucide-react";
-
 import type {
   RecentTurnsResponse,
   SessionSearchHit,
@@ -16,9 +9,9 @@ import type {
   Turn,
 } from "../lib/api-types";
 import {
+  type RecentSessionEntry,
   addRecentSession,
   getRecentSessions,
-  type RecentSessionEntry,
 } from "../lib/recent-sessions";
 import { useApi } from "../lib/swr";
 import { timeAgo } from "../lib/time";
@@ -65,13 +58,17 @@ function groupActiveByTurns(turns: Turn[]): Row[] {
     if (existing) {
       existing.turn_count = (existing.turn_count ?? 0) + 1;
       // Prefer the most recent last_seen_at.
-      if (t.started_at > existing.last_seen_at) existing.last_seen_at = t.started_at;
+      if (t.started_at > existing.last_seen_at)
+        existing.last_seen_at = t.started_at;
       continue;
     }
     byId.set(t.session_id, {
       session_id: t.session_id,
       source_app: t.source_app,
-      label: t.headline || t.prompt_text?.slice(0, 80) || `Session ${shortId(t.session_id)}`,
+      label:
+        t.headline ||
+        t.prompt_text?.slice(0, 80) ||
+        `Session ${shortId(t.session_id)}`,
       last_seen_at: t.started_at,
       turn_count: 1,
       attention_state: t.attention_state ?? undefined,
@@ -165,9 +162,12 @@ export default function SessionCommandPalette({
 
   // Fetch active turns + search results. We issue the search every time the
   // debounced query changes; the backend caps at 50 hits by default.
-  const activeRes = useApi<RecentTurnsResponse>(open ? "/v1/turns/active?limit=200" : null, {
-    refreshInterval: 5_000,
-  });
+  const activeRes = useApi<RecentTurnsResponse>(
+    open ? "/v1/turns/active?limit=200" : null,
+    {
+      refreshInterval: 5_000,
+    },
+  );
   const searchKey = open
     ? `/v1/sessions/search?q=${encodeURIComponent(debouncedQuery)}&limit=50`
     : null;
@@ -235,7 +235,11 @@ export default function SessionCommandPalette({
     >
       <div onKeyDown={onKeyDown}>
         <div className="flex items-center gap-3 border-b border-[var(--border)] px-4 py-3">
-          <Search size={16} strokeWidth={1.5} className="text-[var(--artemis-space)]" />
+          <Search
+            size={16}
+            strokeWidth={1.5}
+            className="text-[var(--artemis-space)]"
+          />
           <input
             ref={inputRef}
             value={query}
@@ -256,7 +260,14 @@ export default function SessionCommandPalette({
         </div>
 
         <div className="max-h-[60vh] overflow-y-auto">
-          <PaletteSection title="Recent" icon={Clock} rows={recentRows} flatOffset={0} cursor={cursor} onActivate={activate} />
+          <PaletteSection
+            title="Recent"
+            icon={Clock}
+            rows={recentRows}
+            flatOffset={0}
+            cursor={cursor}
+            onActivate={activate}
+          />
           <PaletteSection
             title="Active"
             icon={Circle}
@@ -287,11 +298,17 @@ export default function SessionCommandPalette({
             Clear selection — show fleet view
           </button>
           <span className="font-mono">
-            <kbd className="rounded border border-[var(--border-bright)] px-1">↑↓</kbd>
+            <kbd className="rounded border border-[var(--border-bright)] px-1">
+              ↑↓
+            </kbd>
             <span className="px-1">nav</span>
-            <kbd className="rounded border border-[var(--border-bright)] px-1">⏎</kbd>
+            <kbd className="rounded border border-[var(--border-bright)] px-1">
+              ⏎
+            </kbd>
             <span className="px-1">select</span>
-            <kbd className="rounded border border-[var(--border-bright)] px-1">esc</kbd>
+            <kbd className="rounded border border-[var(--border-bright)] px-1">
+              esc
+            </kbd>
             <span className="pl-1">close</span>
           </span>
         </div>
@@ -302,7 +319,11 @@ export default function SessionCommandPalette({
 
 interface PaletteSectionProps {
   title: string;
-  icon: React.ComponentType<{ size?: number; strokeWidth?: number; className?: string }>;
+  icon: React.ComponentType<{
+    size?: number;
+    strokeWidth?: number;
+    className?: string;
+  }>;
   rows: Row[];
   flatOffset: number;
   cursor: number;
@@ -343,7 +364,9 @@ function PaletteSection({
                 <span className="w-20 font-mono text-[11px] text-[var(--artemis-white)]">
                   {shortId(row.session_id)}
                 </span>
-                <span className="flex-1 truncate text-[12px] text-[var(--artemis-white)]">{row.label}</span>
+                <span className="flex-1 truncate text-[12px] text-[var(--artemis-white)]">
+                  {row.label}
+                </span>
                 <span className="w-28 truncate font-mono text-[11px] text-[var(--artemis-space)]">
                   {row.source_app || "—"}
                 </span>
@@ -354,7 +377,11 @@ function PaletteSection({
                   {row.turn_count ?? ""}
                 </span>
                 {isSelected && (
-                  <Check size={12} strokeWidth={1.5} className="text-[var(--artemis-earth)]" />
+                  <Check
+                    size={12}
+                    strokeWidth={1.5}
+                    className="text-[var(--artemis-earth)]"
+                  />
                 )}
               </button>
             </li>

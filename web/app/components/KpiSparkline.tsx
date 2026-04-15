@@ -1,7 +1,6 @@
 "use client";
 
 import { Area, AreaChart, ResponsiveContainer, YAxis } from "recharts";
-
 import type { MetricSeriesPoint } from "../lib/api-types";
 
 /**
@@ -45,11 +44,22 @@ export default function KpiSparkline({
       </div>
       <div style={{ height: 48, width: "100%" }}>
         <ResponsiveContainer width="100%" height={48} minWidth={0}>
-          <AreaChart data={data} margin={{ top: 4, right: 0, left: 0, bottom: 0 }}>
+          <AreaChart
+            data={data}
+            margin={{ top: 4, right: 0, left: 0, bottom: 0 }}
+          >
             <defs>
               <linearGradient id="kpiGrad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="var(--status-info)" stopOpacity={0.5} />
-                <stop offset="100%" stopColor="var(--status-info)" stopOpacity={0} />
+                <stop
+                  offset="0%"
+                  stopColor="var(--status-info)"
+                  stopOpacity={0.5}
+                />
+                <stop
+                  offset="100%"
+                  stopColor="var(--status-info)"
+                  stopOpacity={0}
+                />
               </linearGradient>
             </defs>
             <YAxis hide domain={[0, "auto"]} />

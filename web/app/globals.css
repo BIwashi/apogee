@@ -49,8 +49,8 @@
   color-scheme: light dark;
 
   /* Artemis accent colors — brand, shared across themes. */
-  --artemis-red: #FC3D21;
-  --artemis-blue: #0B3D91;
+  --artemis-red: #fc3d21;
+  --artemis-blue: #0b3d91;
   --artemis-black: #000000;
 
   /* Typography
@@ -60,12 +60,14 @@
    * display load while --font-display-accent keeps Artemis Inter for
    * the brand wordmark and a couple of hero-sized accents where its
    * tighter, heavier character actually helps. */
-  --font-display: "Space Grotesk", -apple-system, BlinkMacSystemFont,
-    "Segoe UI", "Helvetica Neue", Helvetica, Arial, sans-serif;
-  --font-display-accent: "Artemis Inter", "Space Grotesk", ui-sans-serif,
-    system-ui, sans-serif;
-  --font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue",
-    Helvetica, Arial, sans-serif;
+  --font-display:
+    "Space Grotesk", -apple-system, BlinkMacSystemFont, "Segoe UI",
+    "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --font-display-accent:
+    "Artemis Inter", "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --font-body:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Helvetica,
+    Arial, sans-serif;
   --font-mono: ui-monospace, "SF Mono", Menlo, Monaco, monospace;
 }
 
@@ -83,30 +85,30 @@
   --border-bright: #2a3a50;
 
   /* Text */
-  --artemis-white: #FFFFFF;
-  --artemis-space: #A7A9AC;
-  --artemis-shadow: #58595B;
+  --artemis-white: #ffffff;
+  --artemis-space: #a7a9ac;
+  --artemis-shadow: #58595b;
 
   /* Accents that shift between themes */
-  --artemis-earth: #27AAE0;
+  --artemis-earth: #27aae0;
 
   /* Semantic status */
-  --status-critical: #FC3D21;
-  --status-warning: #E08B27;
-  --status-success: #27E0A1;
-  --status-info: #27AAE0;
-  --status-muted: #58595B;
+  --status-critical: #fc3d21;
+  --status-warning: #e08b27;
+  --status-success: #27e0a1;
+  --status-info: #27aae0;
+  --status-muted: #58595b;
 
   /* Badge tints — alpha overlays of the status hues. */
   --tint-critical: rgb(252 61 33 / 0.15);
-  --tint-critical-border: rgb(252 61 33 / 0.30);
+  --tint-critical-border: rgb(252 61 33 / 0.3);
   --tint-critical-soft: rgb(252 61 33 / 0.08);
   --tint-warning: rgb(224 139 39 / 0.15);
-  --tint-warning-border: rgb(224 139 39 / 0.30);
+  --tint-warning-border: rgb(224 139 39 / 0.3);
   --tint-success: rgb(39 224 161 / 0.15);
-  --tint-success-border: rgb(39 224 161 / 0.30);
+  --tint-success-border: rgb(39 224 161 / 0.3);
   --tint-info: rgb(39 170 225 / 0.15);
-  --tint-info-border: rgb(39 170 225 / 0.30);
+  --tint-info-border: rgb(39 170 225 / 0.3);
   --tint-muted: rgb(88 89 91 / 0.18);
   --tint-muted-border: rgb(88 89 91 / 0.35);
   --tint-earth: rgb(39 170 225 / 0.12);
@@ -116,7 +118,7 @@
 
   /* Accent-foreground: contrasts against the gradient/accent bg (e.g. the
      `accent` event tone pill uses this as text color). */
-  --accent-foreground: #C8D5F5;
+  --accent-foreground: #c8d5f5;
   /* Chip foreground used on top of bright accent / status backgrounds
      (HITL decision chips, status chips). In dark it stays near-black to
      pop on the bright fill; in light the fill is even brighter so we keep
@@ -128,16 +130,16 @@
      light mode can happen here. */
   --accent-gradient: linear-gradient(
     135deg,
-    #0B3D91 0%,
-    #27AAE0 50%,
-    #FC3D21 100%
+    #0b3d91 0%,
+    #27aae0 50%,
+    #fc3d21 100%
   );
 
   /* Shadows and overlays */
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.40);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.50);
-  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.60);
-  --overlay-backdrop: rgba(0, 0, 0, 0.60);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.6);
+  --overlay-backdrop: rgba(0, 0, 0, 0.6);
 
   /* Legacy aliases — kept for aperion parity and old call sites. */
   --background: var(--bg-deepspace);
@@ -183,25 +185,25 @@
   --status-muted: #64748b;
 
   /* Tints use the shifted hues for consistency. */
-  --tint-critical: rgb(220 38 38 / 0.10);
+  --tint-critical: rgb(220 38 38 / 0.1);
   --tint-critical-border: rgb(220 38 38 / 0.28);
   --tint-critical-soft: rgb(220 38 38 / 0.06);
-  --tint-warning: rgb(217 119 6 / 0.10);
+  --tint-warning: rgb(217 119 6 / 0.1);
   --tint-warning-border: rgb(217 119 6 / 0.28);
-  --tint-success: rgb(21 128 61 / 0.10);
+  --tint-success: rgb(21 128 61 / 0.1);
   --tint-success-border: rgb(21 128 61 / 0.28);
-  --tint-info: rgb(14 127 191 / 0.10);
+  --tint-info: rgb(14 127 191 / 0.1);
   --tint-info-border: rgb(14 127 191 / 0.28);
   --tint-muted: rgb(100 116 139 / 0.12);
   --tint-muted-border: rgb(100 116 139 / 0.26);
-  --tint-earth: rgb(29 145 201 / 0.10);
+  --tint-earth: rgb(29 145 201 / 0.1);
   --tint-earth-border: rgb(29 145 201 / 0.26);
-  --tint-accent: rgb(11 61 145 / 0.10);
+  --tint-accent: rgb(11 61 145 / 0.1);
   --tint-accent-border: rgb(29 145 201 / 0.35);
 
   /* Accent-foreground on light mode uses the NASA blue itself so the
      `accent` event pill stays on-brand without going mud-brown. */
-  --accent-foreground: #0B3D91;
+  --accent-foreground: #0b3d91;
   /* On light mode, status bg fills are bright (e.g. status-success is a
      dark green), so chip foreground uses white for readability. */
   --chip-on-accent: #ffffff;
@@ -211,7 +213,7 @@
      cooler midpoint. */
   --accent-gradient: linear-gradient(
     135deg,
-    #0B3D91 0%,
+    #0b3d91 0%,
     #1d91c9 55%,
     #dc2626 100%
   );
@@ -263,28 +265,28 @@
     --status-info: #0e7fbf;
     --status-muted: #64748b;
 
-    --tint-critical: rgb(220 38 38 / 0.10);
+    --tint-critical: rgb(220 38 38 / 0.1);
     --tint-critical-border: rgb(220 38 38 / 0.28);
     --tint-critical-soft: rgb(220 38 38 / 0.06);
-    --tint-warning: rgb(217 119 6 / 0.10);
+    --tint-warning: rgb(217 119 6 / 0.1);
     --tint-warning-border: rgb(217 119 6 / 0.28);
-    --tint-success: rgb(21 128 61 / 0.10);
+    --tint-success: rgb(21 128 61 / 0.1);
     --tint-success-border: rgb(21 128 61 / 0.28);
-    --tint-info: rgb(14 127 191 / 0.10);
+    --tint-info: rgb(14 127 191 / 0.1);
     --tint-info-border: rgb(14 127 191 / 0.28);
     --tint-muted: rgb(100 116 139 / 0.12);
     --tint-muted-border: rgb(100 116 139 / 0.26);
-    --tint-earth: rgb(29 145 201 / 0.10);
+    --tint-earth: rgb(29 145 201 / 0.1);
     --tint-earth-border: rgb(29 145 201 / 0.26);
-    --tint-accent: rgb(11 61 145 / 0.10);
+    --tint-accent: rgb(11 61 145 / 0.1);
     --tint-accent-border: rgb(29 145 201 / 0.35);
 
-    --accent-foreground: #0B3D91;
+    --accent-foreground: #0b3d91;
     --chip-on-accent: #ffffff;
 
     --accent-gradient: linear-gradient(
       135deg,
-      #0B3D91 0%,
+      #0b3d91 0%,
       #1d91c9 55%,
       #dc2626 100%
     );
@@ -395,11 +397,21 @@ body {
 }
 
 /* ── Status utilities ──────────────────────── */
-.status-critical { color: var(--status-critical); }
-.status-warning  { color: var(--status-warning); }
-.status-success  { color: var(--status-success); }
-.status-info     { color: var(--status-info); }
-.status-muted    { color: var(--status-muted); }
+.status-critical {
+  color: var(--status-critical);
+}
+.status-warning {
+  color: var(--status-warning);
+}
+.status-success {
+  color: var(--status-success);
+}
+.status-info {
+  color: var(--status-info);
+}
+.status-muted {
+  color: var(--status-muted);
+}
 
 .badge-critical {
   background: var(--tint-critical);

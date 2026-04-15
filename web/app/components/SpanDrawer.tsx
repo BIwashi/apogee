@@ -2,10 +2,9 @@
 
 import { useMemo, useState } from "react";
 import { GitBranch } from "lucide-react";
-
 import type { Span } from "../lib/api-types";
-import { useApi } from "../lib/swr";
 import { useDrawerState } from "../lib/drawer";
+import { useApi } from "../lib/swr";
 import { formatClock } from "../lib/time";
 import DrawerFooterAction from "./DrawerFooterAction";
 import DrawerHeader, { DrawerTabBar } from "./DrawerHeader";
@@ -59,7 +58,8 @@ function humanDuration(ns: number | undefined | null): string {
 function renderScalar(value: unknown): string {
   if (value == null) return "—";
   if (typeof value === "string") return value;
-  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (typeof value === "number" || typeof value === "boolean")
+    return String(value);
   try {
     return JSON.stringify(value);
   } catch {
@@ -67,13 +67,7 @@ function renderScalar(value: unknown): string {
   }
 }
 
-function AttributeTree({
-  data,
-  depth = 0,
-}: {
-  data: unknown;
-  depth?: number;
-}) {
+function AttributeTree({ data, depth = 0 }: { data: unknown; depth?: number }) {
   if (data === null || data === undefined) {
     return <span className="text-[var(--text-muted)]">—</span>;
   }
@@ -200,8 +194,7 @@ export default function SpanDrawer({ traceID, spanID }: SpanDrawerProps) {
                   label: "status",
                   value: span?.status_code || "—",
                   mono: true,
-                  tone:
-                    span?.status_code === "ERROR" ? "critical" : "default",
+                  tone: span?.status_code === "ERROR" ? "critical" : "default",
                 },
               ]}
             />
@@ -212,9 +205,7 @@ export default function SpanDrawer({ traceID, spanID }: SpanDrawerProps) {
               rows={[
                 {
                   label: "start",
-                  value: span?.start_time
-                    ? formatClock(span.start_time)
-                    : "—",
+                  value: span?.start_time ? formatClock(span.start_time) : "—",
                   mono: true,
                 },
                 {
@@ -274,8 +265,10 @@ export default function SpanDrawer({ traceID, spanID }: SpanDrawerProps) {
           ) : (
             <ol className="flex flex-col gap-2">
               {events.map((ev, idx) => {
-                const name = typeof ev.name === "string" ? ev.name : `event ${idx}`;
-                const ts = typeof ev.timestamp === "string" ? ev.timestamp : null;
+                const name =
+                  typeof ev.name === "string" ? ev.name : `event ${idx}`;
+                const ts =
+                  typeof ev.timestamp === "string" ? ev.timestamp : null;
                 return (
                   <li
                     key={idx}
@@ -355,7 +348,8 @@ export default function SpanDrawer({ traceID, spanID }: SpanDrawerProps) {
                         {child.name}
                       </span>
                       <span className="font-mono text-[10px] text-[var(--text-muted)]">
-                        {shortId(child.span_id)} · {humanDuration(child.duration_ns)}
+                        {shortId(child.span_id)} ·{" "}
+                        {humanDuration(child.duration_ns)}
                       </span>
                     </button>
                   </li>
@@ -366,7 +360,11 @@ export default function SpanDrawer({ traceID, spanID }: SpanDrawerProps) {
         </div>
       )}
 
-      <DrawerFooterAction onClick={onCopyJSON} label="Copy span JSON" tone="muted" />
+      <DrawerFooterAction
+        onClick={onCopyJSON}
+        label="Copy span JSON"
+        tone="muted"
+      />
     </div>
   );
 }

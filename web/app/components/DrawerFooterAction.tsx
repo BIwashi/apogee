@@ -1,8 +1,8 @@
 "use client";
 
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { ArrowRight, type LucideIcon } from "lucide-react";
-import type { ReactNode } from "react";
 
 /**
  * DrawerFooterAction — the Datadog-style "Open full page →" primary CTA that

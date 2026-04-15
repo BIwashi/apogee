@@ -11,7 +11,11 @@ interface CardProps {
   raised?: boolean;
 }
 
-export default function Card({ children, className = "", raised = false }: CardProps) {
+export default function Card({
+  children,
+  className = "",
+  raised = false,
+}: CardProps) {
   const base = raised ? "surface-card-raised" : "surface-card";
   return <div className={`${base} p-4 ${className}`}>{children}</div>;
 }

@@ -34,7 +34,9 @@ export function RefreshProvider({ children }: { children: React.ReactNode }) {
   const [token, setToken] = useState(0);
   const bump = useCallback(() => setToken((t) => t + 1), []);
   const value = useMemo(() => ({ token, bump }), [token, bump]);
-  return <RefreshContext.Provider value={value}>{children}</RefreshContext.Provider>;
+  return (
+    <RefreshContext.Provider value={value}>{children}</RefreshContext.Provider>
+  );
 }
 
 export function useRefresh(): RefreshContextShape {

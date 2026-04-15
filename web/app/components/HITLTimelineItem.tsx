@@ -1,7 +1,6 @@
 "use client";
 
 import { Check, Clock, ShieldAlert, X } from "lucide-react";
-
 import type { HITLEvent } from "../lib/api-types";
 
 /**
