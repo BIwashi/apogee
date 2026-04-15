@@ -5,6 +5,11 @@ All notable changes to apogee will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.1.17](https://github.com/BIwashi/apogee/compare/v0.1.16...v0.1.17) - 2026-04-15
+- feat(agents): default to nested tree view on /agents by @BIwashi in https://github.com/BIwashi/apogee/pull/71
+- chore: untrack CLAUDE.md — dev-only guidance stays local by @BIwashi in https://github.com/BIwashi/apogee/pull/73
+- feat(desktop): proxy-first runtime with first-run bootstrap and cask uninstall staging by @BIwashi in https://github.com/BIwashi/apogee/pull/70
+
 ## [v0.1.16](https://github.com/BIwashi/apogee/compare/v0.1.15...v0.1.16) - 2026-04-15
 - fix(ui): apply font-display-accent to every page h1 for consistency by @BIwashi in https://github.com/BIwashi/apogee/pull/65
 - feat(turn): live key steps panel while the turn is running by @BIwashi in https://github.com/BIwashi/apogee/pull/67
