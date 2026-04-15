@@ -2,10 +2,14 @@
 
 `apogee serve` と同じ collector + 埋め込み Next.js ダッシュボードを、ブラウザ
 タブではなくネイティブの macOS ウィンドウで動かすためのシェルです。
-[Wails v2](https://wails.io) をライブラリとして利用しており、実装は
-[`desktop/main.go`](../desktop/main.go) にあります。Wails 自体は Linux /
-Windows もサポートしていますが、apogee 側で動作確認しているのは今のところ
-Darwin のみです。
+[Wails v2](https://wails.io) をライブラリとして利用しており、本体の実装は
+[`desktop/main.go`](../desktop/main.go) (`//go:build darwin`) にあります。
+`//go:build !darwin` の側には
+[`desktop/main_other.go`](../desktop/main_other.go) というスタブを置いてあり、
+Linux / Windows の CI ランナーで `go build ./...` が通るように、かつ万が一
+そのプラットフォームで起動したときは "macOS only" と明示的にエラーを出します。
+Wails 自体は Linux / Windows もサポートしていますが、apogee 側で動作確認
+しているのは今のところ Darwin のみです。
 
 `apogee menubar` と違い、desktop シェルは collector の **所有者** です。
 DuckDB ストアを直接オープンし、ingest/reconstruct のパイプラインを組み立て、

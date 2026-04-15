@@ -2,9 +2,13 @@
 
 A native macOS window that hosts the same collector + embedded Next.js
 dashboard as `apogee serve`, built with [Wails v2](https://wails.io). The
-implementation lives in [`desktop/main.go`](../desktop/main.go). On
-non-darwin builds it is not part of the default CI matrix — Wails supports
-Linux and Windows too, but apogee only exercises the Darwin path right now.
+real entry point lives in [`desktop/main.go`](../desktop/main.go) under
+`//go:build darwin`, with a small `//go:build !darwin` stub in
+[`desktop/main_other.go`](../desktop/main_other.go) so `go build ./...` on
+Linux/Windows CI runners stays green and `./apogee-desktop` prints a clear
+"macOS only" error if it ever gets invoked on those platforms. Wails
+itself supports Linux and Windows, but apogee currently targets and
+validates the desktop workflow on Darwin only.
 
 Unlike `apogee menubar`, the desktop shell **owns** the collector: it opens
 the DuckDB store directly, wires up the ingest/reconstruct pipeline, and

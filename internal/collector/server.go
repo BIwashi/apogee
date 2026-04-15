@@ -214,12 +214,22 @@ func (s *Server) Run(ctx context.Context) error {
 	}()
 	select {
 	case <-ctx.Done():
+		// ctx is already done, so workerCtx (derived from ctx) has
+		// propagated cancellation — explicit cancel here is for
+		// symmetry with the errCh branch and to short-circuit the
+		// deferred cancelWorkers.
+		cancelWorkers()
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		_ = s.httpServer.Shutdown(shutdownCtx)
 		s.StopBackground(shutdownCtx)
 		return nil
 	case err := <-errCh:
+		// ctx is still live here (ListenAndServe failed on its own),
+		// so workerCtx is also still live. Cancel it before calling
+		// StopBackground so the metrics sampler and HITL ticker don't
+		// keep writing while telemetry is being flushed.
+		cancelWorkers()
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		s.StopBackground(shutdownCtx)

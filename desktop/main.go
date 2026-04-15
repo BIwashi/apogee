@@ -1,8 +1,14 @@
+//go:build darwin
+
 // Package main is the Apogee desktop shell — a Wails v2 entry point that
 // wraps the same collector + embedded Next.js dashboard that `apogee serve`
 // hosts, but renders it inside a native macOS window instead of a browser
 // tab. It shares the Go module with cmd/apogee so refactors land in one
 // place; only the process entry and the surrounding window chrome are new.
+//
+// A non-darwin stub lives in main_other.go so `go build ./...` on
+// linux/windows CI runners prints a clear "macOS only" error instead of
+// pulling the WKWebView bindings.
 //
 // Architecture:
 //
@@ -27,6 +33,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
@@ -92,10 +99,15 @@ func run() error {
 		if cancelWorkers != nil {
 			cancelWorkers()
 		}
-		stopCtx, cancel := context.WithCancel(context.Background())
+		// Bound the shutdown to 5 s so a stuck telemetry exporter or
+		// summarizer worker can never hang app exit. Matches the
+		// deadline `apogee serve` uses for graceful shutdown.
+		stopCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		srv.StopBackground(stopCtx)
-		_ = store.Close()
+		if err := store.Close(); err != nil {
+			logger.Warn("close duckdb store", "err", err)
+		}
 	}
 
 	return wails.Run(&options.App{
