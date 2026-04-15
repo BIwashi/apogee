@@ -1041,8 +1041,7 @@ func (s *Server) listHITLByTurn(w http.ResponseWriter, r *http.Request) {
 func (s *Server) respondHITL(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "hitl_id")
 	var body duckdb.HITLResponse
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeJSONError(w, http.StatusBadRequest, "invalid json body")
+	if !readJSONBody(w, r, &body) {
 		return
 	}
 	if body.Decision == "" {
@@ -1188,4 +1187,30 @@ func writeJSON(w http.ResponseWriter, status int, body any) {
 
 func writeJSONError(w http.ResponseWriter, status int, msg string) {
 	writeJSON(w, status, map[string]string{"error": msg})
+}
+
+// maxJSONBodyBytes caps the per-request JSON payload the collector
+// accepts on POST/PATCH endpoints. The ingest path has its own higher
+// 4 MiB cap because it bulk-ships batches of hook events; every other
+// write endpoint takes a single row at a time and 1 MiB is far more
+// than the largest legitimate body.
+const maxJSONBodyBytes = 1 << 20
+
+// readJSONBody decodes an inbound JSON request body with a size cap so
+// a malicious client cannot OOM the daemon by streaming an unbounded
+// payload. On any decode or overflow error it writes the appropriate
+// JSON error response and returns false so the caller can early-return
+// without duplicating the boilerplate.
+func readJSONBody(w http.ResponseWriter, r *http.Request, dst any) bool {
+	r.Body = http.MaxBytesReader(w, r.Body, maxJSONBodyBytes)
+	if err := json.NewDecoder(r.Body).Decode(dst); err != nil {
+		var maxErr *http.MaxBytesError
+		if errors.As(err, &maxErr) {
+			writeJSONError(w, http.StatusRequestEntityTooLarge, "request body too large")
+			return false
+		}
+		writeJSONError(w, http.StatusBadRequest, "invalid json body")
+		return false
+	}
+	return true
 }

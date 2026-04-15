@@ -1,7 +1,6 @@
 package collector
 
 import (
-	"encoding/json"
 	"errors"
 	"net/http"
 	"time"
@@ -51,8 +50,7 @@ func (s *Server) submitIntervention(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body interventionCreateRequest
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeJSONError(w, http.StatusBadRequest, "invalid json body")
+	if !readJSONBody(w, r, &body) {
 		return
 	}
 	req := duckdb.InterventionRequest{
@@ -132,8 +130,7 @@ func (s *Server) claimSessionIntervention(w http.ResponseWriter, r *http.Request
 		return
 	}
 	var body interventionClaimRequest
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeJSONError(w, http.StatusBadRequest, "invalid json body")
+	if !readJSONBody(w, r, &body) {
 		return
 	}
 	if body.HookEvent == "" {
@@ -165,8 +162,7 @@ func (s *Server) deliveredIntervention(w http.ResponseWriter, r *http.Request) {
 	}
 	id := chi.URLParam(r, "id")
 	var body interventionDeliveredRequest
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeJSONError(w, http.StatusBadRequest, "invalid json body")
+	if !readJSONBody(w, r, &body) {
 		return
 	}
 	iv, err := s.interventions.Delivered(r.Context(), id, body.HookEvent)
@@ -191,8 +187,7 @@ func (s *Server) consumedIntervention(w http.ResponseWriter, r *http.Request) {
 	}
 	id := chi.URLParam(r, "id")
 	var body interventionConsumedRequest
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeJSONError(w, http.StatusBadRequest, "invalid json body")
+	if !readJSONBody(w, r, &body) {
 		return
 	}
 	iv, err := s.interventions.Consumed(r.Context(), id, body.EventID)
