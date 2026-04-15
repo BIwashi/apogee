@@ -6,6 +6,8 @@ After=network.target
 Type=simple
 ExecStart=/usr/local/bin/apogee serve --addr 127.0.0.1:4100 --db /home/me/.apogee/apogee.duckdb
 WorkingDirectory=/home/me/.apogee
+Environment=HOME=/home/me
+Environment=PATH=/home/me/.local/bin:/usr/local/bin:/usr/bin:/bin
 Restart=on-failure
 RestartSec=3
 StandardOutput=append:/home/me/.apogee/logs/apogee.out.log
