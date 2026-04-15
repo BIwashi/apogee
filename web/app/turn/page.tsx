@@ -18,6 +18,7 @@ import OperatorQueueSection from "../components/OperatorQueueSection";
 import RawLogsPanel from "../components/RawLogsPanel";
 import LiveKeySteps from "../components/LiveKeySteps";
 import RecapPanels from "../components/RecapPanels";
+import VersionTag from "../components/VersionTag";
 import SectionHeader from "../components/SectionHeader";
 import SpanTree from "../components/SpanTree";
 import StatusPill from "../components/StatusPill";
@@ -530,14 +531,13 @@ export default function TurnDetailPage() {
       </section>
 
       <footer className="pb-8 pt-2">
-        <p className="font-mono text-[10px] text-[var(--text-muted)]">
-          apogee 0.0.0-dev — turn detail
-          {attention?.signals?.length ? (
-            <span className="ml-2">
-              · {attention.signals.length} attention signals recorded
-            </span>
-          ) : null}
-        </p>
+        <VersionTag
+          suffix={
+            attention?.signals?.length
+              ? `turn detail · ${attention.signals.length} attention signals recorded`
+              : "turn detail"
+          }
+        />
       </footer>
     </div>
   );

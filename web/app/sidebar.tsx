@@ -2,6 +2,8 @@
 
 import { usePathname } from "next/navigation";
 import { useState, useSyncExternalStore } from "react";
+
+import VersionTag from "./components/VersionTag";
 import {
   BarChart3,
   Layers,
@@ -193,12 +195,10 @@ export default function Sidebar({ children }: { children: React.ReactNode }) {
           })}
         </ul>
 
-        {/* Footer — build version stub + ⌘K hint */}
+        {/* Footer — build version (from /v1/info) + ⌘K hint */}
         {!collapsed && (
           <div className="border-t border-[var(--border)] px-4 py-3">
-            <p className="font-mono text-[10px] text-[var(--text-muted)]">
-              apogee 0.0.0-dev
-            </p>
+            <VersionTag />
             <p className="mt-1 font-mono text-[10px] text-[var(--text-muted)]">
               <kbd className="rounded border border-[var(--border)] bg-[var(--bg-raised)] px-1 py-[1px]">
                 ⌘K

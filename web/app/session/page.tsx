@@ -26,6 +26,7 @@ import SectionHeader from "../components/SectionHeader";
 import SpanTree from "../components/SpanTree";
 import SwimLane from "../components/SwimLane";
 import Tabs, { type TabItem } from "../components/Tabs";
+import VersionTag from "../components/VersionTag";
 import { useDrawerState } from "../lib/drawer";
 import type {
   Intervention,
@@ -228,9 +229,7 @@ export default function SessionDetailPage() {
       {active === "metrics" && <MetricsTab id={id} />}
 
       <footer className="pb-8 pt-2">
-        <p className="font-mono text-[10px] text-[var(--text-muted)]">
-          apogee 0.0.0-dev — session detail
-        </p>
+        <VersionTag suffix="session detail" />
       </footer>
     </div>
   );
