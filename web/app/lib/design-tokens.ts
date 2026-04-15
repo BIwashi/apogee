@@ -28,7 +28,7 @@ const shared = {
     // earth is one of the few accents that shifts slightly between themes;
     // it lives on the theme buckets below too. The shared value is the
     // dark-mode source of truth for chart code that wants a stable color.
-    earth: "#27AAE1",
+    earth: "#27AAE0",
   },
   palette: {
     // 10-color session palette — identical in both themes. These are
@@ -80,13 +80,13 @@ const darkTokens = {
   accent: {
     red: "#FC3D21",
     blue: "#0B3D91",
-    earth: "#27AAE1",
+    earth: "#27AAE0",
   },
   status: {
     critical: "#FC3D21",
     warning: "#E08B27",
     success: "#27E0A1",
-    info: "#27AAE1",
+    info: "#27AAE0",
     muted: "#58595B",
   },
   shadow: {
@@ -95,7 +95,7 @@ const darkTokens = {
     lg: "0 12px 32px rgba(0, 0, 0, 0.60)",
   },
   accentGradient:
-    "linear-gradient(135deg, #0B3D91 0%, #27AAE1 50%, #FC3D21 100%)",
+    "linear-gradient(135deg, #0B3D91 0%, #27AAE0 50%, #FC3D21 100%)",
 } as const;
 
 // ── Light palette ───────────────────────────────────────────

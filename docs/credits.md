@@ -17,12 +17,19 @@ with the font file under `web/public/fonts/SpaceGrotesk-OFL.txt`.
 - Upstream: https://github.com/floriankarsten/space-grotesk
 - License: SIL Open Font License 1.1
 
-**Artemis Inter** is reserved as a brand accent for the APOGEE wordmark
-(sidebar + top ribbon) and a few hero-sized page h1s (Live, Events,
-Styleguide). The heavier face reads as brand impact at large sizes and is
-never used below ~16 px.
+**Artemis Inter** is the primary display face from NASA's *Artemis
+Graphic Standards Guide* (December 16 2021). apogee uses it for the
+APOGEE wordmark (sidebar + top ribbon), the README banner / logo
+rasters, and a few hero-sized page h1s (Live, Events, Styleguide). The
+heavier face reads as brand impact at 16 px+ and is never used below
+that. The brand palette (NASA Red `#FC3D21`, NASA Blue `#0B3D91`,
+Earth Blue `#27AAE0`, Shadow Gray `#58595B`, Space Gray `#A7A9AC`) is
+also pulled directly from the guide's page-6 logo color table.
 
 - File: `web/public/fonts/Artemis_Inter.otf`
+- Branding renderer: `scripts/generate-branding.sh` (requires
+  ImageMagick 7) — produces the Cool Horizon Visual banner and the
+  deep-space / white / icon variants from a single typographic source.
 
 ## Body font
 

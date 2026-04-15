@@ -88,13 +88,13 @@
   --artemis-shadow: #58595B;
 
   /* Accents that shift between themes */
-  --artemis-earth: #27AAE1;
+  --artemis-earth: #27AAE0;
 
   /* Semantic status */
   --status-critical: #FC3D21;
   --status-warning: #E08B27;
   --status-success: #27E0A1;
-  --status-info: #27AAE1;
+  --status-info: #27AAE0;
   --status-muted: #58595B;
 
   /* Badge tints — alpha overlays of the status hues. */
@@ -129,7 +129,7 @@
   --accent-gradient: linear-gradient(
     135deg,
     #0B3D91 0%,
-    #27AAE1 50%,
+    #27AAE0 50%,
     #FC3D21 100%
   );
 

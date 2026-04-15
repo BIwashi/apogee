@@ -30,7 +30,7 @@ func styledWriter(w io.Writer) io.Writer {
 // callers do not need to branch.
 
 var (
-	styleHeading = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#27AAE1"))
+	styleHeading = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#27AAE0"))
 	styleSuccess = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#27E0A1"))
 	styleWarn    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#E08B27"))
 	styleError   = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#FC3D21"))
@@ -50,7 +50,7 @@ var (
 
 	boxInfo = lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("#27AAE1")).
+			BorderForeground(lipgloss.Color("#27AAE0")).
 			Padding(0, 1)
 
 	boxWarn = lipgloss.NewStyle().
