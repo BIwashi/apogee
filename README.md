@@ -12,6 +12,11 @@
   <em>Live triage dashboard — sort turns by attention state, scope to a session with ⌘K.</em>
 </p>
 
+> The live dashboard above reflects the previous two-column layout. PR #24
+> introduces a focus-card driven redesign where the running turn is the
+> hero of the landing page; screenshots will be regenerated in the next
+> polish pass.
+
 apogee is a single-binary observability dashboard for multi-agent [Claude Code](https://docs.claude.com/en/docs/claude-code) sessions. It captures every hook event, builds OpenTelemetry-shaped traces out of them, stores everything in DuckDB, and streams the result to a dark, NASA-inspired Next.js dashboard that ships embedded in the Go binary.
 
 > [!WARNING]
@@ -33,7 +38,11 @@ Running multi-agent Claude Code workflows means losing sight of what each agent 
 
 | Surface | What you get |
 |---|---|
-| Triage dashboard | Live ATTN-sorted turn list, KPI strip, event ticker, scoped filter chips |
+| Live page | Focus-card driven landing view — the running turn is the hero, with its flame graph, recap headline, phase + current tool, and a CTA to the full turn detail page. A vertical triage rail lists every session with running turns, sorted by attention. |
+| Sessions catalog | Searchable, filterable table of every session the collector has seen (Datadog Service Catalog analogue). |
+| Agents | Per-agent view with main vs subagent split, invocation counts, rolling duration, parent→child tree. |
+| Insights | Aggregate analytics — error rate, duration percentiles, top tools, top phases, watchlist sessions (last 24h). |
+| Settings | Collector build metadata + OTel exporter status; config path and daemon/hook install flows surfaced inline. |
 | Session detail | Per-session rollup, scoped KPIs, every turn ordered by attention |
 | Turn detail | Swim lane, span tree, recap panels, attention reasoning, HITL queue |
 | Command palette | Fuzzy search across sessions, scopes, and recent prompts (⌘K) |

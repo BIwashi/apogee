@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Orbit } from "lucide-react";
+import { ChevronRight, Orbit } from "lucide-react";
 
 import type { AttentionState, Turn } from "../lib/api-types";
 import type { StatusKey } from "../lib/design-tokens";
@@ -92,6 +92,7 @@ export default function RecentTurnsTable({ turns }: RecentTurnsTableProps) {
             <th className="border-b border-[var(--border)] px-3 py-2 text-right font-medium">Subagents</th>
             <th className="border-b border-[var(--border)] px-3 py-2 text-right font-medium">Errors</th>
             <th className="border-b border-[var(--border)] px-3 py-2 font-medium">Model</th>
+            <th className="border-b border-[var(--border)] px-3 py-2 font-medium" aria-label="Open" />
           </tr>
         </thead>
         <tbody>
@@ -102,7 +103,7 @@ export default function RecentTurnsTable({ turns }: RecentTurnsTableProps) {
             return (
               <tr
                 key={turn.turn_id}
-                className="group border-b border-[var(--border)] transition-colors hover:bg-[var(--bg-raised)] focus-within:bg-[var(--bg-raised)]"
+                className="group border-b border-[var(--border)] transition-colors hover:bg-[var(--bg-raised)] focus-within:bg-[var(--bg-raised)] focus-within:ring-1 focus-within:ring-[var(--border-bright)]"
               >
                 <td className="px-3 py-2">
                   <Link
@@ -166,6 +167,19 @@ export default function RecentTurnsTable({ turns }: RecentTurnsTableProps) {
                 <td className="px-3 py-2 font-mono text-[11px] text-[var(--text-muted)]">
                   <Link href={turnHref} className="block">
                     {turn.model || "—"}
+                  </Link>
+                </td>
+                <td className="px-2 py-2 text-right">
+                  <Link
+                    href={turnHref}
+                    aria-label="Open turn detail"
+                    className="block"
+                  >
+                    <ChevronRight
+                      size={14}
+                      strokeWidth={1.5}
+                      className="text-[var(--artemis-space)] transition-colors group-hover:text-white"
+                    />
                   </Link>
                 </td>
               </tr>
