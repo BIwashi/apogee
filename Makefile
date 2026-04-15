@@ -127,7 +127,12 @@ DESKTOP_BIN ?= $(BIN_DIR)/apogee-desktop
 .PHONY: desktop-build
 desktop-build: build-web
 	@mkdir -p $(BIN_DIR)
-	$(GO) build -ldflags "$(LDFLAGS)" -o $(DESKTOP_BIN) ./desktop
+	# -tags production is mandatory for Wails v2: without it the
+	# runtime refuses to bring up the WKWebView and returns
+	# "Wails applications will not build without the correct build tags."
+	# The `wails build` CLI sets this automatically; we plumb it manually
+	# because the desktop-build target uses a plain `go build`.
+	$(GO) build -tags production -ldflags "$(LDFLAGS)" -o $(DESKTOP_BIN) ./desktop
 
 .PHONY: desktop-run
 desktop-run: desktop-build
