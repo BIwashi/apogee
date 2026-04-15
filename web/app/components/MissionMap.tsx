@@ -9,8 +9,8 @@ import {
   HelpCircle,
   Lightbulb,
   Radio,
-  Satellite,
   Search,
+  Send,
   Sparkles,
   TestTube,
   UserCog,
@@ -36,51 +36,53 @@ import PhaseDrawer from "./PhaseDrawer";
 import SectionHeader from "./SectionHeader";
 
 /**
- * MissionMap — a planetary "star map" view of a Claude Code session.
+ * MissionMap — a vertical git-graph view of a Claude Code session.
  *
- * The existing Timeline tab already renders the tier-3 phase narrative
- * as a vertical stack of PhaseCards. That is good for list-shaped
- * scanning, but it does not convey the overall arc of a session the
- * way the user has been asking for: "what are we doing, where are we
- * in the mission, and what forked off the main path?"
+ * The earlier planetary orbit rendering (Sun / Planets / Moons) was
+ * visually distinctive but structurally redundant with the Timeline
+ * tab: both were flat lists of phase headlines with a subtle layout
+ * flourish. The "Mission" name is good — the metaphor is a mission
+ * with a main line of progress, side-quests that branch off when
+ * something unexpected comes up, and future stops that have not been
+ * reached yet. The right visual for that is a git graph, not a
+ * solar system.
  *
- * MissionMap answers that by treating each session as a scaled-down
- * solar system:
+ * Layout:
  *
- *   Sun        = the user's top-level goal (tier-2 rollup headline)
- *   Planets    = tier-3 semantic phases, ordered by start_time along
- *                an orbit path
- *   Moons      = individual turns inside each phase (one satellite
- *                per turn_id)
- *   Probe      = the currently-active turn, if the session is still
- *                running — a glowing marker on the most recent planet
- *   Meteors    = operator interventions (side quests pushed into the
- *                session from the dashboard); they branch off the
- *                orbit path at the turn where they were injected
+ *   - A single vertical spine on the left carries the session's
+ *     main line of phases in chronological order (top = mission
+ *     start, bottom = current tail, below that = forecast).
+ *   - Each phase is a coloured circle on the spine plus a card
+ *     body to its right that shows the kind chip, headline,
+ *     narrative excerpt, and key-step bullets pulled from the
+ *     tier-3 narrative blob.
+ *   - Operator interventions that landed inside a phase fork off
+ *     the spine as a short branch. The branch line leaves the
+ *     phase node horizontally, hosts the intervention's headline
+ *     pill, and merges back into the spine at the next phase
+ *     boundary — expressing "side quest, resolved, back to main".
+ *   - The currently-running turn (if any) gets a pulsing ring on
+ *     the trailing real phase node so operators can tell the
+ *     mission is still in motion.
+ *   - Tier-3 forecast entries render below the last real phase
+ *     node as dashed circles on a dashed extension of the spine.
+ *     These are "probable next stops" — the horizon, still
+ *     unrealised.
  *
- * The visualisation reuses existing data sources — /v1/sessions/:id
- * /rollup for the tier-2/3 payload, /v1/sessions/:id/interventions
- * for meteors, and the turns array the session page already loads.
- * No new backend endpoint.
+ * Data sources (all existing, no new endpoints):
  *
- * Layout decisions:
+ *   - /v1/sessions/:id/rollup → tier-2 rollup.headline (mission
+ *     goal) + tier-3 rollup.phases[] (main-line nodes) +
+ *     rollup.forecast[] (dashed future nodes).
+ *   - /v1/sessions/:id/interventions → branch nodes, positioned
+ *     via created_at overlap with the phase window.
+ *   - turns[] (already fetched by the session detail page) →
+ *     the running turn marker.
  *
- * - The orbit path is a single horizontal S-curve rendered as an SVG
- *   cubic bezier. Phases are placed along its arclength by start_at
- *   so phase-1 is leftmost and the final phase is on the right.
- * - Phase kinds map to lucide icons. The badge behind each icon is
- *   one of the NASA-Artemis palette colours (NASA Red, Earth Blue,
- *   Shadow Gray) chosen from a fixed palette so colour-to-kind
- *   stays stable across renders.
- * - Moons are distributed around each planet on a second, smaller
- *   circular orbit. The number of moons equals the number of turns
- *   in the phase; they rotate slowly via CSS keyframes.
- * - The probe for a running session sits on the trailing planet's
- *   "leading" orbit position and pulses.
- *
- * Empty state: when the tier-3 narrative has not run yet, we render
- * a callout with a "Generate narrative" button that fires the
- * existing /v1/sessions/:id/narrative POST.
+ * Visual flavour: the card ships with a CSS-only deep-space
+ * starfield background (`.mission-starfield`) so the git graph
+ * still reads as "mission" even though the planets are gone. The
+ * name "Mission" stays; the orbit SVG does not.
  */
 
 interface MissionMapProps {
@@ -89,7 +91,7 @@ interface MissionMapProps {
 }
 
 // Icon per PhaseKind — reuses the vocabulary already in the tier-3
-// summariser prompt so the visual vocabulary matches the LLM output.
+// summariser prompt so the node badge matches the LLM output.
 const KIND_ICON: Record<PhaseKind, LucideIcon> = {
   implement: Wrench,
   review: Search,
@@ -102,128 +104,61 @@ const KIND_ICON: Record<PhaseKind, LucideIcon> = {
   other: HelpCircle,
 };
 
-// Fixed palette per PhaseKind — each entry picks one of the Artemis
-// palette tokens so the planet badge colour reads as "this kind of
-// work" the same way the tier-1 recap page colours phases.
+// Fixed palette per PhaseKind. Each entry pulls one of the Artemis
+// tokens so the node colour on the graph reads as "this kind of
+// work" at a glance.
 const KIND_TONE: Record<
   PhaseKind,
   { fill: string; ring: string; label: string }
 > = {
-  implement: {
-    fill: "var(--artemis-earth)",
-    ring: "var(--artemis-earth)",
-    label: "Implement",
-  },
-  review: {
-    fill: "var(--artemis-space)",
-    ring: "var(--artemis-space)",
-    label: "Review",
-  },
-  debug: {
-    fill: "var(--artemis-red)",
-    ring: "var(--artemis-red)",
-    label: "Debug",
-  },
-  plan: {
-    fill: "var(--artemis-blue)",
-    ring: "var(--artemis-blue)",
-    label: "Plan",
-  },
-  test: {
-    fill: "var(--status-warning)",
-    ring: "var(--status-warning)",
-    label: "Test",
-  },
-  commit: {
-    fill: "var(--status-success)",
-    ring: "var(--status-success)",
-    label: "Commit",
-  },
-  delegate: {
-    fill: "var(--artemis-shadow)",
-    ring: "var(--artemis-shadow)",
-    label: "Delegate",
-  },
-  explore: {
-    fill: "var(--accent)",
-    ring: "var(--accent)",
-    label: "Explore",
-  },
-  other: {
-    fill: "var(--border-bright)",
-    ring: "var(--border-bright)",
-    label: "Other",
-  },
+  implement: { fill: "var(--artemis-earth)", ring: "var(--artemis-earth)", label: "Implement" },
+  review: { fill: "var(--artemis-space)", ring: "var(--artemis-space)", label: "Review" },
+  debug: { fill: "var(--artemis-red)", ring: "var(--artemis-red)", label: "Debug" },
+  plan: { fill: "var(--artemis-blue)", ring: "var(--artemis-blue)", label: "Plan" },
+  test: { fill: "var(--status-warning)", ring: "var(--status-warning)", label: "Test" },
+  commit: { fill: "var(--status-success)", ring: "var(--status-success)", label: "Commit" },
+  delegate: { fill: "var(--artemis-shadow)", ring: "var(--artemis-shadow)", label: "Delegate" },
+  explore: { fill: "var(--accent)", ring: "var(--accent)", label: "Explore" },
+  other: { fill: "var(--border-bright)", ring: "var(--border-bright)", label: "Other" },
 };
 
-// Viewbox + orbit-path constants. The whole map is one 1200×520 SVG
-// that scales to the container width. The orbit is a cubic bezier
-// that gently S-curves left-to-right; planets are positioned along
-// that curve by arclength fraction so evenly-spaced phases are
-// visually evenly-spaced.
-const VIEW_W = 1200;
-const VIEW_H = 520;
-const ORBIT_Y_LEFT = 340;
-const ORBIT_Y_RIGHT = 260;
-const ORBIT_C1 = { x: 380, y: 220 }; // first control point
-const ORBIT_C2 = { x: 820, y: 380 }; // second control point
+// Layout constants for the git-graph. All measurements are in
+// pixels inside the card; the whole component is fluid-width and
+// only the spine column is fixed.
+const SPINE_X = 40; // x coordinate of the main-line spine
+const NODE_R = 14; // outer radius of a phase node
+const ROW_GAP = 28; // vertical gap between rows (in addition to card height)
+const BRANCH_WIDTH = 120; // how far a side-quest branch extends to the right
+const BRANCH_R = 7; // radius of a branch (intervention) node
 
-// Evaluate the cubic bezier at parameter t ∈ [0, 1].
-function bezier(t: number): { x: number; y: number } {
-  const mt = 1 - t;
-  const x =
-    mt ** 3 * 120 +
-    3 * mt ** 2 * t * ORBIT_C1.x +
-    3 * mt * t ** 2 * ORBIT_C2.x +
-    t ** 3 * 1080;
-  const y =
-    mt ** 3 * ORBIT_Y_LEFT +
-    3 * mt ** 2 * t * ORBIT_C1.y +
-    3 * mt * t ** 2 * ORBIT_C2.y +
-    t ** 3 * ORBIT_Y_RIGHT;
-  return { x, y };
-}
-
-// Deterministic "random" offset for moon placement so the moons of
-// a given turn always land in the same spot across re-renders.
-function hashFloat(seed: string): number {
-  let h = 2166136261;
-  for (let i = 0; i < seed.length; i++) {
-    h ^= seed.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return ((h >>> 0) % 10_000) / 10_000;
-}
-
-interface InterventionRef {
-  intervention: Intervention;
-  phaseIndex: number;
-  angle: number;
-}
-
-function interventionsByPhase(
+// bucketInterventions groups operator interventions by the phase
+// they landed in, using created_at timestamp overlap. Interventions
+// with no matching phase (rare) are dropped — the goal is to show
+// "which phase got interrupted", not a global timeline.
+function bucketInterventions(
   interventions: Intervention[],
   phases: PhaseBlock[],
-): InterventionRef[] {
-  const refs: InterventionRef[] = [];
+): Map<number, Intervention[]> {
+  const out = new Map<number, Intervention[]>();
   for (const iv of interventions) {
     if (!iv.created_at) continue;
-    let idx = -1;
     for (let i = 0; i < phases.length; i++) {
       const p = phases[i];
       if (iv.created_at >= p.started_at && iv.created_at <= p.ended_at) {
-        idx = i;
+        const arr = out.get(i) ?? [];
+        arr.push(iv);
+        out.set(i, arr);
         break;
       }
     }
-    if (idx < 0) continue;
-    refs.push({
-      intervention: iv,
-      phaseIndex: idx,
-      angle: hashFloat(iv.intervention_id || iv.created_at) * Math.PI * 2,
-    });
   }
-  return refs;
+  return out;
+}
+
+function shortHeadline(input: string, max = 90): string {
+  const s = input.trim();
+  if (s.length <= max) return s;
+  return s.slice(0, max - 1).trimEnd() + "…";
 }
 
 export default function MissionMap({ sessionId, turns }: MissionMapProps) {
@@ -237,37 +172,20 @@ export default function MissionMap({ sessionId, turns }: MissionMapProps) {
   );
 
   const rollup: Rollup | null = rollupData?.rollup ?? null;
-  const phases: PhaseBlock[] = useMemo(
-    () => rollup?.phases ?? [],
-    [rollup],
-  );
-  const forecast: ForecastPhase[] = useMemo(
-    () => rollup?.forecast ?? [],
-    [rollup],
-  );
+  const phases: PhaseBlock[] = useMemo(() => rollup?.phases ?? [], [rollup]);
+  const forecast: ForecastPhase[] = useMemo(() => rollup?.forecast ?? [], [rollup]);
   const interventions = useMemo(
     () => interventionsData?.interventions ?? [],
     [interventionsData],
   );
-  const meteors = useMemo(
-    () => interventionsByPhase(interventions, phases),
+  const branchesByPhase = useMemo(
+    () => bucketInterventions(interventions, phases),
     [interventions, phases],
   );
-
   const runningTurn = useMemo(
     () => turns.find((t) => String(t.status) === "running") ?? null,
     [turns],
   );
-  // Build a lookup from turn_id → Turn so we can render per-moon
-  // tooltips without a round-trip. The session page already loads
-  // the full turns array, so every per-turn headline we need is
-  // already in memory. Recap headlines are the tier-1 Haiku output;
-  // we fall back to the raw prompt headline then to a short id.
-  const turnById = useMemo(() => {
-    const m = new Map<string, Turn>();
-    for (const t of turns) m.set(t.turn_id, t);
-    return m;
-  }, [turns]);
 
   const [pending, setPending] = useState(false);
   const [active, setActive] = useState<PhaseBlock | null>(null);
@@ -280,9 +198,7 @@ export default function MissionMap({ sessionId, turns }: MissionMapProps) {
       await fetch(apiUrl(`/v1/sessions/${sessionId}/narrative`), {
         method: "POST",
       });
-      window.setTimeout(() => {
-        void mutate();
-      }, 1500);
+      window.setTimeout(() => void mutate(), 1500);
     } finally {
       setPending(false);
     }
@@ -309,7 +225,7 @@ export default function MissionMap({ sessionId, turns }: MissionMapProps) {
     return (
       <MissionEmpty
         title="No phase narrative yet"
-        body="The mission map plots one planet per semantic phase from the tier-3 narrative. That worker has not run for this session yet."
+        body="The mission graph plots one node per semantic phase from the tier-3 narrative. That worker has not run for this session yet."
         buttonLabel="Generate narrative"
         pending={pending}
         onGenerate={onGenerate}
@@ -317,52 +233,16 @@ export default function MissionMap({ sessionId, turns }: MissionMapProps) {
     );
   }
 
-  // Arclength-fraction positions for each planet along the orbit.
-  // t=0 is the left edge (mission start), t=1 is the right edge
-  // (mission tail). With N phases we space them evenly on the curve
-  // but shifted inward by a padding so the first and last planets
-  // sit a little inside the frame.
-  const n = phases.length;
-  const pad = n === 1 ? 0.5 : 0.08;
-  const positions = phases.map((_, i) =>
-    bezier(pad + (i * (1 - 2 * pad)) / Math.max(1, n - 1)),
-  );
-  const orbitPath = `M 120 ${ORBIT_Y_LEFT} C ${ORBIT_C1.x} ${ORBIT_C1.y}, ${ORBIT_C2.x} ${ORBIT_C2.y}, 1080 ${ORBIT_Y_RIGHT}`;
-
-  // Forecast planets extrapolate beyond the trailing real planet along
-  // a straight-line "approach vector". We project from the last real
-  // position outward at a shallow up-right angle (matching the bezier
-  // tangent at t=1) so the dotted continuation reads as the natural
-  // continuation of the orbit. If the forecast row would clip the
-  // viewBox we dynamically widen the svg.
-  const lastReal = positions[positions.length - 1];
-  const forecastSpacing = 110;
-  const forecastVec = { dx: 100, dy: -30 }; // continues upper-right
-  const forecastNorm = Math.sqrt(
-    forecastVec.dx * forecastVec.dx + forecastVec.dy * forecastVec.dy,
-  );
-  const forecastStep = {
-    dx: (forecastVec.dx / forecastNorm) * forecastSpacing,
-    dy: (forecastVec.dy / forecastNorm) * forecastSpacing,
-  };
-  const forecastPositions = forecast.map((_, i) => ({
-    x: lastReal.x + forecastStep.dx * (i + 1),
-    y: lastReal.y + forecastStep.dy * (i + 1),
-  }));
-  const viewW =
-    forecast.length > 0
-      ? Math.max(VIEW_W, Math.ceil(forecastPositions[forecast.length - 1].x + 160))
-      : VIEW_W;
-
-  // Sun label is the rollup headline. Fall back to the raw narrative
-  // if the headline is empty so we never render a blank sun.
-  const sunLabel = rollup.headline || rollup.narrative.slice(0, 80) || "Mission";
+  const missionGoal =
+    rollup.headline?.trim() ||
+    rollup.narrative?.trim().slice(0, 120) ||
+    "Mission goal not yet summarised";
 
   return (
     <div className="flex flex-col gap-4">
       <SectionHeader
-        title="Mission map"
-        subtitle="Planetary view of the session arc. Sun = top-level goal, planets = phases, moons = turns."
+        title="Mission"
+        subtitle="Git graph of the session. Main spine = phases, branches = operator interventions, dashed tail = tier-3 forecast."
         actions={
           <button
             type="button"
@@ -372,344 +252,98 @@ export default function MissionMap({ sessionId, turns }: MissionMapProps) {
             title="Re-run the tier-3 narrative worker"
           >
             <Sparkles size={12} strokeWidth={1.75} />
-            {pending ? "Charting…" : "Re-chart"}
+            {pending ? "Re-charting…" : "Re-chart"}
           </button>
         }
       />
 
       <Card className="relative overflow-hidden p-0">
-        {/* Starfield — a CSS-rendered deep-space background. The
-            radial gradient gives the sense that the viewer is
-            looking out from inside the session toward its horizon. */}
-        <div className="mission-starfield pointer-events-none absolute inset-0" aria-hidden="true" />
+        {/* Starfield — CSS-only deep-space background. Same class the
+            earlier orbit rendering used, so the "mission" flavour
+            carries over without the orbit geometry. */}
+        <div
+          className="mission-starfield pointer-events-none absolute inset-0"
+          aria-hidden="true"
+        />
 
-        <svg
-          viewBox={`0 0 ${viewW} ${VIEW_H}`}
-          className="relative z-10 h-auto w-full"
-          role="img"
-          aria-label={`Mission map with ${phases.length} phases, ${forecast.length} forecast planets, and ${meteors.length} interventions`}
-        >
-          <defs>
-            {/* Orbit path fades at the edges so the planets appear
-                to emerge from deep space. */}
-            <linearGradient id="orbit-gradient" x1="0" x2="1" y1="0" y2="0">
-              <stop offset="0" stopColor="var(--artemis-earth)" stopOpacity="0" />
-              <stop offset="0.15" stopColor="var(--artemis-earth)" stopOpacity="0.45" />
-              <stop offset="0.85" stopColor="var(--artemis-earth)" stopOpacity="0.45" />
-              <stop offset="1" stopColor="var(--artemis-earth)" stopOpacity="0" />
-            </linearGradient>
-            <radialGradient id="sun-gradient" cx="0.5" cy="0.5" r="0.5">
-              <stop offset="0" stopColor="#ffffff" stopOpacity="1" />
-              <stop offset="0.35" stopColor="var(--artemis-red)" stopOpacity="0.95" />
-              <stop offset="0.7" stopColor="var(--artemis-red)" stopOpacity="0.4" />
-              <stop offset="1" stopColor="var(--artemis-red)" stopOpacity="0" />
-            </radialGradient>
-            <filter id="planet-glow" x="-50%" y="-50%" width="200%" height="200%">
-              <feGaussianBlur stdDeviation="6" />
-            </filter>
-          </defs>
+        <div className="relative z-10 flex flex-col gap-1 p-5">
+          {/* Mission goal banner — the Sun of the earlier design, now
+              a text header above the graph. Keeps the top-level intent
+              visible without a dedicated visualisation. */}
+          <div className="mb-3 flex items-start gap-3 rounded border border-[var(--border)] bg-[var(--bg-raised)] p-3">
+            <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-[var(--artemis-red)]/20 text-[var(--artemis-red)]">
+              <Sparkles size={14} strokeWidth={1.75} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="font-display text-[9px] uppercase tracking-[0.16em] text-[var(--artemis-red)]">
+                Mission goal
+              </p>
+              <p className="mt-1 text-[13px] leading-snug text-[var(--artemis-white)]">
+                {missionGoal}
+              </p>
+              {rollup.narrative_generated_at ? (
+                <p className="mt-1 font-mono text-[9px] text-[var(--text-muted)]">
+                  charted {timeAgo(rollup.narrative_generated_at)} ·{" "}
+                  {rollup.narrative_model || rollup.model}
+                </p>
+              ) : null}
+            </div>
+          </div>
 
-          {/* Orbit path */}
-          <path
-            d={orbitPath}
-            fill="none"
-            stroke="url(#orbit-gradient)"
-            strokeWidth="1.5"
-            strokeDasharray="4 4"
-          />
-
-          {/* Sun — the top-level goal */}
-          <g transform="translate(90, 90)">
-            <circle r="52" fill="url(#sun-gradient)" filter="url(#planet-glow)" />
-            <circle r="30" fill="var(--artemis-red)" opacity="0.9" />
-            <circle r="30" fill="none" stroke="#fff" strokeOpacity="0.45" strokeWidth="1" />
-          </g>
-          <text
-            x="90"
-            y="170"
-            textAnchor="middle"
-            className="fill-[var(--artemis-white)] font-display text-[11px] uppercase"
-            style={{ letterSpacing: "0.14em" }}
-          >
-            MISSION
-          </text>
-
-          {/* Planets */}
-          {phases.map((phase, i) => {
-            const { x, y } = positions[i];
-            const tone = KIND_TONE[phase.kind] ?? KIND_TONE.other;
-            const Icon = KIND_ICON[phase.kind] ?? KIND_ICON.other;
-            const radius = Math.max(22, Math.min(40, 18 + phase.turn_count * 3));
-            const isLast = i === phases.length - 1;
-            return (
-              <g
+          {/* The graph itself. One row per real phase, then one row
+              per forecast entry. Each row is a flex layout with a
+              fixed-width graph column on the left and a fluid card
+              on the right. The graph column is drawn as inline SVG
+              so the spine + node + branch lines connect pixel-perfect. */}
+          <ol className="flex flex-col">
+            {phases.map((phase, i) => (
+              <PhaseRow
                 key={phase.index}
-                transform={`translate(${x}, ${y})`}
-                className="cursor-pointer transition-opacity hover:opacity-90"
+                phase={phase}
+                index={i}
+                isFirst={i === 0}
+                isLast={i === phases.length - 1}
+                branches={branchesByPhase.get(i) ?? []}
+                runningTurn={i === phases.length - 1 ? runningTurn : null}
                 onClick={() => onPhaseClick(phase)}
-              >
-                {/* Glow halo */}
-                <circle
-                  r={radius + 12}
-                  fill={tone.fill}
-                  opacity="0.18"
-                  filter="url(#planet-glow)"
-                />
-                {/* Planet body */}
-                <circle r={radius} fill={tone.fill} opacity="0.92" />
-                <circle
-                  r={radius}
-                  fill="none"
-                  stroke={tone.ring}
-                  strokeWidth="1.5"
-                  opacity="0.6"
-                />
-                {/* Icon mount (we draw the icon as a foreignObject
-                    so it inherits the lucide stroke style without
-                    having to hand-code every SVG path). */}
-                <foreignObject
-                  x={-radius / 2}
-                  y={-radius / 2}
-                  width={radius}
-                  height={radius}
-                >
-                  <div className="flex h-full w-full items-center justify-center text-[var(--artemis-white)]">
-                    <Icon size={Math.max(14, radius - 14)} strokeWidth={1.75} />
-                  </div>
-                </foreignObject>
-                {/* Moons — one satellite per turn in the phase.
-                    Each moon carries a native SVG <title> child so
-                    hovering reveals the per-turn Haiku recap headline
-                    without requiring a floating-tooltip library. The
-                    <title> text appears as a browser-native tooltip
-                    after ~300 ms of hover, which is plenty for the
-                    "quick glance" interaction the user asked for. */}
-                {phase.turn_ids.slice(0, 8).map((turnId, moonIdx) => {
-                  const moonR = radius + 14;
-                  const total = Math.min(8, phase.turn_ids.length);
-                  const a =
-                    (moonIdx / total) * Math.PI * 2 +
-                    hashFloat(phase.index + ":" + turnId) * Math.PI * 0.3;
-                  const mx = Math.cos(a) * moonR;
-                  const my = Math.sin(a) * moonR * 0.5;
-                  const turn = turnById.get(turnId);
-                  const headline =
-                    turn?.headline || turn?.outcome_summary || "(no recap yet)";
-                  const shortId = turnId.slice(0, 8);
-                  const status = turn?.status ?? "unknown";
-                  const tip = `turn ${shortId} · ${status}\n${headline}`;
-                  return (
-                    <g
-                      key={turnId}
-                      className="cursor-pointer"
-                      onClick={(ev) => {
-                        ev.stopPropagation();
-                        if (typeof window !== "undefined") {
-                          window.location.href = `/turn?id=${turnId}`;
-                        }
-                      }}
-                    >
-                      {/* Invisible larger hit target for easier hover */}
-                      <circle cx={mx} cy={my} r="8" fill="transparent" />
-                      <circle
-                        cx={mx}
-                        cy={my}
-                        r="3"
-                        fill="var(--artemis-white)"
-                        opacity="0.85"
-                      />
-                      <title>{tip}</title>
-                    </g>
-                  );
-                })}
-                {/* Probe marker for the running turn */}
-                {isLast && runningTurn && (
-                  <g transform={`translate(${radius + 6}, ${-radius - 6})`}>
-                    <circle r="7" fill="var(--status-success)" opacity="0.25" />
-                    <circle r="3.5" fill="var(--status-success)">
-                      <animate
-                        attributeName="opacity"
-                        values="1;0.3;1"
-                        dur="1.6s"
-                        repeatCount="indefinite"
-                      />
-                    </circle>
-                  </g>
-                )}
-                {/* Phase label — headline under the planet */}
-                <text
-                  x="0"
-                  y={radius + 22}
-                  textAnchor="middle"
-                  className="fill-[var(--artemis-white)] font-display text-[9px] uppercase"
-                  style={{ letterSpacing: "0.14em" }}
-                >
-                  {String(i + 1).padStart(2, "0")} · {tone.label}
-                </text>
-                <foreignObject
-                  x={-90}
-                  y={radius + 30}
-                  width="180"
-                  height="44"
-                >
-                  <p className="text-center text-[10px] leading-snug text-[var(--text-muted)]">
-                    {phase.headline}
-                  </p>
-                </foreignObject>
-              </g>
-            );
-          })}
+              />
+            ))}
+            {forecast.map((entry, i) => (
+              <ForecastRow
+                key={`forecast-${i}`}
+                entry={entry}
+                index={i}
+                isLast={i === forecast.length - 1}
+                hasPrior={i === 0}
+              />
+            ))}
+          </ol>
 
-          {/* Forecast approach vector — a dashed trajectory leaving
-              the last real planet and connecting each forecast
-              planet. This is the "predicted next stops" horizon
-              the user asked for: what the agent will probably work
-              on next, still unrealised but visually anchored to the
-              chain it extends. */}
-          {forecast.length > 0 && (
-            <path
-              d={
-                `M ${lastReal.x} ${lastReal.y} ` +
-                forecastPositions
-                  .map((p) => `L ${p.x} ${p.y}`)
-                  .join(" ")
-              }
-              fill="none"
-              stroke="var(--text-muted)"
-              strokeWidth="1.5"
-              strokeDasharray="3 5"
-              strokeOpacity="0.55"
-            />
-          )}
-
-          {/* Forecast planets — one per predicted upcoming phase.
-              Rendered in muted colour with a dashed outline so they
-              read as "probable but not realised yet". Clicking is a
-              no-op because no PhaseBlock exists yet. */}
-          {forecast.map((f, i) => {
-            const { x, y } = forecastPositions[i];
-            const tone = KIND_TONE[f.kind] ?? KIND_TONE.other;
-            const Icon = KIND_ICON[f.kind] ?? KIND_ICON.other;
-            const radius = 20;
-            return (
-              <g key={`forecast-${i}`} transform={`translate(${x}, ${y})`}>
-                <circle
-                  r={radius + 8}
-                  fill={tone.fill}
-                  opacity="0.08"
-                  filter="url(#planet-glow)"
-                />
-                <circle
-                  r={radius}
-                  fill="var(--bg-surface)"
-                  stroke={tone.ring}
-                  strokeWidth="1.25"
-                  strokeDasharray="3 3"
-                  strokeOpacity="0.7"
-                />
-                <foreignObject
-                  x={-radius / 2}
-                  y={-radius / 2}
-                  width={radius}
-                  height={radius}
-                >
-                  <div className="flex h-full w-full items-center justify-center text-[var(--text-muted)]">
-                    <Icon size={radius - 10} strokeWidth={1.5} />
-                  </div>
-                </foreignObject>
-                <text
-                  x="0"
-                  y={radius + 18}
-                  textAnchor="middle"
-                  className="fill-[var(--text-muted)] font-display text-[8px] uppercase"
-                  style={{ letterSpacing: "0.14em" }}
-                >
-                  NEXT · {tone.label}
-                </text>
-                <foreignObject
-                  x={-80}
-                  y={radius + 22}
-                  width="160"
-                  height="40"
-                >
-                  <p className="text-center text-[9px] leading-snug text-[var(--text-muted)]">
-                    {f.headline}
-                  </p>
-                </foreignObject>
-              </g>
-            );
-          })}
-
-          {/* Meteors — interventions branching off the phase they
-              were injected into. Drawn as a NASA Red arc leaving
-              the planet at the hashed angle with a small head. */}
-          {meteors.map((m, i) => {
-            const { x, y } = positions[m.phaseIndex];
-            const radius = Math.max(
-              22,
-              Math.min(40, 18 + (phases[m.phaseIndex]?.turn_count ?? 1) * 3),
-            );
-            const len = 52;
-            const mx = x + Math.cos(m.angle) * (radius + len);
-            const my = y + Math.sin(m.angle) * (radius + len) * 0.8;
-            const cx = x + Math.cos(m.angle) * (radius + len * 0.45);
-            const cy = y + Math.sin(m.angle) * (radius + len * 0.45) * 0.4;
-            return (
-              <g key={m.intervention.intervention_id || i}>
-                <path
-                  d={`M ${x + Math.cos(m.angle) * radius} ${
-                    y + Math.sin(m.angle) * radius * 0.8
-                  } Q ${cx} ${cy} ${mx} ${my}`}
-                  fill="none"
-                  stroke="var(--artemis-red)"
-                  strokeOpacity="0.85"
-                  strokeWidth="1.5"
-                  strokeLinecap="round"
-                />
-                <circle cx={mx} cy={my} r="3" fill="var(--artemis-red)" />
-              </g>
-            );
-          })}
-        </svg>
-
-        {/* Overlay caption for the sun */}
-        <div className="absolute left-4 top-4 max-w-[240px] text-[11px] text-[var(--artemis-white)]">
-          <p className="font-display text-[9px] uppercase tracking-[0.16em] text-[var(--artemis-red)]">
-            Top-level goal
-          </p>
-          <p className="mt-1 leading-snug">{sunLabel}</p>
-          {rollup.narrative_generated_at ? (
-            <p className="mt-1 font-mono text-[9px] text-[var(--text-muted)]">
-              charted {timeAgo(rollup.narrative_generated_at)} ·{" "}
-              {rollup.narrative_model || rollup.model}
-            </p>
-          ) : null}
-        </div>
-
-        {/* Legend in the bottom-right */}
-        <div className="absolute bottom-3 right-4 flex items-center gap-3 text-[9px] uppercase tracking-[0.12em] text-[var(--text-muted)]">
-          <span className="flex items-center gap-1">
-            <span
-              className="inline-block h-2 w-2 rounded-full"
-              style={{ background: "var(--artemis-red)" }}
-            />
-            Sun
-          </span>
-          <span className="flex items-center gap-1">
-            <Satellite size={10} strokeWidth={1.75} />
-            Phase
-          </span>
-          <span className="flex items-center gap-1">
-            <span
-              className="inline-block h-2 w-2 rounded-full border border-dashed border-[var(--text-muted)]"
-              aria-hidden="true"
-            />
-            Forecast
-          </span>
-          <span className="flex items-center gap-1">
-            <Radio size={10} strokeWidth={1.75} />
-            Intervention
-          </span>
+          {/* Legend — small, unobtrusive. */}
+          <div className="mt-4 flex flex-wrap items-center gap-4 border-t border-[var(--border)] pt-3 font-mono text-[10px] text-[var(--text-muted)]">
+            <span className="inline-flex items-center gap-1">
+              <span
+                className="inline-block h-2 w-2 rounded-full"
+                style={{ background: "var(--artemis-earth)" }}
+              />
+              Phase
+            </span>
+            <span className="inline-flex items-center gap-1">
+              <Radio size={10} strokeWidth={1.75} />
+              Intervention branch
+            </span>
+            <span className="inline-flex items-center gap-1">
+              <span
+                className="inline-block h-2 w-2 rounded-full border border-dashed border-[var(--text-muted)]"
+                aria-hidden="true"
+              />
+              Forecast
+            </span>
+            <span className="inline-flex items-center gap-1">
+              <span className="inline-block h-2 w-2 rounded-full bg-[var(--status-success)] animate-pulse" />
+              Running turn
+            </span>
+          </div>
         </div>
       </Card>
 
@@ -721,6 +355,332 @@ export default function MissionMap({ sessionId, turns }: MissionMapProps) {
         onClose={() => setDrawerOpen(false)}
       />
     </div>
+  );
+}
+
+// PhaseRow renders one row of the git graph: the graph column on
+// the left (spine segment + node + optional branch), then a
+// clickable card on the right with the phase content. Each row
+// sizes to its card height; the spine segments stretch to fill
+// the row so there are no gaps between consecutive nodes.
+function PhaseRow({
+  phase,
+  index,
+  isFirst,
+  isLast,
+  branches,
+  runningTurn,
+  onClick,
+}: {
+  phase: PhaseBlock;
+  index: number;
+  isFirst: boolean;
+  isLast: boolean;
+  branches: Intervention[];
+  runningTurn: Turn | null;
+  onClick: () => void;
+}) {
+  const tone = KIND_TONE[phase.kind] ?? KIND_TONE.other;
+  const Icon = KIND_ICON[phase.kind] ?? KIND_ICON.other;
+
+  return (
+    <li className="flex min-h-[112px] gap-3">
+      {/* Graph column — fixed width, full height. Draws the spine
+          segment + the node circle + branches. */}
+      <div className="relative flex-shrink-0" style={{ width: SPINE_X * 2 }}>
+        <svg
+          className="h-full w-full"
+          viewBox={`0 0 ${SPINE_X * 2} 100`}
+          preserveAspectRatio="xMidYMid meet"
+          style={{ overflow: "visible" }}
+        >
+          {/* Spine (top half): from top of row to node centre. Hidden
+              on the first row so the graph visually "starts" there. */}
+          {!isFirst && (
+            <line
+              x1={SPINE_X}
+              y1="0"
+              x2={SPINE_X}
+              y2="50"
+              stroke="var(--artemis-earth)"
+              strokeWidth="2"
+              strokeOpacity="0.55"
+            />
+          )}
+          {/* Spine (bottom half): from node centre to bottom of row.
+              Hidden on the very last row unless there is a forecast
+              tail below. */}
+          {!isLast && (
+            <line
+              x1={SPINE_X}
+              y1="50"
+              x2={SPINE_X}
+              y2="100"
+              stroke="var(--artemis-earth)"
+              strokeWidth="2"
+              strokeOpacity="0.55"
+            />
+          )}
+
+          {/* Phase number label to the left of the node */}
+          <text
+            x={SPINE_X - NODE_R - 6}
+            y="54"
+            textAnchor="end"
+            className="fill-[var(--text-muted)] font-mono"
+            style={{ fontSize: "10px" }}
+          >
+            {String(index + 1).padStart(2, "0")}
+          </text>
+
+          {/* Node glow */}
+          <circle
+            cx={SPINE_X}
+            cy="50"
+            r={NODE_R + 4}
+            fill={tone.fill}
+            opacity="0.18"
+          />
+          {/* Node body */}
+          <circle cx={SPINE_X} cy="50" r={NODE_R} fill={tone.fill} opacity="0.95" />
+          <circle
+            cx={SPINE_X}
+            cy="50"
+            r={NODE_R}
+            fill="none"
+            stroke={tone.ring}
+            strokeWidth="1.5"
+            opacity="0.7"
+          />
+
+          {/* Running-turn indicator on the trailing phase. A pulsing
+              outer ring that the css animation drives. */}
+          {runningTurn && (
+            <>
+              <circle
+                cx={SPINE_X}
+                cy="50"
+                r={NODE_R + 6}
+                fill="none"
+                stroke="var(--status-success)"
+                strokeWidth="1.5"
+                strokeOpacity="0.9"
+              >
+                <animate
+                  attributeName="r"
+                  values={`${NODE_R + 2};${NODE_R + 10};${NODE_R + 2}`}
+                  dur="2s"
+                  repeatCount="indefinite"
+                />
+                <animate
+                  attributeName="stroke-opacity"
+                  values="0.9;0;0.9"
+                  dur="2s"
+                  repeatCount="indefinite"
+                />
+              </circle>
+            </>
+          )}
+        </svg>
+
+        {/* Kind icon sits in the middle of the node. We use absolute
+            positioning so the lucide stroke rendering stays crisp at
+            any scale. */}
+        <div
+          className="pointer-events-none absolute flex items-center justify-center text-[var(--artemis-white)]"
+          style={{
+            left: SPINE_X - NODE_R,
+            top: `calc(50% - ${NODE_R}px)`,
+            width: NODE_R * 2,
+            height: NODE_R * 2,
+          }}
+        >
+          <Icon size={14} strokeWidth={1.75} />
+        </div>
+      </div>
+
+      {/* Right-hand card: phase content + any branch chips below. */}
+      <div className="flex flex-1 flex-col gap-2 pb-4">
+        <button
+          type="button"
+          onClick={onClick}
+          className="group flex flex-col items-start gap-1 rounded border border-[var(--border)] bg-[var(--bg-raised)] p-3 text-left transition-colors hover:bg-[var(--bg-overlay)]"
+        >
+          <div className="flex w-full items-center justify-between gap-2">
+            <span
+              className="font-display text-[10px] uppercase tracking-[0.14em]"
+              style={{ color: tone.ring }}
+            >
+              {tone.label}
+            </span>
+            <span className="font-mono text-[10px] text-[var(--text-muted)]">
+              {phase.turn_count} turns · {timeAgo(phase.started_at)}
+            </span>
+          </div>
+          <p className="text-[13px] leading-snug text-[var(--artemis-white)]">
+            {phase.headline}
+          </p>
+          {phase.narrative ? (
+            <p className="text-[11px] leading-snug text-[var(--text-muted)]">
+              {shortHeadline(phase.narrative, 180)}
+            </p>
+          ) : null}
+          {phase.key_steps.length > 0 ? (
+            <ul className="mt-1 flex flex-col gap-0.5 text-[11px] leading-snug text-[var(--text-muted)]">
+              {phase.key_steps.slice(0, 3).map((step, idx) => (
+                <li key={idx} className="flex gap-1">
+                  <span className="text-[var(--artemis-earth)]">·</span>
+                  <span>{step}</span>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </button>
+
+        {/* Branches — one row per intervention that landed in this
+            phase. Drawn as an indented flex strip so they visually
+            hang off the phase card. The branch line itself is
+            rendered via a small SVG inside each chip. */}
+        {branches.length > 0 && (
+          <ul className="flex flex-col gap-1 pl-4">
+            {branches.map((iv) => (
+              <li
+                key={iv.intervention_id}
+                className="flex items-start gap-2 rounded border border-[var(--artemis-red)]/40 bg-[var(--artemis-red)]/10 p-2"
+              >
+                <div className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-[var(--artemis-red)]/30 text-[var(--artemis-red)]">
+                  <Send size={10} strokeWidth={1.75} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-display text-[9px] uppercase tracking-[0.14em] text-[var(--artemis-red)]">
+                    Side quest · {iv.delivery_mode}
+                  </p>
+                  <p className="text-[11px] leading-snug text-[var(--artemis-white)]">
+                    {shortHeadline(iv.message, 140)}
+                  </p>
+                  <p className="mt-0.5 font-mono text-[9px] text-[var(--text-muted)]">
+                    injected {timeAgo(iv.created_at)} · {iv.status}
+                  </p>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </li>
+  );
+}
+
+// ForecastRow renders one row of the dashed forecast tail below the
+// realised phase spine. Nodes are dashed-outline circles and the
+// spine segment is a dashed line so the whole block visually reads
+// as "probable but not realised".
+function ForecastRow({
+  entry,
+  index,
+  isLast,
+  hasPrior,
+}: {
+  entry: ForecastPhase;
+  index: number;
+  isLast: boolean;
+  hasPrior: boolean;
+}) {
+  const tone = KIND_TONE[entry.kind] ?? KIND_TONE.other;
+  const Icon = KIND_ICON[entry.kind] ?? KIND_ICON.other;
+
+  return (
+    <li className="flex min-h-[96px] gap-3">
+      <div className="relative flex-shrink-0" style={{ width: SPINE_X * 2 }}>
+        <svg
+          className="h-full w-full"
+          viewBox={`0 0 ${SPINE_X * 2} 100`}
+          preserveAspectRatio="xMidYMid meet"
+          style={{ overflow: "visible" }}
+        >
+          {/* Top spine — always visible for forecast rows so the
+              first forecast node visually connects to the last
+              real phase sitting above it. */}
+          {hasPrior || index > 0 ? (
+            <line
+              x1={SPINE_X}
+              y1="0"
+              x2={SPINE_X}
+              y2="50"
+              stroke="var(--text-muted)"
+              strokeWidth="1.5"
+              strokeOpacity="0.5"
+              strokeDasharray="3 4"
+            />
+          ) : null}
+          {/* Bottom spine — hidden on the final forecast node. */}
+          {!isLast && (
+            <line
+              x1={SPINE_X}
+              y1="50"
+              x2={SPINE_X}
+              y2="100"
+              stroke="var(--text-muted)"
+              strokeWidth="1.5"
+              strokeOpacity="0.5"
+              strokeDasharray="3 4"
+            />
+          )}
+
+          {/* Label */}
+          <text
+            x={SPINE_X - NODE_R - 6}
+            y="54"
+            textAnchor="end"
+            className="fill-[var(--text-muted)] font-mono"
+            style={{ fontSize: "9px" }}
+          >
+            NEXT
+          </text>
+
+          <circle
+            cx={SPINE_X}
+            cy="50"
+            r={NODE_R}
+            fill="var(--bg-surface)"
+            stroke={tone.ring}
+            strokeWidth="1.25"
+            strokeDasharray="3 3"
+            strokeOpacity="0.7"
+          />
+        </svg>
+        <div
+          className="pointer-events-none absolute flex items-center justify-center text-[var(--text-muted)]"
+          style={{
+            left: SPINE_X - NODE_R,
+            top: `calc(50% - ${NODE_R}px)`,
+            width: NODE_R * 2,
+            height: NODE_R * 2,
+          }}
+        >
+          <Icon size={12} strokeWidth={1.5} />
+        </div>
+      </div>
+
+      <div className="flex flex-1 flex-col gap-1 pb-3 opacity-80">
+        <div className="rounded border border-dashed border-[var(--border)] bg-[var(--bg-raised)]/40 p-3">
+          <span
+            className="font-display text-[10px] uppercase tracking-[0.14em]"
+            style={{ color: tone.ring }}
+          >
+            Next · {tone.label}
+          </span>
+          <p className="mt-1 text-[12px] leading-snug text-[var(--text-muted)]">
+            {entry.headline}
+          </p>
+          {entry.rationale ? (
+            <p className="mt-1 font-mono text-[10px] text-[var(--text-muted)]">
+              rationale: {entry.rationale}
+            </p>
+          ) : null}
+        </div>
+      </div>
+    </li>
   );
 }
 
@@ -740,11 +700,14 @@ function MissionEmpty({
   return (
     <div className="flex flex-col gap-4">
       <SectionHeader
-        title="Mission map"
-        subtitle="Planetary view of the session arc."
+        title="Mission"
+        subtitle="Git graph of the session arc."
       />
       <Card className="relative overflow-hidden p-10">
-        <div className="mission-starfield pointer-events-none absolute inset-0" aria-hidden="true" />
+        <div
+          className="mission-starfield pointer-events-none absolute inset-0"
+          aria-hidden="true"
+        />
         <div className="relative z-10 mx-auto flex max-w-[520px] flex-col items-center gap-4 text-center">
           <div className="flex h-16 w-16 items-center justify-center rounded-full bg-[var(--bg-raised)] text-[var(--artemis-earth)]">
             <CheckCheck size={28} strokeWidth={1.5} />
