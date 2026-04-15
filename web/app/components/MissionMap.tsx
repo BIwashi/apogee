@@ -258,6 +258,16 @@ export default function MissionMap({ sessionId, turns }: MissionMapProps) {
     () => turns.find((t) => String(t.status) === "running") ?? null,
     [turns],
   );
+  // Build a lookup from turn_id → Turn so we can render per-moon
+  // tooltips without a round-trip. The session page already loads
+  // the full turns array, so every per-turn headline we need is
+  // already in memory. Recap headlines are the tier-1 Haiku output;
+  // we fall back to the raw prompt headline then to a short id.
+  const turnById = useMemo(() => {
+    const m = new Map<string, Turn>();
+    for (const t of turns) m.set(t.turn_id, t);
+    return m;
+  }, [turns]);
 
   const [pending, setPending] = useState(false);
   const [active, setActive] = useState<PhaseBlock | null>(null);
@@ -467,7 +477,13 @@ export default function MissionMap({ sessionId, turns }: MissionMapProps) {
                     <Icon size={Math.max(14, radius - 14)} strokeWidth={1.75} />
                   </div>
                 </foreignObject>
-                {/* Moons — one satellite per turn in the phase */}
+                {/* Moons — one satellite per turn in the phase.
+                    Each moon carries a native SVG <title> child so
+                    hovering reveals the per-turn Haiku recap headline
+                    without requiring a floating-tooltip library. The
+                    <title> text appears as a browser-native tooltip
+                    after ~300 ms of hover, which is plenty for the
+                    "quick glance" interaction the user asked for. */}
                 {phase.turn_ids.slice(0, 8).map((turnId, moonIdx) => {
                   const moonR = radius + 14;
                   const total = Math.min(8, phase.turn_ids.length);
@@ -476,15 +492,34 @@ export default function MissionMap({ sessionId, turns }: MissionMapProps) {
                     hashFloat(phase.index + ":" + turnId) * Math.PI * 0.3;
                   const mx = Math.cos(a) * moonR;
                   const my = Math.sin(a) * moonR * 0.5;
+                  const turn = turnById.get(turnId);
+                  const headline =
+                    turn?.headline || turn?.outcome_summary || "(no recap yet)";
+                  const shortId = turnId.slice(0, 8);
+                  const status = turn?.status ?? "unknown";
+                  const tip = `turn ${shortId} · ${status}\n${headline}`;
                   return (
-                    <circle
+                    <g
                       key={turnId}
-                      cx={mx}
-                      cy={my}
-                      r="2.5"
-                      fill="var(--artemis-white)"
-                      opacity="0.75"
-                    />
+                      className="cursor-pointer"
+                      onClick={(ev) => {
+                        ev.stopPropagation();
+                        if (typeof window !== "undefined") {
+                          window.location.href = `/turn?id=${turnId}`;
+                        }
+                      }}
+                    >
+                      {/* Invisible larger hit target for easier hover */}
+                      <circle cx={mx} cy={my} r="8" fill="transparent" />
+                      <circle
+                        cx={mx}
+                        cy={my}
+                        r="3"
+                        fill="var(--artemis-white)"
+                        opacity="0.85"
+                      />
+                      <title>{tip}</title>
+                    </g>
                   );
                 })}
                 {/* Probe marker for the running turn */}
