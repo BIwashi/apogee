@@ -46,7 +46,34 @@ DuckDB store ──▶ collector.New ──▶ Server.Router (chi.Router, http.H
   動くので **wails CLI は不要** です。wails CLI が必要になるのは `.app` バン
   ドル生成とホットリロード dev モードのときだけです。
 
-## 起動
+## Homebrew からインストールする
+
+各タグリリースで、既存の `apogee` CLI Formula と一緒に `apogee-desktop`
+Cask が
+[`BIwashi/homebrew-tap`](https://github.com/BIwashi/homebrew-tap) に発行
+されます。
+
+```sh
+brew tap BIwashi/tap
+brew install --cask apogee-desktop
+open -a Apogee
+```
+
+Cask は `Apogee.app` を `/Applications` に配置し、同時に `apogee-desktop`
+ランチャーを `$PATH` に symlink するので、ターミナルから `apogee-desktop`
+を叩いてもウィンドウを起動できます。バンドルは **コード署名 / notarization
+未対応** のままなので、Cask の `postflight` フックが `xattr -dr
+com.apple.quarantine` を走らせて macOS 15 (Sequoia) 以降でも Gatekeeper に
+初回起動を止められないようにしています。GitHub の Release zip を手動で
+ダウンロードした場合は、自分で `xattr -dr com.apple.quarantine
+/Applications/Apogee.app` を実行する (または古い macOS なら右クリック →
+開く) 必要があります。
+
+`apogee` CLI Formula (collector / daemon / hook / menubar / onboard) は
+別インストールです: `brew install BIwashi/tap/apogee`。ほとんどのユーザーは
+両方入れたいはずです。
+
+## ソースから起動する
 
 ```sh
 # 埋め込み web バンドルと desktop バイナリをまとめて作る
@@ -61,18 +88,29 @@ make desktop-run
 Wails のデフォルト以上の dock / メニューバー拡張は持たず、トラフィックライト
 ボタンや OS レベルのウィンドウメニューはすべて標準の Cocoa のままです。
 
-## `.app` の生成
+## ローカルで `.app` を作る
+
+Wails CLI を入れているかどうかで 2 択:
 
 ```sh
+# A — Wails CLI を使う。desktop/build/bin/Apogee.app を生成。フロント
+# ビルド / Info.plist / universal fuse まで全部 Wails CLI が面倒を見る。
 make desktop-app
-# desktop/build/bin/Apogee.app が生成される
+
+# B — goreleaser snapshot。CI のリリース経路をそのまま踏むパターン。
+# dist/apogee-desktop-universal_darwin_all/Apogee.app と Cask が読む
+# zip アーティファクトを生成。
+goreleaser release --snapshot --clean --skip=before,publish,validate
 ```
 
-このターゲットは `wails build -platform darwin/universal` を呼び出します。
-Wails が `Info.plist`、アイコン、universal (arm64 + amd64) のビルドまで面倒を
-見てくれます。**コード署名と notarization はまだ未対応** で、ローカル実行は
-可能ですが、配布すると Gatekeeper に弾かれます。`--apple-id` / `AC_PASSWORD`
-を使ったフローを `make desktop-app` に組み込むのは次の仕事です。
+B 経路がリリースビルドの正です。`scripts/bundle-desktop-app.sh` 経由で
+走るので Wails CLI への依存がなく、`sips` + `iconutil` +
+`Info.plist` のヒアドキュメントだけで `.app` を組み立てます。
+**コード署名と notarization はまだ未対応** ですが、未署名バンドルでも
+ローカル実行は問題なく、Homebrew 配布時は Cask が quarantine xattr を
+剥がすので配布も機能します。`scripts/bundle-desktop-app.sh` に
+`codesign --deep --sign "Developer ID Application: ..."` を足すのは、
+Apple Developer ID を準備したタイミングで次の仕事として入れられます。
 
 ## Dev モード (ホットリロード)
 

@@ -34,14 +34,75 @@ builds:
           - CC=clang -arch x86_64
           - CXX=clang++ -arch x86_64
 
+  # Second build: the Wails-backed desktop shell. Lives in ./desktop as a
+  # standalone `package main` with a //go:build darwin guard (see
+  # desktop/main.go) and a stub for other platforms so `go build ./...`
+  # stays green on linux CI. Shipped as a universal (arm64+amd64) .app
+  # bundle via the post-hook below.
+  - id: apogee-desktop
+    main: ./desktop
+    binary: apogee-desktop
+    env:
+      - CGO_ENABLED=1
+    goos:
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X github.com/BIwashi/apogee/internal/version.Version={{.Version}}
+      - -X github.com/BIwashi/apogee/internal/version.Commit={{.ShortCommit}}
+      - -X github.com/BIwashi/apogee/internal/version.BuildDate={{.Date}}
+    overrides:
+      - goos: darwin
+        goarch: amd64
+        env:
+          - CC=clang -arch x86_64
+          - CXX=clang++ -arch x86_64
+
+# Fuse the two desktop arch slices into a single universal Mach-O and
+# wrap it in an .app bundle. The post hook writes Apogee.app next to the
+# fused binary so the archives[] entry below can pick it up as a tree.
+# The .app is NOT code-signed or notarized — the homebrew cask below
+# strips the com.apple.quarantine xattr on install so Gatekeeper does
+# not block first launch.
+universal_binaries:
+  - id: apogee-desktop-universal
+    ids:
+      - apogee-desktop
+    replace: true
+    name_template: apogee-desktop
+    hooks:
+      post:
+        - cmd: bash scripts/bundle-desktop-app.sh "{{ .Path }}" "{{ .Version }}"
+          output: true
+
 archives:
-  - formats: [tar.gz]
+  - id: apogee
+    ids:
+      - apogee
+    formats: [tar.gz]
     name_template: >-
       {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
     files:
       - LICENSE
       - README.md
       - CHANGELOG.md
+
+  # The desktop .app is packaged as a meta zip — goreleaser does not put
+  # the raw Mach-O at the archive root, only the Apogee.app tree we
+  # assembled under dist/apogee-desktop_darwin_all/. strip_parent keeps
+  # the zip layout at `Apogee.app/Contents/...` instead of nesting it
+  # under the dist path.
+  - id: apogee-desktop
+    ids:
+      - apogee-desktop-universal
+    formats: [zip]
+    name_template: apogee-desktop_{{ .Version }}_darwin_universal
+    files:
+      - src: dist/apogee-desktop-universal_darwin_all/Apogee.app
+        dst: Apogee.app
 
 checksum:
   name_template: "checksums.txt"
@@ -83,6 +144,8 @@ release:
 
 brews:
   - name: apogee
+    ids:
+      - apogee
     repository:
       owner: BIwashi
       name: homebrew-tap
@@ -99,3 +162,49 @@ brews:
       bin.install "apogee"
     test: |
       assert_match "apogee v", shell_output("#{bin}/apogee version")
+
+# The desktop .app ships as a Cask in the same tap so a single
+# `brew tap BIwashi/tap && brew install --cask apogee-desktop` gets
+# users a native macOS window. It is intentionally a separate artifact
+# from the `apogee` formula above — the formula installs the CLI
+# binary at /opt/homebrew/bin/apogee, the cask places Apogee.app into
+# /Applications.
+#
+# apogee is not code-signed or notarized, so brew must strip the
+# com.apple.quarantine xattr at install time. Gatekeeper on macOS 15+
+# no longer offers a right-click → Open workaround, so without the
+# post hook users would have to clear the flag manually.
+homebrew_casks:
+  - name: apogee-desktop
+    ids:
+      - apogee-desktop
+    repository:
+      owner: BIwashi
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    directory: Casks
+    commit_author:
+      name: apogee-release-bot
+      email: 49979368+BIwashi@users.noreply.github.com
+    commit_msg_template: "brew: release apogee-desktop cask {{ .Tag }}"
+    homepage: "https://github.com/BIwashi/apogee"
+    description: "Native macOS window for the apogee multi-agent observability dashboard."
+    # goreleaser auto-generates a `binary "apogee-desktop"` directive from
+    # the raw Mach-O we currently have to leave in the zip (the universal
+    # build cannot be packaged as a .app without an accompanying standalone
+    # binary under the current archive flow). The custom_block below layers
+    # the real `app "Apogee.app"` directive on top so brew actually
+    # installs the bundle into /Applications. The `binary` directive
+    # remains as a harmless side effect — users who want to launch from a
+    # terminal can call `apogee-desktop` directly.
+    custom_block: |
+      app "Apogee.app"
+    hooks:
+      post:
+        install: |
+          system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/Apogee.app"]
+    zap:
+      trash:
+        - "~/Library/Application Support/apogee-desktop"
+        - "~/Library/Caches/dev.apogee.desktop"
+        - "~/Library/Preferences/dev.apogee.desktop.plist"

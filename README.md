@@ -213,6 +213,7 @@ Alternative paths:
 | Source | Command | Notes |
 |---|---|---|
 | Homebrew tap | `brew install BIwashi/tap/apogee` | Recommended. Universal binary, full embedded dashboard, `brew upgrade apogee` for new releases. |
+| Homebrew cask (desktop) | `brew install --cask BIwashi/tap/apogee-desktop` | Optional native macOS window (WKWebView) hosting the same collector + dashboard. Drops `Apogee.app` into `/Applications` and adds an `apogee-desktop` launcher to `$PATH`. Unsigned — the cask's `postflight` hook strips `com.apple.quarantine` so Gatekeeper does not block first launch. See [`docs/desktop.md`](docs/desktop.md). |
 | `go install` | `go install github.com/BIwashi/apogee/cmd/apogee@latest` | Go module proxy cannot ship the Next.js bundle, so the UI is a placeholder that tells you to run `make web-build`. The API is fully functional. Use this only when you know you want a CLI-only binary. |
 | Release tarball | Download from [Releases](https://github.com/BIwashi/apogee/releases) | darwin amd64 / arm64. Linux is deferred to v0.2.0. |
 | Build from source | `git clone ... && make build` | Produces `./bin/apogee` stamped with the commit and build date. |
