@@ -90,9 +90,98 @@ test-integration:
 tidy:
 	$(GO) mod tidy
 
+# ---------------------------------------------------------------------------
+# Formatter / linter targets
+#
+# `make fmt`        — write gofumpt + gci across the tree, then run prettier
+#                     across web/ when its devDependencies are installed.
+# `make fmt-check`  — fail when any file would be rewritten. Used by CI.
+# `make lint`       — golangci-lint on the Go tree and eslint on the web tree.
+# `make lint-fix`   — golangci-lint --fix (+ eslint --fix).
+#
+# gofumpt and gci are pinned through the go.mod `tool` directive so CI and
+# contributors always run the same versions. golangci-lint is installed via
+# the golangci/golangci-lint-action GitHub Action in CI and via Homebrew
+# locally. Prettier lives in web/package.json devDependencies.
+# ---------------------------------------------------------------------------
+
+# GO_FMT_PATHS scopes gofumpt/gci to files tracked by git and excludes
+# anything under webassets/dist or the Wails generated tree.
+GO_FMT_PATHS ?= $(shell git ls-files '*.go' | grep -v '^internal/webassets/dist/' | grep -v '^desktop/frontend/wailsjs/')
+
 .PHONY: fmt
-fmt:
-	$(GO) fmt $(PKG)
+fmt: fmt-go fmt-web
+
+.PHONY: fmt-go
+fmt-go:
+	@echo ">> gofumpt"
+	@$(GO) tool gofumpt -w $(GO_FMT_PATHS)
+	@echo ">> gci"
+	@$(GO) tool gci write -s standard -s default -s localmodule --skip-vendor $(GO_FMT_PATHS)
+
+.PHONY: fmt-web
+fmt-web:
+	@if [ -x $(WEB_DIR)/node_modules/.bin/prettier ]; then \
+	  cd $(WEB_DIR) && npm run format; \
+	else \
+	  echo "skipping web format (run 'make web-install' first)"; \
+	fi
+
+.PHONY: fmt-check
+fmt-check: fmt-check-go fmt-check-web
+
+.PHONY: fmt-check-go
+fmt-check-go:
+	@echo ">> gofumpt --check"
+	@UNCLEAN=$$($(GO) tool gofumpt -l $(GO_FMT_PATHS)); \
+	  if [ -n "$$UNCLEAN" ]; then \
+	    echo "gofumpt: the following files need formatting"; \
+	    echo "$$UNCLEAN"; \
+	    exit 1; \
+	  fi
+	@echo ">> gci --check"
+	@UNCLEAN=$$($(GO) tool gci list -s standard -s default -s localmodule --skip-vendor $(GO_FMT_PATHS)); \
+	  if [ -n "$$UNCLEAN" ]; then \
+	    echo "gci: the following files need formatting"; \
+	    echo "$$UNCLEAN"; \
+	    exit 1; \
+	  fi
+
+.PHONY: fmt-check-web
+fmt-check-web:
+	@if [ -x $(WEB_DIR)/node_modules/.bin/prettier ]; then \
+	  cd $(WEB_DIR) && npm run format:check; \
+	else \
+	  echo "skipping web format check (run 'make web-install' first)"; \
+	fi
+
+.PHONY: lint
+lint: lint-go lint-web
+
+.PHONY: lint-go
+lint-go:
+	@command -v golangci-lint >/dev/null 2>&1 || { \
+	  echo "golangci-lint not found. Install with:"; \
+	  echo "  brew install golangci-lint"; \
+	  echo "  # or: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest"; \
+	  exit 1; }
+	@echo ">> golangci-lint"
+	golangci-lint run ./...
+
+.PHONY: lint-web
+lint-web:
+	@if [ -x $(WEB_DIR)/node_modules/.bin/eslint ]; then \
+	  cd $(WEB_DIR) && npm run lint; \
+	else \
+	  echo "skipping web lint (run 'make web-install' first)"; \
+	fi
+
+.PHONY: lint-fix
+lint-fix:
+	golangci-lint run --fix ./...
+	@if [ -x $(WEB_DIR)/node_modules/.bin/eslint ]; then \
+	  cd $(WEB_DIR) && npm run lint -- --fix; \
+	fi
 
 .PHONY: vet
 vet:
