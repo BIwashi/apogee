@@ -485,6 +485,46 @@ apogee 0.1.3 (commit abcdef1, built 2026-04-15)
 
 ---
 
+## Summarizer preferences
+
+The LLM recap (Haiku) and rollup (Sonnet) workers honour a small set of
+operator-controlled preferences persisted in the `user_preferences` DuckDB
+table. They are read at the top of every job, so updates land without a
+restart. Two ways to manage them:
+
+1. The **Settings** page (`/settings`) has a "Summarizer" section with a
+   language toggle, recap / rollup model overrides, and two system-prompt
+   text areas. Save persists via `PATCH /v1/preferences`.
+2. The compact **language picker** on the top ribbon flips
+   `summarizer.language` between `EN` and `JA` in one click.
+
+The same controls are exposed over HTTP for scripting:
+
+```sh
+# Read the current state.
+curl -s http://localhost:4100/v1/preferences
+
+# Switch the recap and rollup output to Japanese.
+curl -s -X PATCH http://localhost:4100/v1/preferences \
+  -H 'Content-Type: application/json' \
+  -d '{"summarizer.language":"ja"}'
+
+# Add a recap system prompt and override the recap model.
+curl -s -X PATCH http://localhost:4100/v1/preferences \
+  -H 'Content-Type: application/json' \
+  -d '{"summarizer.recap_system_prompt":"Always mention the file paths.","summarizer.recap_model":"claude-haiku-4-5"}'
+
+# Reset every summarizer.* preference back to the defaults.
+curl -s -X DELETE http://localhost:4100/v1/preferences
+```
+
+Validation rules: `summarizer.language` must be `"en"` or `"ja"`, the two
+system prompts are capped at 2048 characters each, and the model overrides
+must look like a `claude-{haiku,sonnet,opus}-…` alias. Empty strings clear
+the override and fall back to `~/.apogee/config.toml`.
+
+---
+
 ## Global flags
 
 These apply to every subcommand.

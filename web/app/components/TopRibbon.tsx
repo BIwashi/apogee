@@ -2,9 +2,21 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { ChevronsUpDown, Clock, Layers, RefreshCw } from "lucide-react";
+import {
+  ChevronsUpDown,
+  Clock,
+  Languages,
+  Layers,
+  RefreshCw,
+} from "lucide-react";
+import { mutate } from "swr";
 
-import type { FilterOptions } from "../lib/api-types";
+import type {
+  FilterOptions,
+  PreferencesResponse,
+  SummarizerLanguage,
+} from "../lib/api-types";
+import { patchPreferences } from "../lib/preferences";
 import { useRefresh } from "../lib/refresh";
 import { useApi } from "../lib/swr";
 import {
@@ -92,6 +104,9 @@ export default function TopRibbon() {
         <RibbonDivider />
 
         <TimeRangePicker />
+        <RibbonDivider />
+
+        <LanguagePicker />
 
         <div className="flex flex-1 items-center justify-end gap-3">
           <button
@@ -249,6 +264,115 @@ function TimeRangePicker() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * LanguagePicker — compact EN / JA toggle that lives between the time-range
+ * picker and the LIVE indicator. Reads /v1/preferences via SWR (60 s
+ * refresh) and PATCHes optimistically on click. Falls back to "EN" when the
+ * API is unreachable so the UI keeps working offline.
+ */
+const LANGUAGE_OPTIONS: Array<{ value: SummarizerLanguage; label: string }> = [
+  { value: "en", label: "EN" },
+  { value: "ja", label: "JA" },
+];
+
+function LanguagePicker() {
+  const { data, mutate: revalidate } = useApi<PreferencesResponse>(
+    "/v1/preferences",
+    { refreshInterval: 60_000 },
+  );
+  const [open, setOpen] = useState(false);
+  const [pending, setPending] = useState<SummarizerLanguage | null>(null);
+
+  const current: SummarizerLanguage =
+    pending ?? data?.preferences?.["summarizer.language"] ?? "en";
+  const label = LANGUAGE_OPTIONS.find((o) => o.value === current)?.label ?? "EN";
+
+  const apply = useCallback(
+    async (next: SummarizerLanguage) => {
+      setOpen(false);
+      if (next === current) return;
+      setPending(next);
+      try {
+        const updated = await patchPreferences({
+          "summarizer.language": next,
+        });
+        // Push the new preferences into every SWR cache key under
+        // /v1/preferences (the useApi key is a tuple, so revalidate the
+        // local hook AND broadcast a global mutate for siblings).
+        await revalidate(updated, { revalidate: false });
+        await mutate(
+          (key) =>
+            Array.isArray(key) &&
+            key[0] === "/v1/preferences",
+          undefined,
+          { revalidate: true },
+        );
+      } catch {
+        // Swallow — the language picker degrades to its last known good
+        // state on failure. The settings page surfaces a real error.
+      } finally {
+        setPending(null);
+      }
+    },
+    [current, revalidate],
+  );
+
+  // Keyboard handling: Esc closes the menu when it has focus inside.
+  useEffect(() => {
+    if (!open) return;
+    function onKey(ev: KeyboardEvent) {
+      if (ev.key === "Escape") {
+        setOpen(false);
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open]);
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--bg-raised)] px-2 py-1.5 font-mono text-[12px] text-[var(--artemis-space)] hover:bg-[var(--bg-overlay)] hover:text-white focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--border-bright)]"
+        title="Summarizer output language"
+        aria-label={`Summarizer language: ${label}`}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+      >
+        <Languages size={13} strokeWidth={1.5} />
+        <span>{label}</span>
+        <ChevronsUpDown size={11} strokeWidth={1.5} className="opacity-60" />
+      </button>
+      {open && (
+        <div
+          role="listbox"
+          aria-label="Summarizer language"
+          className="absolute right-0 top-full z-50 mt-1 min-w-[80px] rounded-md border border-[var(--border-bright)] bg-[var(--bg-overlay)] p-1 shadow-[0_12px_32px_rgba(0,0,0,0.6)]"
+        >
+          {LANGUAGE_OPTIONS.map((opt) => {
+            const active = opt.value === current;
+            return (
+              <button
+                key={opt.value}
+                type="button"
+                role="option"
+                aria-selected={active}
+                onClick={() => apply(opt.value)}
+                className={`block w-full rounded px-3 py-1.5 text-left font-mono text-[12px] hover:bg-[var(--bg-raised)] ${
+                  active ? "text-white" : "text-[var(--artemis-space)]"
+                }`}
+              >
+                {opt.label}
+              </button>
+            );
+          })}
         </div>
       )}
     </div>

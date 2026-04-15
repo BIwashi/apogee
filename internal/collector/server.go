@@ -233,6 +233,9 @@ func (s *Server) buildRouter() chi.Router {
 
 	r.Get("/v1/healthz", s.healthz)
 	r.Get("/v1/info", s.getInfo)
+	r.Get("/v1/preferences", s.listPreferences)
+	r.Patch("/v1/preferences", s.patchPreferences)
+	r.Delete("/v1/preferences", s.deletePreferences)
 	r.Get("/v1/telemetry/status", s.telemetryStatus)
 	r.Get("/v1/agents/recent", s.listRecentAgents)
 	r.Get("/v1/insights/overview", s.getInsightsOverview)
@@ -920,7 +923,7 @@ func (s *Server) requestLogger(next http.Handler) http.Handler {
 func (s *Server) cors(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)

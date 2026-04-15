@@ -1,11 +1,26 @@
 "use client";
 
-import { CheckCircle2, Circle, Copy } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { CheckCircle2, Circle, Copy, Languages, RotateCcw, Save } from "lucide-react";
+import { mutate } from "swr";
 
 import Card from "../components/Card";
 import SectionHeader from "../components/SectionHeader";
-import type { ApogeeInfo, TelemetryStatus } from "../lib/api-types";
+import type {
+  ApogeeInfo,
+  PreferencesResponse,
+  SummarizerLanguage,
+  SummarizerPreferences,
+  TelemetryStatus,
+} from "../lib/api-types";
+import {
+  DEFAULT_SUMMARIZER_PREFERENCES,
+  patchPreferences,
+  resetPreferences,
+} from "../lib/preferences";
 import { useApi } from "../lib/swr";
+
+const SYSTEM_PROMPT_MAX = 2048;
 
 /**
  * `/settings` — read-only collector info. Reads `/v1/info` for build
@@ -219,6 +234,300 @@ export default function SettingsPage() {
           </p>
         </Card>
       </section>
+
+      <SummarizerSection />
+    </div>
+  );
+}
+
+/**
+ * SummarizerSection — operator-controlled language + system prompt + model
+ * overrides for the LLM recap and rollup workers. Persists everything to the
+ * collector's user_preferences DuckDB table via PATCH /v1/preferences.
+ */
+function SummarizerSection() {
+  const { data, mutate: revalidate } = useApi<PreferencesResponse>(
+    "/v1/preferences",
+    { refreshInterval: 30_000 },
+  );
+
+  const persisted: Required<SummarizerPreferences> = useMemo(() => {
+    const p = data?.preferences ?? {};
+    return {
+      "summarizer.language":
+        p["summarizer.language"] ?? DEFAULT_SUMMARIZER_PREFERENCES["summarizer.language"],
+      "summarizer.recap_system_prompt":
+        p["summarizer.recap_system_prompt"] ??
+        DEFAULT_SUMMARIZER_PREFERENCES["summarizer.recap_system_prompt"],
+      "summarizer.rollup_system_prompt":
+        p["summarizer.rollup_system_prompt"] ??
+        DEFAULT_SUMMARIZER_PREFERENCES["summarizer.rollup_system_prompt"],
+      "summarizer.recap_model":
+        p["summarizer.recap_model"] ??
+        DEFAULT_SUMMARIZER_PREFERENCES["summarizer.recap_model"],
+      "summarizer.rollup_model":
+        p["summarizer.rollup_model"] ??
+        DEFAULT_SUMMARIZER_PREFERENCES["summarizer.rollup_model"],
+    };
+  }, [data]);
+
+  const [draft, setDraft] = useState<Required<SummarizerPreferences>>(persisted);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Reset the draft whenever the persisted snapshot changes (e.g. after a
+  // successful save or a background revalidate).
+  useEffect(() => {
+    setDraft(persisted);
+  }, [persisted]);
+
+  const dirty = useMemo(() => {
+    return (
+      draft["summarizer.language"] !== persisted["summarizer.language"] ||
+      draft["summarizer.recap_system_prompt"] !==
+        persisted["summarizer.recap_system_prompt"] ||
+      draft["summarizer.rollup_system_prompt"] !==
+        persisted["summarizer.rollup_system_prompt"] ||
+      draft["summarizer.recap_model"] !== persisted["summarizer.recap_model"] ||
+      draft["summarizer.rollup_model"] !== persisted["summarizer.rollup_model"]
+    );
+  }, [draft, persisted]);
+
+  async function onSave() {
+    if (!dirty || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const updated = await patchPreferences(draft);
+      await revalidate(updated, { revalidate: false });
+      // Broadcast so siblings (TopRibbon LanguagePicker) see the change.
+      await mutate(
+        (key) => Array.isArray(key) && key[0] === "/v1/preferences",
+        undefined,
+        { revalidate: true },
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function onRevert() {
+    setDraft(persisted);
+    setError(null);
+  }
+
+  async function onResetAll() {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const updated = await resetPreferences();
+      await revalidate(updated, { revalidate: false });
+      await mutate(
+        (key) => Array.isArray(key) && key[0] === "/v1/preferences",
+        undefined,
+        { revalidate: true },
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section>
+      <SectionHeader
+        title="Summarizer"
+        subtitle="Language, system prompts, and model overrides for the recap + rollup workers."
+        actions={
+          dirty ? (
+            <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-[var(--status-warning)]">
+              unsaved changes
+            </span>
+          ) : null
+        }
+      />
+      <Card>
+        <div className="flex flex-col gap-4 p-1 text-[12px]">
+          <LanguageRow
+            value={draft["summarizer.language"]}
+            onChange={(v) => setDraft((d) => ({ ...d, "summarizer.language": v }))}
+          />
+
+          <ModelOverrideRow
+            label="Recap model"
+            placeholder="claude-haiku-4-5"
+            value={draft["summarizer.recap_model"]}
+            onChange={(v) =>
+              setDraft((d) => ({ ...d, "summarizer.recap_model": v }))
+            }
+          />
+          <ModelOverrideRow
+            label="Rollup model"
+            placeholder="claude-sonnet-4-6"
+            value={draft["summarizer.rollup_model"]}
+            onChange={(v) =>
+              setDraft((d) => ({ ...d, "summarizer.rollup_model": v }))
+            }
+          />
+
+          <SystemPromptField
+            label="Recap system prompt"
+            value={draft["summarizer.recap_system_prompt"]}
+            onChange={(v) =>
+              setDraft((d) => ({ ...d, "summarizer.recap_system_prompt": v }))
+            }
+          />
+          <SystemPromptField
+            label="Rollup system prompt"
+            value={draft["summarizer.rollup_system_prompt"]}
+            onChange={(v) =>
+              setDraft((d) => ({ ...d, "summarizer.rollup_system_prompt": v }))
+            }
+          />
+
+          {error && (
+            <div className="rounded border border-[var(--status-warning)] bg-[var(--bg-raised)] px-3 py-2 font-mono text-[11px] text-[var(--status-warning)]">
+              {error}
+            </div>
+          )}
+
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              onClick={onSave}
+              disabled={!dirty || busy}
+              className="inline-flex items-center gap-2 rounded-md border border-[var(--border-bright)] bg-[var(--bg-raised)] px-3 py-1.5 font-mono text-[12px] text-white hover:bg-[var(--bg-overlay)] disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <Save size={13} strokeWidth={1.5} />
+              Save changes
+            </button>
+            <button
+              type="button"
+              onClick={onRevert}
+              disabled={!dirty || busy}
+              className="inline-flex items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--bg-raised)] px-3 py-1.5 font-mono text-[12px] text-[var(--artemis-space)] hover:bg-[var(--bg-overlay)] hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <RotateCcw size={13} strokeWidth={1.5} />
+              Revert
+            </button>
+            <div className="ml-auto">
+              <button
+                type="button"
+                onClick={onResetAll}
+                disabled={busy}
+                className="font-mono text-[11px] text-[var(--text-muted)] underline-offset-2 hover:text-[var(--status-warning)] hover:underline disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Reset all preferences to defaults
+              </button>
+            </div>
+          </div>
+        </div>
+      </Card>
+    </section>
+  );
+}
+
+function LanguageRow({
+  value,
+  onChange,
+}: {
+  value: SummarizerLanguage;
+  onChange: (v: SummarizerLanguage) => void;
+}) {
+  return (
+    <div className="grid grid-cols-[160px_1fr] items-center gap-3">
+      <span className="font-display text-[10px] tracking-[0.14em] text-[var(--text-muted)]">
+        Language
+      </span>
+      <div className="inline-flex overflow-hidden rounded-md border border-[var(--border)]">
+        {(["en", "ja"] as const).map((opt) => {
+          const active = value === opt;
+          return (
+            <button
+              key={opt}
+              type="button"
+              onClick={() => onChange(opt)}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 font-mono text-[12px] ${
+                active
+                  ? "bg-[var(--bg-overlay)] text-white"
+                  : "bg-[var(--bg-raised)] text-[var(--artemis-space)] hover:bg-[var(--bg-overlay)] hover:text-white"
+              }`}
+              aria-pressed={active}
+            >
+              <Languages size={12} strokeWidth={1.5} />
+              {opt.toUpperCase()}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function ModelOverrideRow({
+  label,
+  placeholder,
+  value,
+  onChange,
+}: {
+  label: string;
+  placeholder: string;
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <div className="grid grid-cols-[160px_1fr] items-center gap-3">
+      <span className="font-display text-[10px] tracking-[0.14em] text-[var(--text-muted)]">
+        {label}
+      </span>
+      <input
+        type="text"
+        value={value}
+        placeholder={placeholder}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full max-w-[420px] rounded border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-1.5 font-mono text-[12px] text-white placeholder:text-[var(--text-muted)] focus:border-[var(--border-bright)] focus:outline-none"
+        aria-label={`${label} override (empty uses the config default)`}
+      />
+    </div>
+  );
+}
+
+function SystemPromptField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  const tooLong = value.length > SYSTEM_PROMPT_MAX;
+  return (
+    <div className="flex flex-col gap-1">
+      <label className="font-display text-[10px] tracking-[0.14em] text-[var(--text-muted)]">
+        {label}
+      </label>
+      <textarea
+        rows={6}
+        value={value}
+        maxLength={SYSTEM_PROMPT_MAX}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full rounded border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2 font-mono text-[12px] text-white placeholder:text-[var(--text-muted)] focus:border-[var(--border-bright)] focus:outline-none"
+        placeholder="Optional. Appended to the default summarizer instructions."
+      />
+      <div className="flex items-center justify-between font-mono text-[10px] text-[var(--text-muted)]">
+        <span>
+          Appended to the default system prompt. Use this to customise tone or
+          add domain context.
+        </span>
+        <span className={tooLong ? "text-[var(--status-warning)]" : undefined}>
+          {value.length} / {SYSTEM_PROMPT_MAX}
+        </span>
+      </div>
     </div>
   );
 }

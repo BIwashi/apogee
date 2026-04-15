@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
@@ -45,6 +46,7 @@ type Worker struct {
 	hub    *sse.Hub
 	logger *slog.Logger
 	clock  func() time.Time
+	prefs  PreferencesReader
 
 	queue chan Job
 	wg    sync.WaitGroup
@@ -72,8 +74,19 @@ func NewWorker(cfg Config, runner Runner, store *duckdb.Store, hub *sse.Hub, log
 		hub:    hub,
 		logger: logger,
 		clock:  time.Now,
+		prefs:  NewStaticPreferencesReader(Defaults()),
 		queue:  make(chan Job, cfg.QueueSize),
 	}
+}
+
+// SetPreferencesReader installs the operator-controlled preferences source.
+// Worker.process calls this reader at the top of every job so prompts
+// reflect the latest UI tweak without a restart.
+func (w *Worker) SetPreferencesReader(r PreferencesReader) {
+	if w == nil || r == nil {
+		return
+	}
+	w.prefs = r
 }
 
 // Enqueue drops a job onto the queue without blocking. A full queue logs
@@ -177,11 +190,27 @@ func (w *Worker) process(ctx context.Context, workerID int, job Job) {
 		return
 	}
 
+	// Load operator preferences (language + system prompt + optional
+	// model override) at job start so updates land without a restart.
+	prefs := Defaults()
+	if w.prefs != nil {
+		loaded, err := w.prefs.LoadSummarizerPreferences(ctx)
+		if err != nil {
+			w.logger.Warn("summarizer: load preferences", "turn_id", job.TurnID, "err", err)
+		} else {
+			prefs = loaded
+		}
+	}
+	model := w.cfg.RecapModel
+	if override := strings.TrimSpace(prefs.RecapModelOverride); override != "" {
+		model = override
+	}
+
 	prompt := BuildPrompt(PromptInput{
 		Turn:  *turn,
 		Spans: spans,
 		Logs:  logs,
-	}, w.cfg.MaxSpanCount, w.cfg.MaxLogCount)
+	}, w.cfg.MaxSpanCount, w.cfg.MaxLogCount, prefs)
 
 	runCtx := ctx
 	if w.cfg.Timeout > 0 {
@@ -191,17 +220,18 @@ func (w *Worker) process(ctx context.Context, workerID int, job Job) {
 	}
 
 	w.logger.Info("summarizer: running",
-		"turn_id", job.TurnID, "model", w.cfg.RecapModel,
+		"turn_id", job.TurnID, "model", model,
+		"language", prefs.Language,
 		"worker", workerID, "reason", job.Reason,
 		"span_count", len(spans))
 
-	output, err := w.runner.Run(runCtx, w.cfg.RecapModel, prompt)
+	output, err := w.runner.Run(runCtx, model, prompt)
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
 			return
 		}
 		w.logger.Warn("summarizer: runner error",
-			"turn_id", job.TurnID, "model", w.cfg.RecapModel, "err", err)
+			"turn_id", job.TurnID, "model", model, "err", err)
 		return
 	}
 	w.logger.Debug("summarizer: raw output",
@@ -216,7 +246,7 @@ func (w *Worker) process(ctx context.Context, workerID int, job Job) {
 	}
 	now := w.clock()
 	recap.GeneratedAt = now
-	recap.Model = w.cfg.RecapModel
+	recap.Model = model
 
 	blob, err := json.Marshal(recap)
 	if err != nil {

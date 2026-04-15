@@ -203,3 +203,14 @@ CREATE TABLE IF NOT EXISTS metric_points (
   labels_json    VARCHAR NOT NULL DEFAULT '{}'
 );
 CREATE INDEX IF NOT EXISTS idx_metric_points_name ON metric_points(name, timestamp DESC);
+
+-- User preferences: a generic K/V table of UI / runtime knobs the operator
+-- tweaks from the dashboard. Values are JSON-encoded so future preferences
+-- can be richer than scalar strings (lists, objects). Owned by PR #29 — see
+-- internal/store/duckdb/preferences.go for the typed accessors and
+-- internal/collector/preferences.go for the HTTP routes.
+CREATE TABLE IF NOT EXISTS user_preferences (
+  key           VARCHAR PRIMARY KEY,
+  value_json    VARCHAR NOT NULL,
+  updated_at    TIMESTAMP NOT NULL
+);

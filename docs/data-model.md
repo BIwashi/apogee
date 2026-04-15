@@ -331,6 +331,37 @@ wrong in the current turn.
 
 ---
 
+## `user_preferences`
+
+A generic K/V table for operator-tweakable runtime knobs. Values are
+JSON-encoded strings so future preferences can hold richer shapes (lists,
+objects) without a schema migration. Owned by PR #29 — the typed accessors
+live in [`internal/store/duckdb/preferences.go`](../internal/store/duckdb/preferences.go)
+and the HTTP routes in
+[`internal/collector/preferences.go`](../internal/collector/preferences.go).
+
+| Column | Type | Purpose |
+| --- | --- | --- |
+| `key` | VARCHAR PK | Dotted preference id (`summarizer.language`, ...) |
+| `value_json` | VARCHAR | JSON-encoded value blob |
+| `updated_at` | TIMESTAMP | Last write time, UTC |
+
+Documented summarizer keys (more may be added later without a migration):
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `summarizer.language` | `"en"` | Output language for the recap + rollup workers. `"en"` or `"ja"`. |
+| `summarizer.recap_system_prompt` | `""` | Free text appended to the Haiku recap instruction block, max 2048 chars. |
+| `summarizer.rollup_system_prompt` | `""` | Free text appended to the Sonnet rollup instruction block, max 2048 chars. |
+| `summarizer.recap_model` | `""` | Override for the recap model alias. Empty → fall back to `[summarizer] recap_model` in `~/.apogee/config.toml`. |
+| `summarizer.rollup_model` | `""` | Override for the rollup model alias. Empty → fall back to the config file. |
+
+**Writers:** `PATCH /v1/preferences`, `DELETE /v1/preferences`.
+**Readers:** the summarizer worker pool reloads at the top of every job so
+prompt language and model overrides land without a restart.
+
+---
+
 ## Indexing cheat sheet
 
 The schema creates a small set of indexes tuned for the dashboard's hot

@@ -29,6 +29,23 @@ Running multi-agent Claude Code workflows means losing sight of what each agent 
 - **What is this turn doing at this exact moment?** Phase heuristics (plan / explore / edit / test / commit / delegate) and a live swim lane render every tool, subagent, and HITL request on a shared time axis.
 - **What just happened across the whole session?** A two-tier LLM summarizer fills in a per-turn recap (Haiku) and a per-session narrative rollup (Sonnet), both via the local `claude` CLI — no extra API key required.
 
+### Customising the summarizer
+
+The summarizer reads its language, an optional operator system prompt, and
+optional model overrides from the `user_preferences` DuckDB table on every
+job. Two ways to manage them:
+
+- The **Settings** page (`/settings`) has a dedicated **Summarizer** section
+  with a language toggle, recap / rollup model override inputs, and two
+  system-prompt textareas (2048 char limit each).
+- A compact **EN / JA language picker** on the top ribbon flips the recap +
+  rollup output language in one click — e.g. `EN ▸ JA` switches every new
+  recap to Japanese without touching the schema.
+
+Both controls write to the same `PATCH /v1/preferences` endpoint, so
+scripted rollouts work too. See [`docs/cli.md`](docs/cli.md#summarizer-preferences)
+for the full HTTP contract and validation rules.
+
 ---
 
 ## Key features

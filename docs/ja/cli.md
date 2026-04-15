@@ -432,6 +432,37 @@ apogee 0.1.3 (commit abcdef1, built 2026-04-15)
 
 ---
 
+## summarizer 設定
+
+LLM recap (Haiku) と rollup (Sonnet) の各ワーカーは、`user_preferences` DuckDB テーブルに永続化されたいくつかのオペレーター制御の設定を反映します。これらはジョブ開始時に毎回読み直されるので、再起動なしで変更が反映されます。管理方法は 2 つあります:
+
+1. **設定ページ** (`/settings`) には「Summarizer」セクションがあり、言語トグル、recap / rollup モデルオーバーライド、2 つのシステムプロンプトテキストエリアが表示されます。Save で `PATCH /v1/preferences` 経由で永続化します。
+2. トップリボンの**コンパクトな言語ピッカー**で、`summarizer.language` を `EN` / `JA` の間でワンクリック切替できます。
+
+同じ設定はスクリプト用に HTTP でも公開されています:
+
+```sh
+# 現在の状態を取得。
+curl -s http://localhost:4100/v1/preferences
+
+# recap と rollup を日本語出力に切替。
+curl -s -X PATCH http://localhost:4100/v1/preferences \
+  -H 'Content-Type: application/json' \
+  -d '{"summarizer.language":"ja"}'
+
+# recap システムプロンプトと recap モデルオーバーライドを設定。
+curl -s -X PATCH http://localhost:4100/v1/preferences \
+  -H 'Content-Type: application/json' \
+  -d '{"summarizer.recap_system_prompt":"必ずファイルパスに言及してください。","summarizer.recap_model":"claude-haiku-4-5"}'
+
+# すべての summarizer.* 設定をデフォルトにリセット。
+curl -s -X DELETE http://localhost:4100/v1/preferences
+```
+
+バリデーション: `summarizer.language` は `"en"` または `"ja"`、2 つのシステムプロンプトはそれぞれ最大 2048 文字、モデルオーバーライドは `claude-{haiku,sonnet,opus}-…` 形式の alias である必要があります。空文字列でオーバーライドをクリアすると `~/.apogee/config.toml` にフォールバックします。
+
+---
+
 ## グローバルフラグ
 
 すべてのサブコマンドで使えます。
