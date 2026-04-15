@@ -52,6 +52,44 @@ func TestIntegrationHealthz(t *testing.T) {
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 }
 
+// TestStartBackgroundIdempotent pins the sync.Once guard on StartBackground.
+// A regression where the guard is dropped would silently double-start the
+// metrics sampler (duplicate metric_points rows) and the HITL ticker, which
+// is hard to notice in integration tests — so the assertion here is
+// structural: after the first call, the unexported sync.Once is already
+// "done", and any later Do invocation is a no-op.
+func TestStartBackgroundIdempotent(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	store, err := duckdb.Open(ctx, ":memory:")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = store.Close() })
+
+	srv := New(Config{HTTPAddr: ":0", DBPath: ":memory:"}, store, nil)
+
+	srv.StartBackground(ctx)
+
+	// The Once is shared state — a fresh Do with a sentinel func cannot
+	// run its body if StartBackground has already fired the Once, so the
+	// flag must stay false. This is the same mechanism StartBackground
+	// itself relies on.
+	sentinelRan := false
+	srv.startBackground.Do(func() { sentinelRan = true })
+	require.False(t, sentinelRan, "sync.Once must already be done after first StartBackground")
+
+	// A second explicit call must also be a silent no-op (no panic, no
+	// goroutines started, no duplicate subscribers).
+	require.NotPanics(t, func() { srv.StartBackground(ctx) })
+
+	// Tear everything down so the test stays hermetic and the race
+	// detector sees a clean exit.
+	cancel()
+	stopCtx, stopCancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer stopCancel()
+	srv.StopBackground(stopCtx)
+}
+
 func TestIntegrationReceiveValidation(t *testing.T) {
 	_, ts := newTestServer(t)
 	// Missing required fields.

@@ -5,6 +5,12 @@
 *.out
 coverage.*
 
+# Local sandbox scratch (created by codex read-only harness + manual runs).
+# These hold go-build caches, module caches, and temporary binaries — none
+# of them belong in the tree.
+/.cache/
+/.tmp/
+
 # Embedded webassets: keep the checked-in placeholder index.html, ignore any
 # built artefacts that `make web-build` drops here.
 /internal/webassets/dist/*

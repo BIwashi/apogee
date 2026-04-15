@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -31,20 +32,21 @@ import (
 // Server is the apogee collector HTTP server. It owns the chi router, the
 // reconstructor, and a reference to the store. Use New to construct one.
 type Server struct {
-	cfg           Config
-	store         *duckdb.Store
-	reconstructor *ingest.Reconstructor
-	hub           *sse.Hub
-	router        chi.Router
-	httpServer    *http.Server
-	logger        *slog.Logger
-	metrics       *metrics.Collector
-	summarizer    *summarizer.Service
-	hitl          *hitl.Service
-	interventions *interventions.Service
-	watchdog      *watchdog.Worker
-	telemetry     *telemetry.Provider
-	startedAt     time.Time
+	cfg             Config
+	store           *duckdb.Store
+	reconstructor   *ingest.Reconstructor
+	hub             *sse.Hub
+	router          chi.Router
+	httpServer      *http.Server
+	logger          *slog.Logger
+	metrics         *metrics.Collector
+	summarizer      *summarizer.Service
+	hitl            *hitl.Service
+	interventions   *interventions.Service
+	watchdog        *watchdog.Worker
+	telemetry       *telemetry.Provider
+	startedAt       time.Time
+	startBackground sync.Once // guards StartBackground against double-start
 }
 
 // New constructs a Server backed by an open store. The caller retains
@@ -157,25 +159,49 @@ func (s *Server) Router() chi.Router { return s.router }
 // sampler, summarizer, HITL ticker, intervention sweeper) without binding
 // an HTTP listener. It is used by embedding hosts like the Wails desktop
 // shell that own their own transport and only need the router plus the
-// side-effect goroutines. All workers are scoped to ctx — cancel ctx to
-// stop them. StartBackground is non-blocking.
+// side-effect goroutines. StartBackground is non-blocking.
+//
+// # Lifetime
+//
+// The ctx passed to the *first* call scopes every ctx-driven worker
+// (today: the metrics sampler and the HITL ticker). Cancel that ctx to
+// stop them.
+//
+// # Idempotency and the "first ctx wins" rule
+//
+// StartBackground is guarded by a sync.Once so the second and later
+// calls are no-ops. This protects callers that wire the method into
+// both `Run()` and a second harness (for example, the Wails desktop
+// shell) from accidentally double-starting the metrics sampler — a
+// duplicate sampler would write duplicate rows into metric_points — or
+// spinning up a second HITL ticker.
+//
+// The tradeoff is that only the first ctx matters. A later call with a
+// shorter-lived ctx cannot shrink the worker lifetime. In practice this
+// is fine because only one caller in a given process owns the worker
+// lifetime: `Run()` for `apogee serve`, and the `run()` function in the
+// Wails desktop shell (which calls StartBackground synchronously before
+// wails.Run). Callers that want to replace the ctx should construct a
+// new Server instead.
 func (s *Server) StartBackground(ctx context.Context) {
-	if s.metrics != nil {
-		go func() {
-			if err := s.metrics.Run(ctx); err != nil {
-				s.logger.Debug("metrics collector stopped", "err", err)
-			}
-		}()
-	}
-	if s.summarizer != nil {
-		s.summarizer.Start(ctx)
-	}
-	if s.hitl != nil {
-		s.hitl.Start(ctx)
-	}
-	if s.interventions != nil {
-		s.interventions.Start(ctx)
-	}
+	s.startBackground.Do(func() {
+		if s.metrics != nil {
+			go func() {
+				if err := s.metrics.Run(ctx); err != nil {
+					s.logger.Debug("metrics collector stopped", "err", err)
+				}
+			}()
+		}
+		if s.summarizer != nil {
+			s.summarizer.Start(ctx)
+		}
+		if s.hitl != nil {
+			s.hitl.Start(ctx)
+		}
+		if s.interventions != nil {
+			s.interventions.Start(ctx)
+		}
+	})
 }
 
 // StopBackground performs the explicit shutdown steps for the background

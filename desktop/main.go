@@ -33,6 +33,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/wailsapp/wails/v2"
@@ -76,43 +77,63 @@ func run() error {
 		return fmt.Errorf("open duckdb %q: %w", dbPath, err)
 	}
 
+	// The HTTPAddr field is surfaced verbatim by /v1/info → the Settings
+	// page. A blank string would render as an empty row in the UI, so
+	// label the in-process transport explicitly instead.
 	srv := collector.New(
-		collector.Config{HTTPAddr: "", DBPath: dbPath},
+		collector.Config{HTTPAddr: "in-process (wails webview)", DBPath: dbPath},
 		store,
 		logger,
 	)
 
-	// The workers (metrics sampler, summarizer, HITL ticker, intervention
-	// sweeper) are scoped to the window's lifetime via OnStartup /
-	// OnShutdown so they exit cleanly when the user closes the window.
-	var cancelWorkers context.CancelFunc
+	// Start the background workers synchronously before handing control
+	// to wails.Run. Wails invokes OnStartup on a goroutine it owns (see
+	// frontend/desktop/darwin/frontend.go in wails v2.12), so if we
+	// started workers there we would race against the deferred teardown
+	// fallback below whenever wails.Run returned an error before the
+	// OnStartup goroutine had had a chance to run. Doing it up front
+	// removes the race and means OnStartup can stay a plain "window is
+	// ready" log callback.
+	workerCtx, cancelWorkers := context.WithCancel(context.Background())
+	srv.StartBackground(workerCtx)
 
-	onStartup := func(ctx context.Context) {
-		workerCtx, cancel := context.WithCancel(ctx)
-		cancelWorkers = cancel
-		srv.StartBackground(workerCtx)
-		logger.Info("apogee desktop started", "version", version.Version, "db", dbPath)
+	// A single teardown function covers every exit path: the normal
+	// OnShutdown hook, and the deferred fallback that fires if wails.Run
+	// returns an error before OnShutdown is reached. Wrapped in
+	// sync.Once so the two paths never race. Order is important —
+	// workers must stop before the store closes, otherwise any pending
+	// writes from the metrics sampler or summarizer would hit a closed
+	// DuckDB handle.
+	var teardownOnce sync.Once
+	teardown := func(reason string) {
+		teardownOnce.Do(func() {
+			logger.Info("apogee desktop shutting down", "reason", reason)
+			cancelWorkers()
+			// Bound the ctx-aware parts of StopBackground (currently
+			// just the OTel span processor flush) to 5 s so a wedged
+			// exporter cannot hold up window exit. summarizer.Stop()
+			// and interventions.Stop() do a sync.WaitGroup drain
+			// that does not honour this context — they block until
+			// their in-flight jobs return. In practice both are
+			// backed by subprocess calls that self-timeout, so we
+			// accept the worst-case wait rather than force-killing
+			// workers mid-write.
+			stopCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			srv.StopBackground(stopCtx)
+			if err := store.Close(); err != nil {
+				logger.Warn("close duckdb store", "err", err)
+			}
+		})
+	}
+	defer teardown("fallback")
+
+	onStartup := func(_ context.Context) {
+		logger.Info("apogee desktop window ready", "version", version.Version, "db", dbPath)
 	}
 
 	onShutdown := func(_ context.Context) {
-		logger.Info("apogee desktop shutting down")
-		if cancelWorkers != nil {
-			cancelWorkers()
-		}
-		// Bound the ctx-aware parts of StopBackground (currently just
-		// the OTel span processor flush) to 5 s so a wedged exporter
-		// cannot hold up window exit. Note that summarizer.Stop() and
-		// interventions.Stop() do a sync.WaitGroup drain that does not
-		// honour this context — they block until their in-flight jobs
-		// return. In practice both are backed by subprocess calls that
-		// self-timeout, so we accept the worst-case wait rather than
-		// force-killing workers mid-write.
-		stopCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		srv.StopBackground(stopCtx)
-		if err := store.Close(); err != nil {
-			logger.Warn("close duckdb store", "err", err)
-		}
+		teardown("onShutdown")
 	}
 
 	return wails.Run(&options.App{

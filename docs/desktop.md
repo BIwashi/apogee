@@ -76,17 +76,33 @@ runs locally but will be flagged by Gatekeeper if distributed. Adding the
 
 ## Dev mode (hot reload)
 
+Wails' dev mode renders inside the WebView but loads the frontend from an
+externally managed Next.js dev server, so you need **three** processes
+cooperating:
+
 ```sh
-# Terminal 1: Next.js dev server on :3000
+# Terminal 1: collector on :4100. This is where the Next.js dev server
+# forwards /v1/* requests (see web/next.config.ts rewrite rule).
+make run-collector
+
+# Terminal 2: Next.js dev server on :3000.
 make web-dev
 
-# Terminal 2: Wails dev mode, proxying to the Next.js dev server
+# Terminal 3: Wails dev window. Proxies to http://localhost:3000 via the
+# frontend:dev:serverUrl entry in desktop/wails.json — Wails itself does
+# not spawn the Next.js server, so the dev mode is a pure attach.
 make desktop-dev
 ```
 
-`desktop/wails.json` points `frontend:dev:serverUrl` at `http://localhost:3000`,
-so Wails reuses the live Next.js dev server instead of rebuilding the bundle
-on every Go change.
+Saving a file under `web/app/` triggers the Next.js HMR layer and the
+WKWebView picks up the update automatically. The desktop binary itself
+is not rebuilt by this flow — to pick up Go changes under `desktop/` or
+`internal/collector/`, stop `make desktop-dev` and restart it.
+
+If you only want to iterate on the UI, the simplest flow is actually the
+original browser one: `make run-collector` + `make web-dev` + browse to
+`http://localhost:3000`. The desktop dev mode only buys you the WKWebView
+chrome on top.
 
 ## Architecture notes
 
