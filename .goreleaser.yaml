@@ -49,6 +49,13 @@ builds:
     goarch:
       - amd64
       - arm64
+    # -tags production is mandatory for Wails v2: without it the
+    # runtime refuses to bring up the WKWebView and every launch fails
+    # with "Wails applications will not build without the correct build
+    # tags." The `wails build` CLI sets this automatically; we plumb it
+    # manually because this build does not go through the CLI.
+    tags:
+      - production
     ldflags:
       - -s -w
       - -X github.com/BIwashi/apogee/internal/version.Version={{.Version}}
@@ -189,22 +196,71 @@ homebrew_casks:
     commit_msg_template: "brew: release apogee-desktop cask {{ .Tag }}"
     homepage: "https://github.com/BIwashi/apogee"
     description: "Native macOS window for the apogee multi-agent observability dashboard."
-    # goreleaser auto-generates a `binary "apogee-desktop"` directive from
-    # the raw Mach-O we currently have to leave in the zip (the universal
-    # build cannot be packaged as a .app without an accompanying standalone
-    # binary under the current archive flow). The custom_block below layers
-    # the real `app "Apogee.app"` directive on top so brew actually
-    # installs the bundle into /Applications. The `binary` directive
-    # remains as a harmless side effect — users who want to launch from a
-    # terminal can call `apogee-desktop` directly.
+    # The desktop shell runs `apogee onboard --yes` on first launch
+    # when no daemon is reachable, so the `apogee` CLI formula MUST be
+    # on PATH. Declaring it as a dependency means `brew install --cask
+    # apogee-desktop` pulls in the formula automatically and the
+    # first-run bootstrap flow always has `apogee` available.
+    dependencies:
+      - formula: BIwashi/tap/apogee
+    # goreleaser auto-generates a `binary "apogee-desktop"` directive
+    # from the tiny launcher shim that replaces the raw Mach-O in the
+    # zip (see scripts/bundle-desktop-app.sh). The custom_block below
+    # layers the real `app "Apogee.app"` directive on top so brew
+    # actually installs the bundle into /Applications, and wires an
+    # uninstall_preflight that tears down the daemon ONLY when it was
+    # installed by the desktop shell's first-run bootstrap (marker
+    # file at ~/.apogee/installed-by-desktop).
     custom_block: |
       app "Apogee.app"
+
+      uninstall_preflight do
+        # Quit any running Apogee.app before we remove the bundle so
+        # /Applications/Apogee.app is not held open by WindowServer.
+        system_command "/usr/bin/osascript",
+                       args: ["-e", 'tell application id "dev.apogee.desktop" to quit'],
+                       sudo: false,
+                       must_succeed: false
+
+        # If the desktop shell bootstrapped the daemon on first launch,
+        # tear it down here. We only `bootout` (stop it) and leave the
+        # plist on disk — `brew upgrade --cask apogee-desktop` does an
+        # uninstall+install pair under the hood, and deleting the plist
+        # every upgrade would trigger a spurious re-onboard on the next
+        # launch. Full plist removal is reserved for `brew uninstall
+        # --zap --cask apogee-desktop`, which takes the `zap trash:`
+        # path below.
+        marker = File.expand_path("~/.apogee/installed-by-desktop")
+        if File.exist?(marker)
+          system_command "/bin/launchctl",
+                         args: ["bootout", "gui/#{Process.uid}/dev.biwashi.apogee"],
+                         sudo: false,
+                         must_succeed: false
+        end
+      end
+    # Stop the running .app and the running launchd job via cask's
+    # native directives too — they run before custom_block's preflight
+    # and give brew clean lifecycle breadcrumbs.
+    uninstall:
+      quit:
+        - dev.apogee.desktop
+      launchctl:
+        - dev.biwashi.apogee
     hooks:
       post:
         install: |
           system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/Apogee.app"]
+    # `brew uninstall --zap --cask apogee-desktop` removes everything
+    # the desktop shell can touch: the LaunchAgents plist, the full
+    # ~/.apogee data directory (DuckDB store + logs + config), and
+    # miscellaneous macOS framework caches. Reserved for the `--zap`
+    # flag so plain uninstalls (including the upgrade uninstall+install
+    # pair) do not accidentally delete the user's observability
+    # history.
     zap:
       trash:
+        - "~/.apogee"
+        - "~/Library/LaunchAgents/dev.biwashi.apogee.plist"
         - "~/Library/Application Support/apogee-desktop"
         - "~/Library/Caches/dev.apogee.desktop"
         - "~/Library/Preferences/dev.apogee.desktop.plist"
