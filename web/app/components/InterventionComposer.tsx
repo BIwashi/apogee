@@ -333,7 +333,7 @@ export default function InterventionComposer({
         placeholder={placeholder}
         title={disabled ? disabledReason : undefined}
         aria-label="Intervention message"
-        className="mt-3 block w-full rounded border bg-transparent px-3 py-2 font-mono text-[12px] leading-snug text-gray-100 outline-none disabled:cursor-not-allowed disabled:opacity-60"
+        className="mt-3 block w-full rounded border bg-transparent px-3 py-2 font-mono text-[12px] leading-snug text-[var(--artemis-white)] outline-none disabled:cursor-not-allowed disabled:opacity-60"
         style={{
           borderColor: overflow
             ? "var(--status-critical)"
@@ -402,7 +402,7 @@ export default function InterventionComposer({
           className="mt-3 flex items-center justify-between gap-2 rounded border px-3 py-2 font-mono text-[11px]"
           style={{
             borderColor: "var(--status-critical)",
-            background: "rgb(252 61 33 / 0.08)",
+            background: "var(--tint-critical-soft)",
             color: "var(--status-critical)",
           }}
         >
@@ -445,13 +445,16 @@ export default function InterventionComposer({
             type="button"
             onClick={() => void submit()}
             disabled={!canSubmit}
-            className="inline-flex items-center gap-1 rounded px-3 py-1 font-mono text-[11px] font-medium text-black disabled:opacity-40"
-            style={{ background: "var(--status-info)" }}
+            className="inline-flex items-center gap-1 rounded px-3 py-1 font-mono text-[11px] font-medium disabled:opacity-40"
+            style={{
+              background: "var(--status-info)",
+              color: "var(--chip-on-accent)",
+            }}
           >
             {submitting ? (
               <span
                 aria-label="submitting"
-                className="inline-block h-[10px] w-[10px] animate-spin rounded-full border border-black border-t-transparent"
+                className="inline-block h-[10px] w-[10px] animate-spin rounded-full border border-current border-t-transparent"
               />
             ) : (
               <Send size={16} strokeWidth={1.5} />

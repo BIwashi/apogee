@@ -102,7 +102,7 @@ export default function TriageRail({
             className="text-[var(--artemis-earth)]"
           />
         </div>
-        <p className="font-display text-[11px] tracking-[0.14em] text-white">
+        <p className="font-display text-[11px] tracking-[0.14em] text-[var(--artemis-white)]">
           NO ACTIVE TURNS
         </p>
         <p className="max-w-[220px] text-[11px] text-[var(--text-muted)]">
@@ -159,7 +159,7 @@ export default function TriageRail({
                     {timeAgo(turn.started_at)}
                   </span>
                 </div>
-                <p className="line-clamp-2 text-[12px] leading-snug text-white">
+                <p className="line-clamp-2 text-[12px] leading-snug text-[var(--artemis-white)]">
                   {headline}
                 </p>
                 <div className="flex flex-wrap items-center gap-2 font-mono text-[10px] text-[var(--text-muted)]">

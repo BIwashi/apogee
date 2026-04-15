@@ -4,6 +4,7 @@ import Card from "../components/Card";
 import EventTypeBadge from "../components/EventTypeBadge";
 import SectionHeader from "../components/SectionHeader";
 import StatusPill from "../components/StatusPill";
+import StyleguideThemeToggle from "../components/StyleguideThemeToggle";
 import { sessionPalette } from "../lib/design-tokens";
 import { EVENT_TYPES } from "../lib/event-types";
 
@@ -17,7 +18,7 @@ export default function StyleguidePage() {
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-10">
       <header className="pt-6">
-        <h1 className="font-display text-5xl leading-none tracking-[0.16em] text-white md:text-6xl">
+        <h1 className="font-display text-5xl leading-none tracking-[0.16em] text-[var(--artemis-white)] md:text-6xl">
           APOGEE
         </h1>
         <div className="accent-gradient-bar mt-4 h-[3px] w-40 rounded-full" />
@@ -26,6 +27,16 @@ export default function StyleguidePage() {
           use appears on this page exactly once.
         </p>
       </header>
+
+      <section>
+        <SectionHeader
+          title="Theme"
+          subtitle="Flip palettes without leaving the page. The /settings page and the TopRibbon toggle drive the same state."
+        />
+        <Card>
+          <StyleguideThemeToggle />
+        </Card>
+      </section>
 
       <section>
         <SectionHeader
@@ -94,7 +105,7 @@ export default function StyleguidePage() {
                 className="text-[var(--artemis-earth)]"
               />
             </div>
-            <p className="font-display text-[12px] text-white">No events yet</p>
+            <p className="font-display text-[12px] text-[var(--artemis-white)]">No events yet</p>
             <p className="max-w-sm text-[12px] text-[var(--text-muted)]">
               Start the collector and point your Claude Code hooks at
               <code className="mx-1 font-mono text-[11px] text-[var(--artemis-earth)]">

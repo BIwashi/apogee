@@ -119,7 +119,7 @@ export default function EventList({
                     style={{ background: severityColor(log.severity_text) }}
                     className="h-[6px] w-[6px] flex-shrink-0 rounded-full"
                   />
-                  <span className="font-mono text-[11px] text-gray-200">
+                  <span className="font-mono text-[11px] text-[var(--artemis-white)]">
                     {log.hook_event || "—"}
                   </span>
                 </span>

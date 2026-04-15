@@ -66,6 +66,7 @@ apogee は、マルチエージェントの [Claude Code](https://docs.claude.co
 | macOS メニューバー | `apogee menubar` — ローカルコレクターをポーリングするネイティブのステータスアイテム。 |
 | Doctor | `apogee doctor` — 7 つの環境チェック（home / claude CLI / db path / config / DB lock / collector / hook install）。`--json` で機械可読出力。 |
 | CLI | `serve`, `init`, `hook`, `daemon`, `status`, `logs`, `open`, `uninstall`, `menubar`, `doctor`, `version`。単一バイナリ、Node / Python ランタイムなし。 |
+| デザイン | ライト / ダーク両テーマを搭載。`prefers-color-scheme` を自動検出し、トップリボンのトグルで切り替えできます。詳細は [`docs/design-tokens_ja.md`](docs/design-tokens_ja.md) を参照。 |
 
 <p align="center">
   <img src="assets/screenshots/session-detail.png" alt="session detail" width="49%">

@@ -168,7 +168,7 @@ export default function SessionDetailPage() {
               type="button"
               onClick={onCopyPrompt}
               title="Copy latest prompt"
-              className="text-left font-display text-3xl tracking-[0.14em] text-white hover:text-[var(--accent)]"
+              className="text-left font-display text-3xl tracking-[0.14em] text-[var(--artemis-white)] hover:text-[var(--accent)]"
             >
               {shortId(id)}
             </button>
@@ -290,7 +290,7 @@ function SummaryStat({
         ? "text-[var(--status-success)]"
         : tone === "critical"
           ? "text-[var(--status-critical)]"
-          : "text-white";
+          : "text-[var(--artemis-white)]";
   return (
     <div className="flex flex-col gap-0.5">
       <span className="font-display text-[10px] uppercase tracking-[0.14em] text-[var(--artemis-space)]">
@@ -390,7 +390,7 @@ function InterventionSummaryCard({
   return (
     <Card className="flex items-center gap-4">
       <Send size={16} strokeWidth={1.5} color="var(--artemis-earth)" />
-      <p className="font-mono text-[11px] text-gray-200">
+      <p className="font-mono text-[11px] text-[var(--artemis-white)]">
         <span style={{ color: "var(--status-warning)" }}>
           {counts.queued} queued
         </span>

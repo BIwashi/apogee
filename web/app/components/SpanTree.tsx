@@ -171,7 +171,7 @@ function SpanRow({
               e.stopPropagation();
               toggle(node.span_id);
             }}
-            className="text-[var(--text-muted)] hover:text-gray-200"
+            className="text-[var(--text-muted)] hover:text-[var(--artemis-white)]"
           >
             {isCollapsed ? (
               <ChevronRight size={12} strokeWidth={1.5} />
@@ -187,7 +187,7 @@ function SpanRow({
           style={{ background: statusColor(node.status_code) }}
           className="h-[6px] w-[6px] flex-shrink-0 rounded-full"
         />
-        <span className="flex-1 truncate font-mono text-[11px] text-gray-200">
+        <span className="flex-1 truncate font-mono text-[11px] text-[var(--artemis-white)]">
           {node.name}
         </span>
         {hitlEvent && (
@@ -226,7 +226,7 @@ function HITLStatusChip({ event }: { event: HITLEvent }) {
   return (
     <span
       className="rounded px-1.5 py-[1px] font-mono text-[9px] uppercase"
-      style={{ background: tone.bg, color: "#06080f" }}
+      style={{ background: tone.bg, color: "var(--chip-on-accent)" }}
     >
       {tone.label}
     </span>

@@ -4,6 +4,22 @@
  * apogee design system — ported from aperion with additions for
  * Claude Code hook observability. See docs/design-tokens.md for
  * the full specification.
+ *
+ * PR #33 adds a second palette keyed off `[data-theme="light"]`.
+ * The structure is:
+ *
+ *   :root                 — shared tokens (accents, typography, etc.)
+ *                           and a `color-scheme: light dark` hint so
+ *                           browser chrome matches the effective theme.
+ *   :root,
+ *   :root[data-theme="dark"]   — dark palette (the default).
+ *   :root[data-theme="light"]  — light palette (opt-in).
+ *   @media prefers-color-scheme: light
+ *     :root:not([data-theme]) — OS-level fallback when JS has not
+ *                               yet applied an explicit data-theme.
+ *
+ * The inline script in `app/layout.tsx` writes `data-theme` before
+ * React hydrates so the user never sees the wrong theme flash.
  * ───────────────────────────────────────────────────────────── */
 
 @font-face {
@@ -21,17 +37,29 @@
   font-display: swap;
 }
 
+/* ── Shared tokens (unchanged between themes) ───────────── */
 :root {
-  /* ── Artemis Core ────────────────────────── */
+  color-scheme: light dark;
+
+  /* Artemis accent colors — brand, shared across themes. */
   --artemis-red: #FC3D21;
   --artemis-blue: #0B3D91;
-  --artemis-earth: #27AAE1;
-  --artemis-shadow: #58595B;
-  --artemis-space: #A7A9AC;
-  --artemis-white: #FFFFFF;
   --artemis-black: #000000;
 
-  /* ── Dark UI Surfaces ────────────────────── */
+  /* Typography */
+  --font-display: "Space Grotesk", -apple-system, BlinkMacSystemFont,
+    "Segoe UI", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue",
+    Helvetica, Arial, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Monaco, monospace;
+}
+
+/* ── Dark palette (default) ─────────────────────────────── */
+:root,
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  /* Surfaces */
   --bg-deepspace: #06080f;
   --bg-surface: #0c1018;
   --bg-raised: #141a24;
@@ -39,14 +67,50 @@
   --border: #1e2a3a;
   --border-bright: #2a3a50;
 
-  /* ── Semantic Status ─────────────────────── */
+  /* Text */
+  --artemis-white: #FFFFFF;
+  --artemis-space: #A7A9AC;
+  --artemis-shadow: #58595B;
+
+  /* Accents that shift between themes */
+  --artemis-earth: #27AAE1;
+
+  /* Semantic status */
   --status-critical: #FC3D21;
   --status-warning: #E08B27;
   --status-success: #27E0A1;
   --status-info: #27AAE1;
   --status-muted: #58595B;
 
-  /* ── Accent gradient ─────────────────────── */
+  /* Badge tints — alpha overlays of the status hues. */
+  --tint-critical: rgb(252 61 33 / 0.15);
+  --tint-critical-border: rgb(252 61 33 / 0.30);
+  --tint-critical-soft: rgb(252 61 33 / 0.08);
+  --tint-warning: rgb(224 139 39 / 0.15);
+  --tint-warning-border: rgb(224 139 39 / 0.30);
+  --tint-success: rgb(39 224 161 / 0.15);
+  --tint-success-border: rgb(39 224 161 / 0.30);
+  --tint-info: rgb(39 170 225 / 0.15);
+  --tint-info-border: rgb(39 170 225 / 0.30);
+  --tint-muted: rgb(88 89 91 / 0.18);
+  --tint-muted-border: rgb(88 89 91 / 0.35);
+  --tint-earth: rgb(39 170 225 / 0.12);
+  --tint-earth-border: rgb(39 170 225 / 0.28);
+  --tint-accent: rgb(11 61 145 / 0.18);
+  --tint-accent-border: rgb(39 170 225 / 0.45);
+
+  /* Accent-foreground: contrasts against the gradient/accent bg (e.g. the
+     `accent` event tone pill uses this as text color). */
+  --accent-foreground: #C8D5F5;
+  /* Chip foreground used on top of bright accent / status backgrounds
+     (HITL decision chips, status chips). In dark it stays near-black to
+     pop on the bright fill; in light the fill is even brighter so we keep
+     a very dark tone. */
+  --chip-on-accent: #06080f;
+
+  /* Gradient stops — the brand gradient is identical in both themes
+     (brand continuity) but defined via a variable so future tweaks for
+     light mode can happen here. */
   --accent-gradient: linear-gradient(
     135deg,
     #0B3D91 0%,
@@ -54,21 +118,169 @@
     #FC3D21 100%
   );
 
-  /* ── Typography ──────────────────────────── */
-  --font-display: "Space Grotesk", -apple-system, BlinkMacSystemFont,
-    "Segoe UI", "Helvetica Neue", Helvetica, Arial, sans-serif;
-  --font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue",
-    Helvetica, Arial, sans-serif;
-  --font-mono: ui-monospace, "SF Mono", Menlo, Monaco, monospace;
+  /* Shadows and overlays */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.40);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.50);
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.60);
+  --overlay-backdrop: rgba(0, 0, 0, 0.60);
 
-  /* ── Legacy compat (aperion parity) ──────── */
+  /* Legacy aliases — kept for aperion parity and old call sites. */
   --background: var(--bg-deepspace);
   --foreground: #e8eaed;
   --accent: var(--artemis-earth);
   --accent-dim: var(--artemis-blue);
   --surface: var(--bg-surface);
   --surface-raised: var(--bg-raised);
+  --text-primary: var(--artemis-white);
   --text-muted: var(--artemis-space);
+}
+
+/* ── Light palette (opt-in) ─────────────────────────────── */
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  /* Surfaces */
+  --bg-deepspace: #f8fafc;
+  --bg-surface: #ffffff;
+  --bg-raised: #f1f5f9;
+  --bg-overlay: #ffffff;
+  --border: #e2e8f0;
+  --border-bright: #cbd5e1;
+
+  /* Text — primary is deep slate so it reads on white, secondary and
+     tertiary shift progressively lighter. Note that `--artemis-white`
+     becomes dark in light mode; every call site that used it meant
+     "primary text" so the semantic survives. */
+  --artemis-white: #0f172a;
+  --artemis-space: #475569;
+  --artemis-shadow: #64748b;
+
+  /* Accents — blue and red stay; earth shifts slightly darker so chart
+     lines remain legible on white. */
+  --artemis-earth: #1d91c9;
+
+  /* Semantic status — same hue, lower lightness so they remain legible
+     on light backgrounds. */
+  --status-critical: #dc2626;
+  --status-warning: #d97706;
+  --status-success: #15803d;
+  --status-info: #0e7fbf;
+  --status-muted: #64748b;
+
+  /* Tints use the shifted hues for consistency. */
+  --tint-critical: rgb(220 38 38 / 0.10);
+  --tint-critical-border: rgb(220 38 38 / 0.28);
+  --tint-critical-soft: rgb(220 38 38 / 0.06);
+  --tint-warning: rgb(217 119 6 / 0.10);
+  --tint-warning-border: rgb(217 119 6 / 0.28);
+  --tint-success: rgb(21 128 61 / 0.10);
+  --tint-success-border: rgb(21 128 61 / 0.28);
+  --tint-info: rgb(14 127 191 / 0.10);
+  --tint-info-border: rgb(14 127 191 / 0.28);
+  --tint-muted: rgb(100 116 139 / 0.12);
+  --tint-muted-border: rgb(100 116 139 / 0.26);
+  --tint-earth: rgb(29 145 201 / 0.10);
+  --tint-earth-border: rgb(29 145 201 / 0.26);
+  --tint-accent: rgb(11 61 145 / 0.10);
+  --tint-accent-border: rgb(29 145 201 / 0.35);
+
+  /* Accent-foreground on light mode uses the NASA blue itself so the
+     `accent` event pill stays on-brand without going mud-brown. */
+  --accent-foreground: #0B3D91;
+  /* On light mode, status bg fills are bright (e.g. status-success is a
+     dark green), so chip foreground uses white for readability. */
+  --chip-on-accent: #ffffff;
+
+  /* Gradient — same stops, slightly rebalanced so the bright red doesn't
+     dominate over a white page. Pulled the red stop inward and added a
+     cooler midpoint. */
+  --accent-gradient: linear-gradient(
+    135deg,
+    #0B3D91 0%,
+    #1d91c9 55%,
+    #dc2626 100%
+  );
+
+  /* Shadows on light mode are a soft slate rather than pure black. */
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.08);
+  --shadow-md: 0 4px 12px rgba(15, 23, 42, 0.08);
+  --shadow-lg: 0 12px 32px rgba(15, 23, 42, 0.12);
+  --overlay-backdrop: rgba(15, 23, 42, 0.35);
+
+  /* Legacy aliases */
+  --background: var(--bg-deepspace);
+  --foreground: #0f172a;
+  --accent: var(--artemis-earth);
+  --accent-dim: var(--artemis-blue);
+  --surface: var(--bg-surface);
+  --surface-raised: var(--bg-raised);
+  --text-primary: var(--artemis-white);
+  --text-muted: var(--artemis-space);
+}
+
+/* ── prefers-color-scheme fallback ──────────────────────── */
+/*
+ * When the user has no explicit data-theme attribute (e.g. because JS is
+ * disabled or hydration has not yet run) AND the OS prefers light, surface
+ * the light palette. The inline script in layout.tsx sets data-theme on
+ * first paint, so this branch is only active in a narrow pre-hydration
+ * window and for JS-off visitors.
+ */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme]) {
+    color-scheme: light;
+
+    --bg-deepspace: #f8fafc;
+    --bg-surface: #ffffff;
+    --bg-raised: #f1f5f9;
+    --bg-overlay: #ffffff;
+    --border: #e2e8f0;
+    --border-bright: #cbd5e1;
+
+    --artemis-white: #0f172a;
+    --artemis-space: #475569;
+    --artemis-shadow: #64748b;
+    --artemis-earth: #1d91c9;
+
+    --status-critical: #dc2626;
+    --status-warning: #d97706;
+    --status-success: #15803d;
+    --status-info: #0e7fbf;
+    --status-muted: #64748b;
+
+    --tint-critical: rgb(220 38 38 / 0.10);
+    --tint-critical-border: rgb(220 38 38 / 0.28);
+    --tint-critical-soft: rgb(220 38 38 / 0.06);
+    --tint-warning: rgb(217 119 6 / 0.10);
+    --tint-warning-border: rgb(217 119 6 / 0.28);
+    --tint-success: rgb(21 128 61 / 0.10);
+    --tint-success-border: rgb(21 128 61 / 0.28);
+    --tint-info: rgb(14 127 191 / 0.10);
+    --tint-info-border: rgb(14 127 191 / 0.28);
+    --tint-muted: rgb(100 116 139 / 0.12);
+    --tint-muted-border: rgb(100 116 139 / 0.26);
+    --tint-earth: rgb(29 145 201 / 0.10);
+    --tint-earth-border: rgb(29 145 201 / 0.26);
+    --tint-accent: rgb(11 61 145 / 0.10);
+    --tint-accent-border: rgb(29 145 201 / 0.35);
+
+    --accent-foreground: #0B3D91;
+    --chip-on-accent: #ffffff;
+
+    --accent-gradient: linear-gradient(
+      135deg,
+      #0B3D91 0%,
+      #1d91c9 55%,
+      #dc2626 100%
+    );
+
+    --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.08);
+    --shadow-md: 0 4px 12px rgba(15, 23, 42, 0.08);
+    --shadow-lg: 0 12px 32px rgba(15, 23, 42, 0.12);
+    --overlay-backdrop: rgba(15, 23, 42, 0.35);
+
+    --foreground: #0f172a;
+  }
 }
 
 html,
@@ -99,29 +311,29 @@ body {
 .status-muted    { color: var(--status-muted); }
 
 .badge-critical {
-  background: rgb(252 61 33 / 0.15);
+  background: var(--tint-critical);
   color: var(--status-critical);
-  border: 1px solid rgb(252 61 33 / 0.3);
+  border: 1px solid var(--tint-critical-border);
 }
 .badge-warning {
-  background: rgb(224 139 39 / 0.15);
+  background: var(--tint-warning);
   color: var(--status-warning);
-  border: 1px solid rgb(224 139 39 / 0.3);
+  border: 1px solid var(--tint-warning-border);
 }
 .badge-success {
-  background: rgb(39 224 161 / 0.15);
+  background: var(--tint-success);
   color: var(--status-success);
-  border: 1px solid rgb(39 224 161 / 0.3);
+  border: 1px solid var(--tint-success-border);
 }
 .badge-info {
-  background: rgb(39 170 225 / 0.15);
+  background: var(--tint-info);
   color: var(--status-info);
-  border: 1px solid rgb(39 170 225 / 0.3);
+  border: 1px solid var(--tint-info-border);
 }
 .badge-muted {
-  background: rgb(88 89 91 / 0.18);
+  background: var(--tint-muted);
   color: var(--artemis-space);
-  border: 1px solid rgb(88 89 91 / 0.35);
+  border: 1px solid var(--tint-muted-border);
 }
 
 /* ── Accent gradient text (hero only) ──────── */
@@ -157,7 +369,7 @@ body {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: var(--border);
+  background: var(--border-bright);
   border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {

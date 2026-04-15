@@ -67,7 +67,7 @@ export default function RawLogsPanel({
           ) : (
             <ChevronRight size={14} strokeWidth={1.5} className="text-[var(--text-muted)]" />
           )}
-          <span className="font-display text-[12px] uppercase tracking-[0.14em] text-white">
+          <span className="font-display text-[12px] uppercase tracking-[0.14em] text-[var(--artemis-white)]">
             {title}
           </span>
           <span className="font-mono text-[11px] text-[var(--text-muted)]">
@@ -109,7 +109,7 @@ export default function RawLogsPanel({
                         style={{ background: severityColor(log.severity_text) }}
                         className="mt-[5px] h-[6px] w-[6px] flex-shrink-0 rounded-full"
                       />
-                      <span className="flex-1 break-words font-mono text-[11px] text-gray-200">
+                      <span className="flex-1 break-words font-mono text-[11px] text-[var(--artemis-white)]">
                         {isExpanded ? log.body : snippet(log.body)}
                       </span>
                     </button>

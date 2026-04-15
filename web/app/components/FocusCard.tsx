@@ -121,14 +121,14 @@ export default function FocusCard({
           </span>
         </div>
 
-        <h2 className="text-xl font-semibold leading-snug text-white md:text-2xl">
+        <h2 className="text-xl font-semibold leading-snug text-[var(--artemis-white)] md:text-2xl">
           {headline}
         </h2>
 
         <div className="flex flex-wrap items-center gap-3 font-mono text-[11px] text-[var(--text-muted)]">
           <span>
             phase{" "}
-            <span className="text-white">
+            <span className="text-[var(--artemis-white)]">
               {turn.phase || "—"}
             </span>
           </span>
@@ -136,20 +136,20 @@ export default function FocusCard({
           <span className="inline-flex items-center gap-1">
             <Wrench size={12} strokeWidth={1.5} />
             tools{" "}
-            <span className="text-white">{turn.tool_call_count}</span>
+            <span className="text-[var(--artemis-white)]">{turn.tool_call_count}</span>
           </span>
           {currentTool && (
             <>
               <span>·</span>
               <span>
-                last <span className="text-white">{currentTool}</span>
+                last <span className="text-[var(--artemis-white)]">{currentTool}</span>
               </span>
             </>
           )}
           <span>·</span>
           <span>
             subagents{" "}
-            <span className="text-white">{turn.subagent_count}</span>
+            <span className="text-[var(--artemis-white)]">{turn.subagent_count}</span>
           </span>
           <span>·</span>
           <span
@@ -157,7 +157,7 @@ export default function FocusCard({
               turn.error_count > 0 ? "text-[var(--status-critical)]" : undefined
             }
           >
-            errors <span className="text-white">{turn.error_count}</span>
+            errors <span className="text-[var(--artemis-white)]">{turn.error_count}</span>
           </span>
         </div>
       </div>
@@ -172,7 +172,7 @@ export default function FocusCard({
         </p>
         <Link
           href={turnHref}
-          className="inline-flex items-center gap-2 rounded border border-[var(--border-bright)] bg-[var(--bg-raised)] px-4 py-2 font-display text-[12px] tracking-[0.14em] text-white transition-colors hover:bg-[var(--bg-overlay)]"
+          className="inline-flex items-center gap-2 rounded border border-[var(--border-bright)] bg-[var(--bg-raised)] px-4 py-2 font-display text-[12px] tracking-[0.14em] text-[var(--artemis-white)] transition-colors hover:bg-[var(--bg-overlay)]"
         >
           OPEN TURN DETAIL
           <ArrowRight size={14} strokeWidth={1.5} />

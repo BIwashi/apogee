@@ -253,7 +253,7 @@ function QueueRow({
       </div>
 
       <p
-        className="mt-2 whitespace-pre-wrap font-mono text-[11px] leading-snug text-gray-200"
+        className="mt-2 whitespace-pre-wrap font-mono text-[11px] leading-snug text-[var(--artemis-white)]"
         style={{ wordBreak: "break-word" }}
       >
         {shownBody}

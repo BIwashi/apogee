@@ -7,60 +7,183 @@
  *
  * Everything here is a pure data export (no React, no Tailwind). Consumers
  * that need inline styles (charts, SVG, d3) pull from this module; consumers
- * that render HTML prefer the corresponding CSS variables.
+ * that render HTML prefer the corresponding CSS variables so the light /
+ * dark theme override flows through automatically.
+ *
+ * PR #33 splits the registry into `dark` / `light` / `shared` buckets. Most
+ * callers stay on the legacy top-level exports (`artemis`, `surface`,
+ * `status`, `accentGradient`) — those continue to return the **dark** hex
+ * values so existing chart code keeps rendering. New code that actually
+ * needs a theme-aware hex should read from `DESIGN_TOKENS[theme]`.
  */
 
-// ── Artemis core palette ────────────────────────────────────
+// ── Theme type ──────────────────────────────────────────────
+export type ThemeName = "dark" | "light";
+
+// ── Shared (theme-independent) ──────────────────────────────
+const shared = {
+  accent: {
+    red: "#FC3D21",
+    blue: "#0B3D91",
+    // earth is one of the few accents that shifts slightly between themes;
+    // it lives on the theme buckets below too. The shared value is the
+    // dark-mode source of truth for chart code that wants a stable color.
+    earth: "#27AAE1",
+  },
+  palette: {
+    // 10-color session palette — identical in both themes. These are
+    // intentionally light-leaning so they read fine on both a dark and
+    // a white page; do NOT use them for semantic status.
+    sessions: [
+      "#5BB8F0",
+      "#7FAEF6",
+      "#A8A2F1",
+      "#CE97D9",
+      "#E894B4",
+      "#F29A85",
+      "#E5A962",
+      "#BDB84D",
+      "#7FC96E",
+      "#4BD2A5",
+    ],
+  },
+  typography: {
+    display: `"Space Grotesk", -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Helvetica, Arial, sans-serif`,
+    body: `-apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Helvetica, Arial, sans-serif`,
+    mono: `ui-monospace, "SF Mono", Menlo, Monaco, monospace`,
+  },
+  icon: {
+    library: "lucide-react",
+    defaultSize: 16,
+    defaultStrokeWidth: 1.5,
+  },
+} as const;
+
+// ── Dark palette ────────────────────────────────────────────
+const darkTokens = {
+  bg: {
+    deepspace: "#06080f",
+    surface: "#0c1018",
+    raised: "#141a24",
+    overlay: "#1c2333",
+  },
+  border: {
+    default: "#1e2a3a",
+    bright: "#2a3a50",
+  },
+  text: {
+    primary: "#FFFFFF",
+    secondary: "#A7A9AC",
+    tertiary: "#58595B",
+  },
+  accent: {
+    red: "#FC3D21",
+    blue: "#0B3D91",
+    earth: "#27AAE1",
+  },
+  status: {
+    critical: "#FC3D21",
+    warning: "#E08B27",
+    success: "#27E0A1",
+    info: "#27AAE1",
+    muted: "#58595B",
+  },
+  shadow: {
+    sm: "0 1px 2px rgba(0, 0, 0, 0.40)",
+    md: "0 4px 12px rgba(0, 0, 0, 0.50)",
+    lg: "0 12px 32px rgba(0, 0, 0, 0.60)",
+  },
+  accentGradient:
+    "linear-gradient(135deg, #0B3D91 0%, #27AAE1 50%, #FC3D21 100%)",
+} as const;
+
+// ── Light palette ───────────────────────────────────────────
+const lightTokens = {
+  bg: {
+    deepspace: "#f8fafc",
+    surface: "#ffffff",
+    raised: "#f1f5f9",
+    overlay: "#ffffff",
+  },
+  border: {
+    default: "#e2e8f0",
+    bright: "#cbd5e1",
+  },
+  text: {
+    primary: "#0f172a",
+    secondary: "#475569",
+    tertiary: "#64748b",
+  },
+  accent: {
+    red: "#FC3D21",
+    blue: "#0B3D91",
+    earth: "#1d91c9",
+  },
+  status: {
+    critical: "#dc2626",
+    warning: "#d97706",
+    success: "#15803d",
+    info: "#0e7fbf",
+    muted: "#64748b",
+  },
+  shadow: {
+    sm: "0 1px 2px rgba(15, 23, 42, 0.08)",
+    md: "0 4px 12px rgba(15, 23, 42, 0.08)",
+    lg: "0 12px 32px rgba(15, 23, 42, 0.12)",
+  },
+  accentGradient:
+    "linear-gradient(135deg, #0B3D91 0%, #1d91c9 55%, #dc2626 100%)",
+} as const;
+
+// ── Canonical registry ──────────────────────────────────────
+export const DESIGN_TOKENS = {
+  dark: darkTokens,
+  light: lightTokens,
+  shared,
+} as const;
+
+// ── Legacy top-level exports (dark-mode values) ─────────────
+// These are preserved verbatim so existing call sites keep compiling.
+// New code should prefer `DESIGN_TOKENS[theme]` when it needs a value
+// that actually shifts between palettes.
+
 export const artemis = {
-  red: "#FC3D21",
-  blue: "#0B3D91",
-  earth: "#27AAE1",
-  shadow: "#58595B",
-  space: "#A7A9AC",
-  white: "#FFFFFF",
+  red: darkTokens.accent.red,
+  blue: darkTokens.accent.blue,
+  earth: darkTokens.accent.earth,
+  shadow: darkTokens.text.tertiary,
+  space: darkTokens.text.secondary,
+  white: darkTokens.text.primary,
   black: "#000000",
 } as const;
 
-// ── Dark UI surfaces ────────────────────────────────────────
 export const surface = {
-  deepspace: "#06080f",
-  surface: "#0c1018",
-  raised: "#141a24",
-  overlay: "#1c2333",
-  border: "#1e2a3a",
-  borderBright: "#2a3a50",
+  deepspace: darkTokens.bg.deepspace,
+  surface: darkTokens.bg.surface,
+  raised: darkTokens.bg.raised,
+  overlay: darkTokens.bg.overlay,
+  border: darkTokens.border.default,
+  borderBright: darkTokens.border.bright,
 } as const;
 
-// ── Semantic status ─────────────────────────────────────────
 export const status = {
-  critical: "#FC3D21",
-  warning: "#E08B27",
-  success: "#27E0A1",
-  info: "#27AAE1",
-  muted: "#58595B",
+  critical: darkTokens.status.critical,
+  warning: darkTokens.status.warning,
+  success: darkTokens.status.success,
+  info: darkTokens.status.info,
+  muted: darkTokens.status.muted,
 } as const;
 
 export type StatusKey = keyof typeof status;
 
-// ── Accent gradient ─────────────────────────────────────────
-export const accentGradient =
-  "linear-gradient(135deg, #0B3D91 0%, #27AAE1 50%, #FC3D21 100%)";
+export const accentGradient = darkTokens.accentGradient;
 
-// ── Typography ──────────────────────────────────────────────
-//
-// Display font is Space Grotesk (SIL Open Font License 1.1) by Florian
-// Karsten. See `docs/credits.md` and `web/public/fonts/SpaceGrotesk-OFL.txt`.
-// Body and mono keep the operating system's native UI stack so nothing
-// else needs to be bundled.
 export const TYPOGRAPHY = {
-  display: `"Space Grotesk", -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Helvetica, Arial, sans-serif`,
-  body: `-apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Helvetica, Arial, sans-serif`,
-  mono: `ui-monospace, "SF Mono", Menlo, Monaco, monospace`,
+  display: shared.typography.display,
+  body: shared.typography.body,
+  mono: shared.typography.mono,
 } as const;
 
-// Back-compat alias for existing consumers. Prefer `TYPOGRAPHY` going
-// forward; the lowercase export carries extra metadata fields used by
-// one-off inline-style call sites (charts, SVG).
 export const typography = {
   display: TYPOGRAPHY.display,
   body: TYPOGRAPHY.body,
@@ -69,12 +192,7 @@ export const typography = {
   displayWeight: 700,
 } as const;
 
-// ── Icon library ────────────────────────────────────────────
-export const icon = {
-  library: "lucide-react",
-  defaultSize: 16,
-  defaultStrokeWidth: 1.5,
-} as const;
+export const icon = shared.icon;
 
 // ── 10-color session palette ────────────────────────────────
 //
@@ -86,18 +204,7 @@ export const icon = {
 //
 // These colors are intended for series coloring (per-session lines, bars,
 // dots). Do NOT use them for semantic status — use `status.*` for that.
-export const sessionPalette: readonly string[] = [
-  "#5BB8F0", // 1  ~hue 240  — cyan-blue   (echoes artemis-earth)
-  "#7FAEF6", // 2  ~hue 264  — periwinkle
-  "#A8A2F1", // 3  ~hue 288  — lavender
-  "#CE97D9", // 4  ~hue 312  — orchid
-  "#E894B4", // 5  ~hue 336  — rose
-  "#F29A85", // 6  ~hue   0  — salmon      (warm shift of artemis-red)
-  "#E5A962", // 7  ~hue  48  — amber
-  "#BDB84D", // 8  ~hue  96  — citron
-  "#7FC96E", // 9  ~hue 132  — leaf
-  "#4BD2A5", // 10 ~hue 168  — seafoam     (echoes status-success)
-] as const;
+export const sessionPalette: readonly string[] = shared.palette.sessions;
 
 /**
  * sessionColor — deterministic mapping from a session id (or any string) to

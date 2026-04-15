@@ -57,6 +57,72 @@ linear-gradient(135deg, #0B3D91 0%, #27AAE1 50%, #FC3D21 100%)
 
 ---
 
+## ライトテーマ（PR #33）
+
+apogee は PR #33 までダーク専用でした。2 つめのパレットは
+`web/app/globals.css` の `:root[data-theme="light"]` にぶら下がり、
+`web/app/lib/theme.tsx` の `ThemeProvider` が駆動します。ユーザー向け
+コントロールは 3 か所あります。
+
+1. TopRibbon の三状態トグル（`Monitor` / `Sun` / `Moon` アイコン）
+2. `/settings` の **Appearance** セグメント
+3. `/styleguide` の先頭にあるトグル — デザイナーがページを離れずに
+   両テーマの全トークンを確認できます
+
+`preference` は `system → light → dark` の順で循環します。`system`
+は `matchMedia` リスナー経由で `prefers-color-scheme` を追跡し、
+`apogee:theme` localStorage キーを削除します。`light` / `dark` は
+明示的な上書きとして永続化されます。`app/layout.tsx` のインライン
+スクリプトは React がハイドレートする**前**に `data-theme` をセット
+するため、初回ペイントで誤テーマがフラッシュすることはありません。
+
+### パレット比較
+
+| Token             | Dark       | Light      | 役割                     |
+| ----------------- | ---------- | ---------- | ------------------------ |
+| `--bg-deepspace`  | `#06080f`  | `#f8fafc`  | ページ背景               |
+| `--bg-surface`    | `#0c1018`  | `#ffffff`  | カード/サイドバー背景    |
+| `--bg-raised`     | `#141a24`  | `#f1f5f9`  | ホバー/浮上面            |
+| `--bg-overlay`    | `#1c2333`  | `#ffffff`  | モーダル/ドロップダウン  |
+| `--border`        | `#1e2a3a`  | `#e2e8f0`  | 既定のボーダー           |
+| `--border-bright` | `#2a3a50`  | `#cbd5e1`  | アクティブボーダー       |
+| `--artemis-white` | `#ffffff`  | `#0f172a`  | プライマリ文字（反転）   |
+| `--artemis-space` | `#A7A9AC`  | `#475569`  | セカンダリ文字           |
+| `--artemis-shadow`| `#58595B`  | `#64748b`  | ターシャリ文字           |
+| `--artemis-red`   | `#FC3D21`  | `#FC3D21`  | アクセント（共有）       |
+| `--artemis-blue`  | `#0B3D91`  | `#0B3D91`  | アクセント（共有）       |
+| `--artemis-earth` | `#27AAE1`  | `#1d91c9`  | アクセント（少し濃く）   |
+| `--status-critical` | `#FC3D21` | `#dc2626` | critical                 |
+| `--status-warning`  | `#E08B27` | `#d97706` | warning                  |
+| `--status-success`  | `#27E0A1` | `#15803d` | success                  |
+| `--status-info`     | `#27AAE1` | `#0e7fbf` | info                     |
+| `--status-muted`    | `#58595B` | `#64748b` | muted                    |
+
+### シャドウ/オーバーレイ
+
+ライト版のドロップシャドウは純黒ではなく柔らかなスレートです。
+
+| Token                | Dark                             | Light                             |
+| -------------------- | -------------------------------- | --------------------------------- |
+| `--shadow-sm`        | `0 1px 2px rgba(0,0,0,0.4)`     | `0 1px 2px rgba(15,23,42,0.08)`  |
+| `--shadow-md`        | `0 4px 12px rgba(0,0,0,0.5)`    | `0 4px 12px rgba(15,23,42,0.08)` |
+| `--shadow-lg`        | `0 12px 32px rgba(0,0,0,0.6)`   | `0 12px 32px rgba(15,23,42,0.12)`|
+| `--overlay-backdrop` | `rgba(0,0,0,0.60)`              | `rgba(15,23,42,0.35)`             |
+
+### 設計原則
+
+- **ダークが引き続き既定値。** 属性なしの `:root` はダークに解決されます。
+  `data-theme="light"` を付与するとライトに切り替わります。
+- **アクセントはブランド維持。** NASA の赤と青は両テーマで同じで、
+  earth のみ明度を数段階下げてチャートが白背景でも読めるようにします。
+- **ステータスは色相を保ち明度だけ変える。** 5 つのセマンティック
+  ステータス（critical / warning / success / info / muted）は
+  認識性を保ったまま明るい面で視認できるように調整しています。
+- **構造変更なし。** 既に全コンポーネントが CSS 変数を使っているため、
+  PR はパレット派生と配線だけです。
+
+---
+
 ## タイポグラフィ
 
 ### ディスプレイ — Artemis Inter

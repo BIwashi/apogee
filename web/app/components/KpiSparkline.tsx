@@ -39,7 +39,7 @@ export default function KpiSparkline({
         <span className="font-display text-[10px] tracking-[0.14em] text-[var(--text-muted)]">
           {label}
         </span>
-        <span className="font-mono text-[18px] tabular-nums text-white">
+        <span className="font-mono text-[18px] tabular-nums text-[var(--artemis-white)]">
           {format(latest)}
         </span>
       </div>

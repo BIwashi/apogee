@@ -34,21 +34,21 @@ function decisionTone(event: HITLEvent): {
     case "allow":
       return {
         bg: "var(--status-success)",
-        fg: "#06080f",
+        fg: "var(--chip-on-accent)",
         label: "allow",
         icon: Check,
       };
     case "deny":
       return {
         bg: "var(--status-critical)",
-        fg: "#ffffff",
+        fg: "var(--chip-on-accent)",
         label: "deny",
         icon: X,
       };
     case "custom":
       return {
         bg: "var(--artemis-earth)",
-        fg: "#06080f",
+        fg: "var(--chip-on-accent)",
         label: "custom",
         icon: Check,
       };
@@ -82,7 +82,7 @@ export default function HITLTimelineItem({ event }: HITLTimelineItemProps) {
           <Icon size={9} strokeWidth={2.5} className="mb-[1px] mr-1 inline" />
           {tone.label}
         </span>
-        <span className="truncate font-mono text-[10px] text-gray-200">
+        <span className="truncate font-mono text-[10px] text-[var(--artemis-white)]">
           {event.question}
         </span>
       </div>

@@ -21,7 +21,7 @@ export default function FocusCardEmpty() {
         />
       </div>
       <div className="flex flex-col gap-2">
-        <p className="font-display text-[13px] tracking-[0.14em] text-white">
+        <p className="font-display text-[13px] tracking-[0.14em] text-[var(--artemis-white)]">
           NO LIVE TURN
         </p>
         <p className="max-w-md text-[12px] text-[var(--text-muted)]">
@@ -34,14 +34,14 @@ export default function FocusCardEmpty() {
         <li className="flex gap-2">
           <span className="text-[var(--artemis-space)]">01</span>
           <span>
-            <code className="text-white">apogee serve</code> keeps the
+            <code className="text-[var(--artemis-white)]">apogee serve</code> keeps the
             collector running.
           </span>
         </li>
         <li className="flex gap-2">
           <span className="text-[var(--artemis-space)]">02</span>
           <span>
-            <code className="text-white">apogee init</code> wires Claude
+            <code className="text-[var(--artemis-white)]">apogee init</code> wires Claude
             Code&apos;s hooks into the collector.
           </span>
         </li>

@@ -153,7 +153,7 @@ export default function SideDrawer({
         style={{ width: `${widthPx}px` }}
       >
         <header className="flex items-center justify-between gap-3 border-b border-[var(--border)] px-4 py-3">
-          <h2 className="font-display text-[12px] uppercase tracking-[0.16em] text-white">
+          <h2 className="font-display text-[12px] uppercase tracking-[0.16em] text-[var(--artemis-white)]">
             {title}
           </h2>
           <button
@@ -161,7 +161,7 @@ export default function SideDrawer({
             type="button"
             onClick={onClose}
             aria-label="Close drawer"
-            className="rounded p-1 text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-raised)] hover:text-white focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--border-bright)]"
+            className="rounded p-1 text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-raised)] hover:text-[var(--artemis-white)] focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--border-bright)]"
           >
             <X size={16} strokeWidth={1.5} />
           </button>

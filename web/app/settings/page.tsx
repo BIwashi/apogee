@@ -1,7 +1,17 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { CheckCircle2, Circle, Copy, Languages, RotateCcw, Save } from "lucide-react";
+import {
+  CheckCircle2,
+  Circle,
+  Copy,
+  Languages,
+  Monitor,
+  Moon,
+  RotateCcw,
+  Save,
+  Sun,
+} from "lucide-react";
 import { mutate } from "swr";
 
 import Card from "../components/Card";
@@ -19,6 +29,8 @@ import {
   resetPreferences,
 } from "../lib/preferences";
 import { useApi } from "../lib/swr";
+import type { Preference } from "../lib/theme";
+import { useTheme } from "../lib/theme";
 
 const SYSTEM_PROMPT_MAX = 2048;
 
@@ -55,7 +67,7 @@ function KV({ label, value, mono }: KVProps) {
       <span className="font-display text-[10px] tracking-[0.14em] text-[var(--text-muted)]">
         {label}
       </span>
-      <span className={mono ? "font-mono text-[11px] text-white" : "text-white"}>
+      <span className={mono ? "font-mono text-[11px] text-[var(--artemis-white)]" : "text-[var(--artemis-white)]"}>
         {value}
       </span>
     </div>
@@ -75,7 +87,7 @@ export default function SettingsPage() {
     <div className="mx-auto flex max-w-6xl flex-col gap-6">
       <header className="flex flex-wrap items-end justify-between gap-4 pt-6">
         <div>
-          <h1 className="font-display text-3xl tracking-[0.16em] text-white">
+          <h1 className="font-display text-3xl tracking-[0.16em] text-[var(--artemis-white)]">
             SETTINGS
           </h1>
           <div className="accent-gradient-bar mt-3 h-[3px] w-32 rounded-full" />
@@ -85,6 +97,8 @@ export default function SettingsPage() {
           </p>
         </div>
       </header>
+
+      <AppearanceSection />
 
       <section>
         <SectionHeader
@@ -194,7 +208,7 @@ export default function SettingsPage() {
             label="Path"
             value={
               <span className="inline-flex items-center gap-2">
-                <code className="text-white">~/.apogee/config.toml</code>
+                <code className="text-[var(--artemis-white)]">~/.apogee/config.toml</code>
                 <Copy
                   size={12}
                   strokeWidth={1.5}
@@ -214,7 +228,7 @@ export default function SettingsPage() {
         <Card>
           <p className="text-[12px] text-[var(--text-muted)]">
             Install the daemon with{" "}
-            <code className="font-mono text-white">apogee daemon install</code>.
+            <code className="font-mono text-[var(--artemis-white)]">apogee daemon install</code>.
             A dashboard installer UI will land in a follow-up.
           </p>
         </Card>
@@ -228,7 +242,7 @@ export default function SettingsPage() {
         <Card>
           <p className="text-[12px] text-[var(--text-muted)]">
             Install hooks with{" "}
-            <code className="font-mono text-white">apogee init</code>. The
+            <code className="font-mono text-[var(--artemis-white)]">apogee init</code>. The
             init command writes <code>~/.claude/settings.json</code> so every
             hook event posts to this collector.
           </p>
@@ -429,7 +443,7 @@ function SummarizerSection() {
               type="button"
               onClick={onSave}
               disabled={!dirty || busy}
-              className="inline-flex items-center gap-2 rounded-md border border-[var(--border-bright)] bg-[var(--bg-raised)] px-3 py-1.5 font-mono text-[12px] text-white hover:bg-[var(--bg-overlay)] disabled:cursor-not-allowed disabled:opacity-40"
+              className="inline-flex items-center gap-2 rounded-md border border-[var(--border-bright)] bg-[var(--bg-raised)] px-3 py-1.5 font-mono text-[12px] text-[var(--artemis-white)] hover:bg-[var(--bg-overlay)] disabled:cursor-not-allowed disabled:opacity-40"
             >
               <Save size={13} strokeWidth={1.5} />
               Save changes
@@ -438,7 +452,7 @@ function SummarizerSection() {
               type="button"
               onClick={onRevert}
               disabled={!dirty || busy}
-              className="inline-flex items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--bg-raised)] px-3 py-1.5 font-mono text-[12px] text-[var(--artemis-space)] hover:bg-[var(--bg-overlay)] hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+              className="inline-flex items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--bg-raised)] px-3 py-1.5 font-mono text-[12px] text-[var(--artemis-space)] hover:bg-[var(--bg-overlay)] hover:text-[var(--artemis-white)] disabled:cursor-not-allowed disabled:opacity-40"
             >
               <RotateCcw size={13} strokeWidth={1.5} />
               Revert
@@ -482,8 +496,8 @@ function LanguageRow({
               onClick={() => onChange(opt)}
               className={`inline-flex items-center gap-1.5 px-3 py-1.5 font-mono text-[12px] ${
                 active
-                  ? "bg-[var(--bg-overlay)] text-white"
-                  : "bg-[var(--bg-raised)] text-[var(--artemis-space)] hover:bg-[var(--bg-overlay)] hover:text-white"
+                  ? "bg-[var(--bg-overlay)] text-[var(--artemis-white)]"
+                  : "bg-[var(--bg-raised)] text-[var(--artemis-space)] hover:bg-[var(--bg-overlay)] hover:text-[var(--artemis-white)]"
               }`}
               aria-pressed={active}
             >
@@ -518,7 +532,7 @@ function ModelOverrideRow({
         value={value}
         placeholder={placeholder}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full max-w-[420px] rounded border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-1.5 font-mono text-[12px] text-white placeholder:text-[var(--text-muted)] focus:border-[var(--border-bright)] focus:outline-none"
+        className="w-full max-w-[420px] rounded border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-1.5 font-mono text-[12px] text-[var(--artemis-white)] placeholder:text-[var(--text-muted)] focus:border-[var(--border-bright)] focus:outline-none"
         aria-label={`${label} override (empty uses the config default)`}
       />
     </div>
@@ -545,7 +559,7 @@ function SystemPromptField({
         value={value}
         maxLength={SYSTEM_PROMPT_MAX}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full rounded border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2 font-mono text-[12px] text-white placeholder:text-[var(--text-muted)] focus:border-[var(--border-bright)] focus:outline-none"
+        className="w-full rounded border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2 font-mono text-[12px] text-[var(--artemis-white)] placeholder:text-[var(--text-muted)] focus:border-[var(--border-bright)] focus:outline-none"
         placeholder="Optional. Appended to the default summarizer instructions."
       />
       <div className="flex items-center justify-between font-mono text-[10px] text-[var(--text-muted)]">
@@ -558,5 +572,90 @@ function SystemPromptField({
         </span>
       </div>
     </div>
+  );
+}
+
+/**
+ * AppearanceSection — segmented control for the theme preference. Writes
+ * immediately on click via `useTheme` (which persists to localStorage and
+ * tracks `prefers-color-scheme` when `system` is active). No save button —
+ * the control is identical in behaviour to the TopRibbon ThemeToggle.
+ */
+const APPEARANCE_OPTIONS: Array<{
+  value: Preference;
+  label: string;
+  icon: typeof Sun;
+  hint: string;
+}> = [
+  {
+    value: "system",
+    label: "System",
+    icon: Monitor,
+    hint: "Follow the OS-level prefers-color-scheme setting.",
+  },
+  {
+    value: "light",
+    label: "Light",
+    icon: Sun,
+    hint: "Always render the light palette.",
+  },
+  {
+    value: "dark",
+    label: "Dark",
+    icon: Moon,
+    hint: "Always render the dark palette (the original apogee look).",
+  },
+];
+
+function AppearanceSection() {
+  const { preference, setPreference, theme } = useTheme();
+  const active = APPEARANCE_OPTIONS.find((o) => o.value === preference);
+  return (
+    <section>
+      <SectionHeader
+        title="Appearance"
+        subtitle="Dashboard theme. Saves immediately — no reload required."
+      />
+      <Card>
+        <div className="flex flex-col gap-3 p-1 text-[12px]">
+          <div
+            className="inline-flex self-start overflow-hidden rounded-md border border-[var(--border)]"
+            role="group"
+            aria-label="Theme preference"
+          >
+            {APPEARANCE_OPTIONS.map((opt) => {
+              const Icon = opt.icon;
+              const isActive = opt.value === preference;
+              return (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => setPreference(opt.value)}
+                  aria-pressed={isActive}
+                  title={opt.hint}
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 font-mono text-[12px] transition-colors ${
+                    isActive
+                      ? "bg-[var(--bg-overlay)] text-[var(--artemis-white)]"
+                      : "bg-[var(--bg-raised)] text-[var(--artemis-space)] hover:bg-[var(--bg-overlay)] hover:text-[var(--artemis-white)]"
+                  }`}
+                >
+                  <Icon size={13} strokeWidth={1.5} />
+                  {opt.label}
+                </button>
+              );
+            })}
+          </div>
+          <p className="font-mono text-[10px] text-[var(--text-muted)]">
+            {active?.hint}{" "}
+            {preference === "system" && (
+              <span>
+                Currently resolving to{" "}
+                <span className="text-[var(--artemis-white)]">{theme}</span>.
+              </span>
+            )}
+          </p>
+        </div>
+      </Card>
+    </section>
   );
 }

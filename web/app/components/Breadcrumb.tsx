@@ -27,7 +27,7 @@ export default function Breadcrumb({ segments }: BreadcrumbProps) {
         const isLast = idx === segments.length - 1;
         const cls = isLast
           ? "font-mono text-[var(--accent)]"
-          : "font-mono hover:text-gray-200";
+          : "font-mono hover:text-[var(--artemis-white)]";
         return (
           <span key={`${segment.label}-${idx}`} className="inline-flex items-center gap-1">
             {idx > 0 && (

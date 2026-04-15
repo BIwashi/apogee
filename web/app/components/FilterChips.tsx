@@ -91,7 +91,7 @@ export default function FilterChips({ active, onChange }: FilterChipsProps) {
           "inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] font-medium transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--border-bright)]";
         const tone = isActive
           ? "border-[var(--accent)] bg-[var(--accent)]/10 text-[var(--accent)]"
-          : "border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-muted)] hover:border-[var(--border-bright)] hover:text-gray-200";
+          : "border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-muted)] hover:border-[var(--border-bright)] hover:text-[var(--artemis-white)]";
         return (
           <button
             key={key}

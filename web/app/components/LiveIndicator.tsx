@@ -35,7 +35,7 @@ export default function LiveIndicator({ status: statusOverride }: LiveIndicatorP
   const { label, color } = COLOR_BY_STATUS[status];
   const pulsing = status === "open" || status === "connecting";
   return (
-    <span className="inline-flex items-center gap-2 font-display text-[11px] tracking-[0.16em] text-white">
+    <span className="inline-flex items-center gap-2 font-display text-[11px] tracking-[0.16em] text-[var(--artemis-white)]">
       <span className="relative inline-flex h-2 w-2">
         {pulsing && (
           <span

@@ -7,7 +7,10 @@ import {
   Clock,
   Languages,
   Layers,
+  Monitor,
+  Moon,
   RefreshCw,
+  Sun,
 } from "lucide-react";
 import { mutate } from "swr";
 
@@ -19,6 +22,8 @@ import type {
 import { patchPreferences } from "../lib/preferences";
 import { useRefresh } from "../lib/refresh";
 import { useApi } from "../lib/swr";
+import type { Preference } from "../lib/theme";
+import { useTheme } from "../lib/theme";
 import {
   DEFAULT_TIME_RANGE_VALUE,
   TIME_RANGE_PRESETS,
@@ -73,7 +78,7 @@ export default function TopRibbon() {
         {/* Wordmark */}
         <Link
           href="/"
-          className="font-display text-[13px] tracking-[0.2em] text-white"
+          className="font-display text-[13px] tracking-[0.2em] text-[var(--artemis-white)]"
           title="apogee — clear selection"
         >
           APOGEE
@@ -86,13 +91,13 @@ export default function TopRibbon() {
         <button
           type="button"
           onClick={() => setPaletteOpen(true)}
-          className="inline-flex items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--bg-raised)] px-3 py-1.5 font-mono text-[12px] text-[var(--artemis-space)] hover:bg-[var(--bg-overlay)] hover:text-white focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--border-bright)]"
+          className="inline-flex items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--bg-raised)] px-3 py-1.5 font-mono text-[12px] text-[var(--artemis-space)] hover:bg-[var(--bg-overlay)] hover:text-[var(--artemis-white)] focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--border-bright)]"
           title="Open session palette (⌘K)"
         >
           <Layers size={13} strokeWidth={1.5} />
           <span>
             {selection.sess ? (
-              <span className="text-white">
+              <span className="text-[var(--artemis-white)]">
                 {shortId(selection.sess)}
               </span>
             ) : (
@@ -106,13 +111,16 @@ export default function TopRibbon() {
         <TimeRangePicker />
         <RibbonDivider />
 
+        <ThemeToggle />
+        <RibbonDivider />
+
         <LanguagePicker />
 
         <div className="flex flex-1 items-center justify-end gap-3">
           <button
             type="button"
             onClick={() => refresh.bump()}
-            className="rounded-md border border-[var(--border)] bg-[var(--bg-raised)] p-1.5 text-[var(--artemis-space)] hover:bg-[var(--bg-overlay)] hover:text-white focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--border-bright)]"
+            className="rounded-md border border-[var(--border)] bg-[var(--bg-raised)] p-1.5 text-[var(--artemis-space)] hover:bg-[var(--bg-overlay)] hover:text-[var(--artemis-white)] focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--border-bright)]"
             title="Refresh dashboard"
             aria-label="Refresh"
           >
@@ -148,13 +156,13 @@ function EnvSelector() {
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="inline-flex items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--bg-raised)] px-3 py-1.5 font-mono text-[12px] text-[var(--artemis-space)] hover:bg-[var(--bg-overlay)] hover:text-white"
+        className="inline-flex items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--bg-raised)] px-3 py-1.5 font-mono text-[12px] text-[var(--artemis-space)] hover:bg-[var(--bg-overlay)] hover:text-[var(--artemis-white)]"
       >
         <span>{label}</span>
         <ChevronsUpDown size={12} strokeWidth={1.5} className="opacity-60" />
       </button>
       {open && (
-        <div className="absolute left-0 top-full z-50 mt-1 min-w-[180px] rounded-md border border-[var(--border-bright)] bg-[var(--bg-overlay)] shadow-[0_12px_32px_rgba(0,0,0,0.6)]">
+        <div className="absolute left-0 top-full z-50 mt-1 min-w-[180px] rounded-md border border-[var(--border-bright)] bg-[var(--bg-overlay)] shadow-[var(--shadow-lg)]">
           <button
             type="button"
             onClick={() => {
@@ -162,7 +170,7 @@ function EnvSelector() {
               setOpen(false);
             }}
             className={`block w-full px-3 py-1.5 text-left font-mono text-[12px] hover:bg-[var(--bg-raised)] ${
-              !selection.env ? "text-white" : "text-[var(--artemis-space)]"
+              !selection.env ? "text-[var(--artemis-white)]" : "text-[var(--artemis-space)]"
             }`}
           >
             env: all
@@ -176,7 +184,7 @@ function EnvSelector() {
                 setOpen(false);
               }}
               className={`block w-full px-3 py-1.5 text-left font-mono text-[12px] hover:bg-[var(--bg-raised)] ${
-                selection.env === app ? "text-white" : "text-[var(--artemis-space)]"
+                selection.env === app ? "text-[var(--artemis-white)]" : "text-[var(--artemis-space)]"
               }`}
             >
               {app}
@@ -208,14 +216,14 @@ function TimeRangePicker() {
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="inline-flex items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--bg-raised)] px-3 py-1.5 font-mono text-[12px] text-[var(--artemis-space)] hover:bg-[var(--bg-overlay)] hover:text-white"
+        className="inline-flex items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--bg-raised)] px-3 py-1.5 font-mono text-[12px] text-[var(--artemis-space)] hover:bg-[var(--bg-overlay)] hover:text-[var(--artemis-white)]"
       >
         <Clock size={13} strokeWidth={1.5} />
         <span>{selection.time.label}</span>
         <ChevronsUpDown size={12} strokeWidth={1.5} className="opacity-60" />
       </button>
       {open && (
-        <div className="absolute left-0 top-full z-50 mt-1 min-w-[220px] rounded-md border border-[var(--border-bright)] bg-[var(--bg-overlay)] p-1 shadow-[0_12px_32px_rgba(0,0,0,0.6)]">
+        <div className="absolute left-0 top-full z-50 mt-1 min-w-[220px] rounded-md border border-[var(--border-bright)] bg-[var(--bg-overlay)] p-1 shadow-[var(--shadow-lg)]">
           {TIME_RANGE_PRESETS.map((preset) => {
             const active =
               selection.time.shorthand === preset.value ||
@@ -231,7 +239,7 @@ function TimeRangePicker() {
                   setOpen(false);
                 }}
                 className={`block w-full rounded px-3 py-1.5 text-left font-mono text-[12px] hover:bg-[var(--bg-raised)] ${
-                  active ? "text-white" : "text-[var(--artemis-space)]"
+                  active ? "text-[var(--artemis-white)]" : "text-[var(--artemis-space)]"
                 }`}
               >
                 {preset.label}
@@ -247,18 +255,18 @@ function TimeRangePicker() {
                 type="datetime-local"
                 value={customSince}
                 onChange={(e) => setCustomSince(e.target.value)}
-                className="rounded border border-[var(--border)] bg-[var(--bg-surface)] px-2 py-1 font-mono text-[11px] text-white"
+                className="rounded border border-[var(--border)] bg-[var(--bg-surface)] px-2 py-1 font-mono text-[11px] text-[var(--artemis-white)]"
               />
               <input
                 type="datetime-local"
                 value={customUntil}
                 onChange={(e) => setCustomUntil(e.target.value)}
-                className="rounded border border-[var(--border)] bg-[var(--bg-surface)] px-2 py-1 font-mono text-[11px] text-white"
+                className="rounded border border-[var(--border)] bg-[var(--bg-surface)] px-2 py-1 font-mono text-[11px] text-[var(--artemis-white)]"
               />
               <button
                 type="button"
                 onClick={applyCustom}
-                className="mt-1 rounded border border-[var(--border-bright)] bg-[var(--bg-raised)] px-2 py-1 text-[11px] text-white hover:bg-[var(--bg-overlay)]"
+                className="mt-1 rounded border border-[var(--border-bright)] bg-[var(--bg-raised)] px-2 py-1 text-[11px] text-[var(--artemis-white)] hover:bg-[var(--bg-overlay)]"
               >
                 Apply
               </button>
@@ -340,7 +348,7 @@ function LanguagePicker() {
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--bg-raised)] px-2 py-1.5 font-mono text-[12px] text-[var(--artemis-space)] hover:bg-[var(--bg-overlay)] hover:text-white focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--border-bright)]"
+        className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--bg-raised)] px-2 py-1.5 font-mono text-[12px] text-[var(--artemis-space)] hover:bg-[var(--bg-overlay)] hover:text-[var(--artemis-white)] focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--border-bright)]"
         title="Summarizer output language"
         aria-label={`Summarizer language: ${label}`}
         aria-haspopup="listbox"
@@ -354,7 +362,7 @@ function LanguagePicker() {
         <div
           role="listbox"
           aria-label="Summarizer language"
-          className="absolute right-0 top-full z-50 mt-1 min-w-[80px] rounded-md border border-[var(--border-bright)] bg-[var(--bg-overlay)] p-1 shadow-[0_12px_32px_rgba(0,0,0,0.6)]"
+          className="absolute right-0 top-full z-50 mt-1 min-w-[80px] rounded-md border border-[var(--border-bright)] bg-[var(--bg-overlay)] p-1 shadow-[var(--shadow-lg)]"
         >
           {LANGUAGE_OPTIONS.map((opt) => {
             const active = opt.value === current;
@@ -366,7 +374,7 @@ function LanguagePicker() {
                 aria-selected={active}
                 onClick={() => apply(opt.value)}
                 className={`block w-full rounded px-3 py-1.5 text-left font-mono text-[12px] hover:bg-[var(--bg-raised)] ${
-                  active ? "text-white" : "text-[var(--artemis-space)]"
+                  active ? "text-[var(--artemis-white)]" : "text-[var(--artemis-space)]"
                 }`}
               >
                 {opt.label}
@@ -376,5 +384,44 @@ function LanguagePicker() {
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * ThemeToggle — cycles through `system → light → dark → system`. The
+ * current state drives both the icon (`Monitor` / `Sun` / `Moon`) and
+ * the accessible label so the button reads naturally to screen readers.
+ * Tab-reachable and Enter / Space activated via the native button.
+ */
+const THEME_ORDER: Preference[] = ["system", "light", "dark"];
+const THEME_LABEL: Record<Preference, string> = {
+  system: "system",
+  light: "light",
+  dark: "dark",
+};
+
+function nextPreference(p: Preference): Preference {
+  const idx = THEME_ORDER.indexOf(p);
+  return THEME_ORDER[(idx + 1) % THEME_ORDER.length]!;
+}
+
+function ThemeToggle() {
+  const { preference, setPreference } = useTheme();
+  const next = nextPreference(preference);
+  const Icon =
+    preference === "system" ? Monitor : preference === "light" ? Sun : Moon;
+
+  const label = `Theme: ${THEME_LABEL[preference]} (click to switch to ${THEME_LABEL[next]})`;
+
+  return (
+    <button
+      type="button"
+      onClick={() => setPreference(next)}
+      className="inline-flex h-[28px] w-[28px] items-center justify-center rounded-md border border-[var(--border)] bg-[var(--bg-raised)] text-[var(--artemis-space)] hover:bg-[var(--bg-overlay)] hover:text-[var(--artemis-white)] focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--border-bright)]"
+      title={label}
+      aria-label={label}
+    >
+      <Icon size={13} strokeWidth={1.5} />
+    </button>
   );
 }
