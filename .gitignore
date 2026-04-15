@@ -48,3 +48,11 @@ out/
 # Claude Code local state
 .claude/data/
 .claude/logs/
+
+# Contributor-local Claude Code orientation. CLAUDE.md was previously
+# tracked but carries dev-only meta (PR conventions, dev commands,
+# internal architecture notes) that duplicates CONTRIBUTING.md /
+# README.md for OSS visitors. The file is now local-only so anyone
+# running Claude Code against this repo can keep their own CLAUDE.md
+# without re-committing it by accident.
+CLAUDE.md
