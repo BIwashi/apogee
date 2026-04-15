@@ -45,7 +45,31 @@ DuckDB store ──▶ collector.New ──▶ Server.Router (chi.Router, http.H
   CLI — a stock `go build` is enough. The CLI is only required for `.app`
   bundling and hot-reload dev mode.
 
-## Running
+## Installing from Homebrew
+
+Each tagged release publishes an `apogee-desktop` Cask alongside the
+existing `apogee` CLI Formula in
+[`BIwashi/homebrew-tap`](https://github.com/BIwashi/homebrew-tap):
+
+```sh
+brew tap BIwashi/tap
+brew install --cask apogee-desktop
+open -a Apogee
+```
+
+The Cask drops `Apogee.app` into `/Applications` and symlinks an
+`apogee-desktop` launcher into your `$PATH` so `apogee-desktop` from a
+terminal works too. The bundle is **not code-signed or notarized** yet —
+the Cask's `postflight` hook runs `xattr -dr com.apple.quarantine` on the
+staged bundle so Gatekeeper on macOS 15 (Sequoia) and later does not block
+first launch. If you download the release zip manually from GitHub you'll
+need to clear the xattr yourself (`xattr -dr com.apple.quarantine
+/Applications/Apogee.app`) or right-click → Open on older macOS.
+
+The `apogee` CLI Formula (collector, daemon, hook, menubar) remains a
+separate install: `brew install BIwashi/tap/apogee`. Most users want both.
+
+## Running from source
 
 ```sh
 # Build the embedded web bundle and the desktop binary in one shot.
@@ -61,18 +85,30 @@ The window uses the same dark theme tokens as the browser UI. There is no
 dock or menu-bar UI on top of the default Wails chrome yet; the traffic-light
 buttons and the OS-level window menu are all standard Cocoa.
 
-## Building an `.app` bundle
+## Building an `.app` bundle locally
+
+Two options, depending on whether you have the Wails CLI:
 
 ```sh
+# Option A — Wails CLI (produces desktop/build/bin/Apogee.app and handles
+# frontend build, Info.plist, universal fuse itself):
 make desktop-app
-# produces desktop/build/bin/Apogee.app
+
+# Option B — goreleaser snapshot (mirrors the CI release path exactly and
+# produces dist/Apogee.app under apogee-desktop-universal_darwin_all/ plus
+# the zipped artifact the Cask consumes):
+goreleaser release --snapshot --clean --skip=before,publish,validate
 ```
 
-This target shells out to `wails build -platform darwin/universal`. Wails
-handles `Info.plist`, icon, and universal (arm64 + amd64) compilation. Code
-signing and notarization are **not yet wired up** — the resulting bundle
-runs locally but will be flagged by Gatekeeper if distributed. Adding the
-`--apple-id` / `AC_PASSWORD` flow to `make desktop-app` is a follow-up.
+Option B is the authoritative path for release builds. It goes through
+`scripts/bundle-desktop-app.sh`, which crafts the `.app` without depending
+on the Wails CLI at all — just `sips` + `iconutil` + a shell heredoc for
+`Info.plist`. Code signing and notarization are **not yet wired up**. The
+unsigned bundle runs fine locally and is safe to distribute through
+Homebrew because the Cask strips the quarantine xattr on install; adding a
+`codesign --deep --sign "Developer ID Application: ..."` step to
+`scripts/bundle-desktop-app.sh` is a natural follow-up once there is an
+Apple Developer ID to sign with.
 
 ## Dev mode (hot reload)
 

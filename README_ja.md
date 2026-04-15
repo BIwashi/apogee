@@ -200,6 +200,7 @@ brew install BIwashi/tap/apogee
 | 配布元 | コマンド | 備考 |
 |---|---|---|
 | Homebrew tap | `brew install BIwashi/tap/apogee` | 推奨。ユニバーサルバイナリで埋め込みダッシュボードも含まれます。アップデートは `brew upgrade apogee`。 |
+| Homebrew cask (desktop) | `brew install --cask BIwashi/tap/apogee-desktop` | 任意。ネイティブ macOS ウィンドウ (WKWebView) で同じ collector + ダッシュボードを走らせるシェル。`Apogee.app` が `/Applications` に入り、`apogee-desktop` ランチャーも `$PATH` に symlink されます。未署名で、Cask の `postflight` が `com.apple.quarantine` を剥がすので初回起動も Gatekeeper に止められません。詳細は [`docs/desktop_ja.md`](docs/desktop_ja.md)。 |
 | `go install` | `go install github.com/BIwashi/apogee/cmd/apogee@latest` | Go モジュールプロキシは Next.js バンドルを配布できないので、UI は `make web-build` を促すプレースホルダーになります。API は完全に動作します。CLI だけ欲しい場合に使ってください。 |
 | リリース tarball | [Releases](https://github.com/BIwashi/apogee/releases) からダウンロード | darwin amd64 / arm64 対応。Linux は v0.2.0 で対応予定。 |
 | ソースビルド | `git clone ... && make build` | `./bin/apogee` にコミットハッシュとビルド時刻入りのバイナリが出ます。 |
