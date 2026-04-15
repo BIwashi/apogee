@@ -1,8 +1,8 @@
-[English version / 英語版](../cli.md)
+[English version / 英語版](./cli.md)
 
 # apogee CLI リファレンス
 
-v0.1.3 に同梱されているすべての `apogee` サブコマンドの正式リファレンスです。各コマンドの実装は [`internal/cli/`](../../internal/cli/) 以下にあり、[`internal/cli/root.go`](../../internal/cli/root.go) の cobra ツリーで公開されています。ヘルプ出力のスタイリングは [`charmbracelet/fang`](https://github.com/charmbracelet/fang) が担当し、TTY なら色付きのセクション見出しに、パイプ経由なら素のテキストに自動でフォールバックします。
+v0.1.3 に同梱されているすべての `apogee` サブコマンドの正式リファレンスです。各コマンドの実装は [`internal/cli/`](../internal/cli/) 以下にあり、[`internal/cli/root.go`](../internal/cli/root.go) の cobra ツリーで公開されています。ヘルプ出力のスタイリングは [`charmbracelet/fang`](https://github.com/charmbracelet/fang) が担当し、TTY なら色付きのセクション見出しに、パイプ経由なら素のテキストに自動でフォールバックします。
 
 ```
 Usage:
@@ -11,6 +11,7 @@ Usage:
 Available Commands:
   serve       コレクターと埋め込みダッシュボードを起動
   init        apogee hook を .claude/settings.json にインストール
+  onboard     対話式セットアップウィザード（hooks + daemon + summarizer + dashboard）
   hook        Claude Code の hook ペイロードを apogee コレクターへ転送
   daemon      バックグラウンドサービスの install / start / stop / inspect
   status      daemon と HTTP の liveness を一括確認
@@ -86,6 +87,56 @@ apogee init --source-app my-team --force
 - 既定のスコープは `user`。マシン上のすべての Claude Code セッションが同じコレクターへ送るようになり、`source_app` は hook 側が実行時に `$APOGEE_SOURCE_APP`、git toplevel basename、`$PWD` の順で導出します（[`hooks.md`](hooks.md) 参照）。
 - `settings.json` に書き込まれるコマンドは、実行中の `apogee` バイナリの絶対パスに `hook --event <X> --server-url ...` を付けたものです。Python は一切関与しません。
 - 古い v0.1.x インストールで `python3 send_event.py` 行が残っていた場合、プラン出力が警告を出し、`--force` で置き換えます。
+
+---
+
+## apogee onboard
+
+1 コマンドで対話式のセットアップを行うウィザードです。新規マシンを
+4 つのインストール手順（hooks、daemon、summarizer preferences、OTLP
+エクスポート）にまとめて通し、最後にデーモンを起動してダッシュボードを
+開きます。各プロンプトのデフォルトはディスク上の現在の状態から読み込まれる
+ため再実行は安全で、実際に変更したい差分だけを提案します。
+
+### フラグ
+
+| フラグ | 既定値 | 説明 |
+| --- | --- | --- |
+| `--yes`, `-y` | `false` | プロンプトを出さずにすべてのデフォルトを受け入れる |
+| `--non-interactive` | `false` | `--yes` のエイリアス（スクリプト向け） |
+| `--config` | `~/.apogee/config.toml` | 書き込む設定ファイル |
+| `--db` | `~/.apogee/apogee.duckdb` | preferences 用の DuckDB ファイル |
+| `--addr` | `127.0.0.1:4100` | コレクターの listen アドレス |
+| `--skip-daemon` | `false` | デーモンのインストール/起動をスキップ |
+| `--skip-hooks` | `false` | フックのインストールをスキップ |
+| `--skip-summarizer` | `false` | サマライザー preferences の書き込みをスキップ |
+| `--skip-telemetry` | `false` | OTLP エクスポートの設定をスキップ |
+| `--dry-run` | `false` | 書き込まずにプランだけ表示 |
+
+### 例
+
+```sh
+# 対話モード：すべてのセクションを順に進む。
+apogee onboard
+
+# CI / docker のプロビジョニング：サイレントに既定値を受け入れる。
+apogee onboard --yes
+
+# ディスクに触れずにプランだけ確認する。
+apogee onboard --dry-run
+```
+
+### 備考
+
+- `APOGEE_ONBOARD_NONINTERACTIVE=1` は `--yes` と同等で、Docker の `RUN`
+  ステップで便利です。
+- 非対話モードでは、空ではない既存のシステムプロンプトを空のデフォルトで
+  上書きしません。
+- ウィザードは `apogee init` と `apogee daemon install` が使っているのと
+  同じパッケージレベルのヘルパーを呼び出しているため、各ステップは冪等です。
+- 最初に失敗したステップで停止し、それ以前の成功はロールバック**しません**。
+- 詳細なウォークスルー、プランの形式、失敗時の扱いは
+  [`onboard.md`](onboard.md) を参照してください。
 
 ---
 

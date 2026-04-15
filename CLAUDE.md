@@ -19,7 +19,7 @@ web/                Next.js 16 dashboard (App Router, Tailwind v4)
 semconv/            OpenTelemetry semantic conventions for claude_code.*
 docs/               Architecture, CLI, hooks, data-model, design-tokens,
                     daemon, menubar, interventions, otel-semconv, plus
-                    Japanese mirror under docs/ja/
+                    Japanese mirror as docs/*_ja.md siblings
 .github/workflows/  CI (go vet/build/test, web typecheck/lint/build)
 ```
 
@@ -164,7 +164,8 @@ Shipped and merged into `main`:
 
 In flight (may or may not be merged by the time you read this):
 
-- PR #22 — `apogee onboard` interactive setup wizard
+- PR #22 — `apogee onboard` interactive setup wizard (initial spec; replaced by PR #31)
 - PR #25 — Replace the display font with Space Grotesk + credits page
 - PR #26 — Persistent SSE via a layout-scoped provider
 - PR #27 — Docs refresh + full Japanese translations
+- PR #31 — `apogee onboard` interactive setup wizard (huh-backed, idempotent, `--yes`/`--dry-run`)

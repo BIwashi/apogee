@@ -56,6 +56,7 @@ this very binary.`,
 	root.AddCommand(NewOpenCmd(stdout, stderr))
 	root.AddCommand(NewUninstallCmd(stdout, stderr))
 	root.AddCommand(NewMenubarCmd(stdout, stderr))
+	root.AddCommand(NewOnboardCmd(stdout, stderr))
 
 	return root
 }
