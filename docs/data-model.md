@@ -405,6 +405,30 @@ prompt language and model overrides land without a restart.
 
 ---
 
+## `model_availability`
+
+Cache of the most recent `claude -p --model <alias>` probe result for
+every catalog entry. Populated by `summarizer.Probe` (see
+[`internal/summarizer/models_probe.go`](../internal/summarizer/models_probe.go))
+and consumed by the `/v1/models` HTTP route and the three summarizer
+workers' resolver. Rows expire via `PruneStaleAvailability` (24 h
+default TTL) so a probe failure never permanently hides a model that
+later comes back online. Added in PR #35.
+
+| Column | Type | Purpose |
+| --- | --- | --- |
+| `alias` | VARCHAR PK | Full catalog alias (`claude-haiku-4-5`, ...) |
+| `available` | BOOLEAN | True when the last probe succeeded |
+| `checked_at` | TIMESTAMP | Probe timestamp, UTC |
+| `last_error` | VARCHAR | Truncated error text (only on failures) |
+
+**Writers:** `summarizer.Probe` via the `/v1/models` handler's stale-
+cache refresh path, plus the worker's periodic refresh loop.
+**Readers:** `summarizer.ResolveDefaultModel` via
+`ResolveModelForUseCase`, `GET /v1/models`, the `apogee onboard` wizard.
+
+---
+
 ## Indexing cheat sheet
 
 The schema creates a small set of indexes tuned for the dashboard's hot

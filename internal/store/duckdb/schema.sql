@@ -214,3 +214,17 @@ CREATE TABLE IF NOT EXISTS user_preferences (
   value_json    VARCHAR NOT NULL,
   updated_at    TIMESTAMP NOT NULL
 );
+
+-- Model availability cache: one row per Claude model alias apogee knows
+-- about, recording whether the local `claude` CLI accepted the alias on
+-- the most recent probe. Populated by summarizer.Probe (see
+-- internal/summarizer/models_probe.go) and consumed by the /v1/models
+-- HTTP route and the summarizer workers' resolver. Rows expire via
+-- PruneStaleAvailability (24h default TTL) so stale probes don't
+-- permanently hide a model that came back online.
+CREATE TABLE IF NOT EXISTS model_availability (
+  alias      VARCHAR PRIMARY KEY,
+  available  BOOLEAN NOT NULL,
+  checked_at TIMESTAMP NOT NULL,
+  last_error VARCHAR
+);

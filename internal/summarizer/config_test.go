@@ -12,9 +12,13 @@ import (
 func TestDefaultConfig(t *testing.T) {
 	cfg := Default()
 	require.True(t, cfg.Enabled)
-	require.Equal(t, "claude-haiku-4-5", cfg.RecapModel)
-	require.Equal(t, "claude-sonnet-4-6", cfg.RollupModel)
-	require.Equal(t, "claude-sonnet-4-6", cfg.NarrativeModel)
+	// Model aliases now default to the empty string — the worker
+	// resolves them at job time via ResolveModelForUseCase so new
+	// installs always pick the cheapest currently-available catalog
+	// entry instead of a hardcoded string.
+	require.Equal(t, "", cfg.RecapModel)
+	require.Equal(t, "", cfg.RollupModel)
+	require.Equal(t, "", cfg.NarrativeModel)
 	require.Equal(t, 1, cfg.Concurrency)
 	require.Equal(t, 120*time.Second, cfg.Timeout)
 	require.Equal(t, "claude", cfg.CLIPath)

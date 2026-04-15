@@ -35,6 +35,9 @@ type NarrativeWorker struct {
 	clock  func() time.Time
 	prefs  PreferencesReader
 
+	availMu      sync.RWMutex
+	availability map[string]bool
+
 	queue chan narrativeJob
 	wg    sync.WaitGroup
 
@@ -85,6 +88,42 @@ func (w *NarrativeWorker) SetPreferencesReader(r PreferencesReader) {
 		return
 	}
 	w.prefs = r
+}
+
+// SetAvailability installs the latest model availability snapshot.
+// See Worker.SetAvailability for semantics.
+func (w *NarrativeWorker) SetAvailability(avail map[string]bool) {
+	if w == nil {
+		return
+	}
+	w.availMu.Lock()
+	defer w.availMu.Unlock()
+	if avail == nil {
+		w.availability = nil
+		return
+	}
+	cp := make(map[string]bool, len(avail))
+	for k, v := range avail {
+		cp[k] = v
+	}
+	w.availability = cp
+}
+
+// Availability returns a safe copy of the current availability map.
+func (w *NarrativeWorker) Availability() map[string]bool {
+	if w == nil {
+		return nil
+	}
+	w.availMu.RLock()
+	defer w.availMu.RUnlock()
+	if w.availability == nil {
+		return nil
+	}
+	out := make(map[string]bool, len(w.availability))
+	for k, v := range w.availability {
+		out[k] = v
+	}
+	return out
 }
 
 // Enqueue drops a session id onto the queue without blocking. A full
@@ -227,13 +266,19 @@ func (w *NarrativeWorker) process(ctx context.Context, job narrativeJob) {
 			prefs = loaded
 		}
 	}
-	model := w.cfg.NarrativeModel
-	if model == "" {
-		model = w.cfg.RollupModel
+	// Narrative falls back to the rollup config slot when the
+	// narrative-specific alias is not set, then to the catalog resolver
+	// so a fresh install with no config still gets a sensible default.
+	configModel := w.cfg.NarrativeModel
+	if strings.TrimSpace(configModel) == "" {
+		configModel = w.cfg.RollupModel
 	}
-	if override := strings.TrimSpace(prefs.NarrativeModelOverride); override != "" {
-		model = override
-	}
+	model := ResolveModelForUseCase(
+		UseCaseNarrative,
+		prefs.NarrativeModelOverride,
+		configModel,
+		w.Availability(),
+	)
 
 	// Build the narrative turn list, pulling per-turn headline / key_steps
 	// out of each turn's recap_json blob and a tool summary from its spans.

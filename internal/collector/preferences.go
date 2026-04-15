@@ -4,17 +4,25 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"regexp"
 	"strings"
 	"time"
 
 	"github.com/BIwashi/apogee/internal/summarizer"
 )
 
-// modelAliasRegex enforces the claude-{tier}-{N}-{N} family. The intent is
-// not exhaustive validation — it just keeps obviously-wrong values (Bash
-// commands, URLs, secrets) from landing in the user_preferences table.
-var modelAliasRegex = regexp.MustCompile(`^claude-(haiku|sonnet|opus)(-[a-z0-9]+)+$`)
+// validateModelAlias returns nil when alias is either empty (clears the
+// override) or present in the static summarizer catalog. An unknown
+// alias surfaces a 400 with a pointer at the /v1/models endpoint so the
+// operator can see the authoritative list.
+func validateModelAlias(key, alias string) error {
+	if alias == "" {
+		return nil
+	}
+	if summarizer.FindModel(alias) == nil {
+		return fmt.Errorf("%s: %q is not a known model alias; see GET /v1/models for the catalog", key, alias)
+	}
+	return nil
+}
 
 // summarizerPrefKeys is the canonical set of summarizer.* keys exposed by
 // the /v1/preferences API. Listed in display order.
@@ -201,22 +209,22 @@ func validatePreferencesPatch(p preferencesPatch) ([]preferenceUpdate, error) {
 	}
 	if p.RecapModel != nil {
 		v := strings.TrimSpace(*p.RecapModel)
-		if v != "" && !modelAliasRegex.MatchString(v) {
-			return nil, fmt.Errorf("summarizer.recap_model: %q does not look like a claude model alias", v)
+		if err := validateModelAlias("summarizer.recap_model", v); err != nil {
+			return nil, err
 		}
 		updates = append(updates, preferenceUpdate{key: summarizer.PrefKeyRecapModel, value: v})
 	}
 	if p.RollupModel != nil {
 		v := strings.TrimSpace(*p.RollupModel)
-		if v != "" && !modelAliasRegex.MatchString(v) {
-			return nil, fmt.Errorf("summarizer.rollup_model: %q does not look like a claude model alias", v)
+		if err := validateModelAlias("summarizer.rollup_model", v); err != nil {
+			return nil, err
 		}
 		updates = append(updates, preferenceUpdate{key: summarizer.PrefKeyRollupModel, value: v})
 	}
 	if p.NarrativeModel != nil {
 		v := strings.TrimSpace(*p.NarrativeModel)
-		if v != "" && !modelAliasRegex.MatchString(v) {
-			return nil, fmt.Errorf("summarizer.narrative_model: %q does not look like a claude model alias", v)
+		if err := validateModelAlias("summarizer.narrative_model", v); err != nil {
+			return nil, err
 		}
 		updates = append(updates, preferenceUpdate{key: summarizer.PrefKeyNarrativeModel, value: v})
 	}

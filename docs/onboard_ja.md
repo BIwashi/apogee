@@ -7,8 +7,16 @@
 1. Claude Code のフックを `~/.claude/settings.json` に登録
 2. apogee をユーザースコープのバックグラウンドサービスとしてインストール
    （macOS は launchd、Linux は systemd `--user`）
-3. LLM サマライザー設定（言語と任意のシステムプロンプト）を
-   DuckDB の `user_preferences` テーブルに書き込み
+3. LLM サマライザー設定（言語、任意のシステムプロンプト、recap / rollup /
+   narrative の 3 つのモデルオーバーライド）を DuckDB の
+   `user_preferences` テーブルに書き込み。PR #35 以降、モデルオーバーライド
+   は静的カタログ（`internal/summarizer/models.go::KnownModels`）から
+   引いてくるドロップダウンになっています。各行の最初は「Use default
+   (Haiku 4.5)」で、tier 毎に「現時点で利用可能な最安値」のエントリを
+   選びます。プローブで unavailable になったモデルはリストから自動的に
+   除外されるため、誤ってピン留めすることはできません。リゾルバの詳細な
+   解説は [`docs/cli_ja.md`](cli_ja.md) の *Summarizer モデルカタログ* を
+   参照してください。
 4. 任意で外部 OTLP コレクターを `~/.apogee/config.toml` の
    `[telemetry]` ブロックに設定
 

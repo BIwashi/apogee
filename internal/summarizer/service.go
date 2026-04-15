@@ -107,6 +107,34 @@ func (s *Service) Rollup() *RollupWorker { return s.rollup }
 // Narrative exposes the underlying narrative worker for advanced tests.
 func (s *Service) Narrative() *NarrativeWorker { return s.narrative }
 
+// Runner exposes the underlying CLI runner so the /v1/models handler
+// can reuse it for the model probe. nil when the service was not
+// constructed.
+func (s *Service) Runner() Runner {
+	if s == nil {
+		return nil
+	}
+	return s.runner
+}
+
+// SetAvailability fans the latest model availability snapshot out to
+// every worker so the next scheduled job picks the right default.
+// Safe to call from any goroutine.
+func (s *Service) SetAvailability(avail map[string]bool) {
+	if s == nil {
+		return
+	}
+	if s.worker != nil {
+		s.worker.SetAvailability(avail)
+	}
+	if s.rollup != nil {
+		s.rollup.SetAvailability(avail)
+	}
+	if s.narrative != nil {
+		s.narrative.SetAvailability(avail)
+	}
+}
+
 // Start spawns both worker pools and the rollup scheduler. No-op when
 // Enabled is false.
 func (s *Service) Start(ctx context.Context) {

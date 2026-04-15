@@ -573,8 +573,79 @@ curl -s -X DELETE http://localhost:4100/v1/preferences
 
 Validation rules: `summarizer.language` must be `"en"` or `"ja"`, the
 three system prompts are capped at 2048 characters each, and the model
-overrides must look like a `claude-{haiku,sonnet,opus}-…` alias. Empty
-strings clear the override and fall back to `~/.apogee/config.toml`.
+overrides must match an entry in the static catalog exposed by
+`GET /v1/models` (see below). Empty strings clear the override and fall
+back to the catalog resolver.
+
+### Summarizer model catalog
+
+apogee ships a curated static catalog of known Claude models in
+[`internal/summarizer/models.go`](../internal/summarizer/models.go). The
+catalog is the single source of truth for every UI dropdown, the
+onboard wizard, and the `summarizer.*_model` validation path. When
+Anthropic ships a new model, add an entry and ship a new apogee release.
+
+The catalog currently carries:
+
+| Alias | Display | Status | Tier | Recommended for |
+| --- | --- | --- | --- | --- |
+| `claude-haiku-4-5` | Haiku 4.5 | current | 0 (cheapest) | recap |
+| `claude-sonnet-4-6` | Sonnet 4.6 | current | 1 | recap / rollup / narrative |
+| `claude-opus-4-6` | Opus 4.6 | current | 2 | rollup / narrative |
+| `claude-haiku-3-5` | Haiku 3.5 | legacy | 0 | recap |
+| `claude-sonnet-3-7` | Sonnet 3.7 | legacy | 1 | rollup / narrative |
+
+At runtime the collector probes every `current` entry via
+`claude -p "ping" --model <alias>` (concurrency cap 4, 5s per-model
+timeout), caches the result in the `model_availability` DuckDB table
+(24h TTL), and exposes the merged view over HTTP:
+
+```sh
+curl -s http://localhost:4100/v1/models
+```
+
+Response shape:
+
+```json
+{
+  "models": [
+    {
+      "alias": "claude-haiku-4-5",
+      "short_alias": "haiku",
+      "family": "haiku",
+      "generation": "4-5",
+      "display": "Haiku 4.5",
+      "tier": 0,
+      "context_k": 200,
+      "recommended": ["recap"],
+      "status": "current",
+      "available": true,
+      "checked_at": "2026-04-15T06:30:00Z"
+    }
+  ],
+  "defaults": {
+    "recap":     "claude-haiku-4-5",
+    "rollup":    "claude-sonnet-4-6",
+    "narrative": "claude-sonnet-4-6"
+  },
+  "refreshed_at": "2026-04-15T06:30:00Z"
+}
+```
+
+Each worker picks its model via the same resolver chain, in order:
+
+1. **Preference override** — `summarizer.recap_model` (or
+   `rollup_model` / `narrative_model`) persisted in `user_preferences`.
+2. **Config override** — `[summarizer].recap_model` in `config.toml`.
+3. **Catalog resolver** — `ResolveDefaultModel(use_case, availability)`
+   walks the catalog in declaration order and picks the first
+   `current` entry that is either explicitly available in the cache or
+   has no cache entry yet. Legacy entries only win when every `current`
+   entry is probed-unavailable.
+
+`summarizer.Default()` no longer ships a hardcoded alias — a fresh
+install with no config and no preference automatically gets the
+cheapest currently-available `current` entry per tier.
 
 ### Phase narrative (tier 3)
 

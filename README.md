@@ -27,7 +27,7 @@ Running multi-agent Claude Code workflows means losing sight of what each agent 
 
 - **Where should I look right now?** A rule-based attention engine buckets every running turn into `healthy / watchlist / watch / intervene_now` and sorts the live list accordingly, so the noisiest thing is always at the top.
 - **What is this turn doing at this exact moment?** Phase heuristics (plan / explore / edit / test / commit / delegate) and a live swim lane render every tool, subagent, and HITL request on a shared time axis.
-- **What just happened across the whole session?** A three-tier LLM summarizer fills in a per-turn recap (Haiku), a per-session narrative rollup (Sonnet), and a tier-3 **phase narrative** that groups the turns into semantic chunks (implement / review / debug / plan / test / commit / delegate / explore) with a headline, 1–3 sentence narrative, and key steps per phase. Everything goes through the local `claude` CLI — no extra API key required.
+- **What just happened across the whole session?** A three-tier LLM summarizer fills in a per-turn recap (Haiku), a per-session narrative rollup (Sonnet), and a tier-3 **phase narrative** that groups the turns into semantic chunks (implement / review / debug / plan / test / commit / delegate / explore) with a headline, 1–3 sentence narrative, and key steps per phase. Everything goes through the local `claude` CLI — no extra API key required. The default model is no longer hardcoded; apogee picks the cheapest currently-available model per tier from a static catalog that you can override from the Settings page or the `apogee onboard` wizard.
 
 ### Customising the summarizer
 

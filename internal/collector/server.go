@@ -236,6 +236,7 @@ func (s *Server) buildRouter() chi.Router {
 	r.Get("/v1/preferences", s.listPreferences)
 	r.Patch("/v1/preferences", s.patchPreferences)
 	r.Delete("/v1/preferences", s.deletePreferences)
+	r.Get("/v1/models", s.listModels)
 	r.Get("/v1/telemetry/status", s.telemetryStatus)
 	r.Get("/v1/agents/recent", s.listRecentAgents)
 	r.Get("/v1/insights/overview", s.getInsightsOverview)

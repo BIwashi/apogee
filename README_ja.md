@@ -27,7 +27,7 @@ apogee は、マルチエージェントの [Claude Code](https://docs.claude.co
 
 - **いま、どこを見ればいい？** ルールベースの attention エンジンが、実行中ターンを `healthy / watchlist / watch / intervene_now` の 4 つに振り分け、一番うるさいものを常にリストの先頭へ並べ替えます。
 - **このターンは、この瞬間、何をしている？** phase ヒューリスティック（plan / explore / edit / test / commit / delegate）と、全ツール・subagent・HITL をひとつの時間軸に描くライブスイムレーンを備えています。
-- **さっきのセッション全体では、何が起きた？** 三層構造の LLM サマライザが、ターン単位の recap（Haiku）、セッション単位のナラティブ rollup（Sonnet）、そして tier-3 の **フェーズナラティブ** — ターンを意味的なチャンク (implement / review / debug / plan / test / commit / delegate / explore) にグルーピングし、フェーズごとに headline、1〜3 文の narrative、key_steps を生成 — をすべてローカルの `claude` CLI で生成します。Anthropic API キーは不要です。
+- **さっきのセッション全体では、何が起きた？** 三層構造の LLM サマライザが、ターン単位の recap（Haiku）、セッション単位のナラティブ rollup（Sonnet）、そして tier-3 の **フェーズナラティブ** — ターンを意味的なチャンク (implement / review / debug / plan / test / commit / delegate / explore) にグルーピングし、フェーズごとに headline、1〜3 文の narrative、key_steps を生成 — をすべてローカルの `claude` CLI で生成します。Anthropic API キーは不要です。デフォルトモデルはハードコードされなくなりました — apogee は静的カタログから「現時点で利用可能な最安値」のモデルを tier 毎に選択し、Settings ページや `apogee onboard` ウィザードから上書きできます。
 
 ### サマライザのカスタマイズ
 
