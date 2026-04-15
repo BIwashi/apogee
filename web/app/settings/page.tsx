@@ -18,6 +18,9 @@ import Card from "../components/Card";
 import SectionHeader from "../components/SectionHeader";
 import type {
   ApogeeInfo,
+  ModelInfo,
+  ModelsResponse,
+  ModelUseCase,
   PreferencesResponse,
   SummarizerLanguage,
   SummarizerPreferences,
@@ -264,6 +267,16 @@ function SummarizerSection() {
     "/v1/preferences",
     { refreshInterval: 30_000 },
   );
+  const { data: modelsData } = useApi<ModelsResponse>(
+    "/v1/models",
+    { refreshInterval: 60_000 },
+  );
+  const models = modelsData?.models ?? [];
+  const defaults = modelsData?.defaults ?? {
+    recap: "",
+    rollup: "",
+    narrative: "",
+  };
 
   const persisted: Required<SummarizerPreferences> = useMemo(() => {
     const p = data?.preferences ?? {};
@@ -382,26 +395,35 @@ function SummarizerSection() {
             onChange={(v) => setDraft((d) => ({ ...d, "summarizer.language": v }))}
           />
 
-          <ModelOverrideRow
-            label="Recap model"
-            placeholder="claude-haiku-4-5"
-            value={draft["summarizer.recap_model"]}
+          <ModelDropdownRow
+            label="RECAP MODEL"
+            hint="Tier 1 — per-turn summary. Default picks the cheapest currently-available entry."
+            models={models}
+            useCase="recap"
+            defaultAlias={defaults.recap}
+            value={draft["summarizer.recap_model"] ?? ""}
             onChange={(v) =>
               setDraft((d) => ({ ...d, "summarizer.recap_model": v }))
             }
           />
-          <ModelOverrideRow
-            label="Rollup model"
-            placeholder="claude-sonnet-4-6"
-            value={draft["summarizer.rollup_model"]}
+          <ModelDropdownRow
+            label="ROLLUP MODEL"
+            hint="Tier 2 — per-session narrative digest."
+            models={models}
+            useCase="rollup"
+            defaultAlias={defaults.rollup}
+            value={draft["summarizer.rollup_model"] ?? ""}
             onChange={(v) =>
               setDraft((d) => ({ ...d, "summarizer.rollup_model": v }))
             }
           />
-          <ModelOverrideRow
-            label="Narrative model"
-            placeholder="claude-sonnet-4-6"
-            value={draft["summarizer.narrative_model"]}
+          <ModelDropdownRow
+            label="NARRATIVE MODEL"
+            hint="Tier 3 — phase timeline. Falls back to the rollup model when unset."
+            models={models}
+            useCase="narrative"
+            defaultAlias={defaults.narrative}
+            value={draft["summarizer.narrative_model"] ?? ""}
             onChange={(v) =>
               setDraft((d) => ({ ...d, "summarizer.narrative_model": v }))
             }
@@ -511,30 +533,86 @@ function LanguageRow({
   );
 }
 
-function ModelOverrideRow({
+/**
+ * ModelDropdownRow — catalog-backed <select> for the three summarizer
+ * tiers. The first option is always "Use default (<display>)" with
+ * value="" so an empty string clears any persisted override. Subsequent
+ * options are one per recommended catalog entry for the given use case.
+ * Unavailable entries (available=false) are still rendered but visually
+ * dimmed; when the current value points at one the row surfaces a
+ * warning pill so the operator can see the problem.
+ */
+function ModelDropdownRow({
   label,
-  placeholder,
+  hint,
+  models,
+  useCase,
+  defaultAlias,
   value,
   onChange,
 }: {
   label: string;
-  placeholder: string;
+  hint: string;
+  models: ModelInfo[];
+  useCase: ModelUseCase;
+  defaultAlias: string;
   value: string;
   onChange: (v: string) => void;
 }) {
+  const recommended = models.filter((m) =>
+    m.recommended.includes(useCase),
+  );
+  const defaultEntry = models.find((m) => m.alias === defaultAlias);
+  const defaultLabel = defaultEntry
+    ? `Use default (${defaultEntry.display})`
+    : "Use default";
+  const current = value
+    ? models.find((m) => m.alias === value)
+    : undefined;
+  const warnUnavailable = Boolean(current && !current.available);
   return (
-    <div className="grid grid-cols-[160px_1fr] items-center gap-3">
+    <div className="grid grid-cols-[160px_1fr] items-start gap-3">
       <span className="font-display text-[10px] tracking-[0.14em] text-[var(--text-muted)]">
         {label}
       </span>
-      <input
-        type="text"
-        value={value}
-        placeholder={placeholder}
-        onChange={(e) => onChange(e.target.value)}
-        className="w-full max-w-[420px] rounded border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-1.5 font-mono text-[12px] text-[var(--artemis-white)] placeholder:text-[var(--text-muted)] focus:border-[var(--border-bright)] focus:outline-none"
-        aria-label={`${label} override (empty uses the config default)`}
-      />
+      <div className="flex flex-col gap-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <select
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            aria-label={`${label} override (empty uses the catalog default)`}
+            className="w-full max-w-[420px] rounded border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-1.5 font-mono text-[12px] text-[var(--artemis-white)] focus:border-[var(--border-bright)] focus:outline-none"
+          >
+            <option value="">{defaultLabel}</option>
+            {recommended.map((m) => (
+              <option
+                key={m.alias}
+                value={m.alias}
+                data-unavailable={!m.available || undefined}
+              >
+                {m.display} — {m.status}
+                {m.available ? "" : ", unavailable"}
+              </option>
+            ))}
+          </select>
+          {warnUnavailable ? (
+            <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-[var(--status-warning)]">
+              currently unavailable
+            </span>
+          ) : null}
+        </div>
+        <div className="flex items-center justify-between font-mono text-[10px] text-[var(--text-muted)]">
+          <span>{hint}</span>
+          <a
+            href="/v1/models"
+            target="_blank"
+            rel="noreferrer"
+            className="underline-offset-2 hover:text-[var(--artemis-white)] hover:underline"
+          >
+            View all models →
+          </a>
+        </div>
+      </div>
     </div>
   );
 }

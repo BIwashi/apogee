@@ -121,6 +121,9 @@ type RollupWorker struct {
 	clock  func() time.Time
 	prefs  PreferencesReader
 
+	availMu      sync.RWMutex
+	availability map[string]bool
+
 	queue chan rollupJob
 	wg    sync.WaitGroup
 
@@ -171,6 +174,42 @@ func (w *RollupWorker) SetPreferencesReader(r PreferencesReader) {
 		return
 	}
 	w.prefs = r
+}
+
+// SetAvailability installs the latest model availability snapshot.
+// See Worker.SetAvailability for semantics.
+func (w *RollupWorker) SetAvailability(avail map[string]bool) {
+	if w == nil {
+		return
+	}
+	w.availMu.Lock()
+	defer w.availMu.Unlock()
+	if avail == nil {
+		w.availability = nil
+		return
+	}
+	cp := make(map[string]bool, len(avail))
+	for k, v := range avail {
+		cp[k] = v
+	}
+	w.availability = cp
+}
+
+// Availability returns a safe copy of the current availability map.
+func (w *RollupWorker) Availability() map[string]bool {
+	if w == nil {
+		return nil
+	}
+	w.availMu.RLock()
+	defer w.availMu.RUnlock()
+	if w.availability == nil {
+		return nil
+	}
+	out := make(map[string]bool, len(w.availability))
+	for k, v := range w.availability {
+		out[k] = v
+	}
+	return out
 }
 
 // Enqueue drops a session id onto the rollup queue without blocking. A
@@ -293,10 +332,14 @@ func (w *RollupWorker) process(ctx context.Context, job rollupJob) {
 			prefs = loaded
 		}
 	}
-	model := w.cfg.RollupModel
-	if override := strings.TrimSpace(prefs.RollupModelOverride); override != "" {
-		model = override
-	}
+	// Resolve via catalog + availability — see Worker.process for the
+	// full explanation of the resolver order.
+	model := ResolveModelForUseCase(
+		UseCaseRollup,
+		prefs.RollupModelOverride,
+		w.cfg.RollupModel,
+		w.Availability(),
+	)
 
 	prompt := BuildRollupPrompt(*sess, closedTurns, prefs)
 	runCtx := ctx

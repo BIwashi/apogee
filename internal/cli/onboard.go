@@ -81,8 +81,21 @@ type onboardState struct {
 	DaemonOK       bool
 	Prefs          summarizer.Preferences
 	Defaults       summarizer.Config // canonical defaults for placeholder hints
-	Telemetry      telemetry.Config
-	HasTelemetry   bool
+	// Models is the merged catalog + availability view the wizard
+	// drives the model dropdowns from. Populated by loadOnboardState
+	// best-effort: a fresh install with no DuckDB cache still yields a
+	// usable slice (every row available=true, "unknown = assume
+	// available"). Never nil after loadOnboardState.
+	Models          []summarizer.ModelInfo
+	ModelsAvailable map[string]bool
+	// RecapDefault / RollupDefault / NarrativeDefault are the
+	// cheapest-currently-available aliases per tier, precomputed so
+	// the form doesn't re-run the resolver on every keystroke.
+	RecapDefault     string
+	RollupDefault    string
+	NarrativeDefault string
+	Telemetry        telemetry.Config
+	HasTelemetry     bool
 }
 
 // onboardPlan is the committed, about-to-be-applied shape of the
@@ -360,6 +373,16 @@ func loadOnboardState(ctx context.Context, opts onboardOptions) (onboardState, e
 	// shows an example.
 	state.Defaults = summarizer.Default()
 
+	// Load the model catalog + availability cache. The cache is best
+	// effort: a fresh install (empty DuckDB, locked DB, missing file)
+	// still yields the full KnownModels slice with availability
+	// defaulting to true on every row.
+	state.ModelsAvailable = loadModelAvailability(ctx, dbPath)
+	state.Models = mergeModelCatalog(summarizer.KnownModels, state.ModelsAvailable)
+	state.RecapDefault = summarizer.ResolveDefaultModel(summarizer.UseCaseRecap, state.ModelsAvailable)
+	state.RollupDefault = summarizer.ResolveDefaultModel(summarizer.UseCaseRollup, state.ModelsAvailable)
+	state.NarrativeDefault = summarizer.ResolveDefaultModel(summarizer.UseCaseNarrative, state.ModelsAvailable)
+
 	// Telemetry — read the TOML file directly rather than going
 	// through telemetry.LoadConfig because the latter also overlays
 	// env vars, which would let a locally-set OTEL_EXPORTER_OTLP_*
@@ -540,37 +563,37 @@ func promptOnboardPlan(plan *onboardPlan, state onboardState, opts onboardOption
 				Options(langChoices...).
 				Value(&plan.SummarizerLanguage),
 			huh.NewText().
-				Title("Recap system prompt — tier 1 (per turn, "+state.Defaults.RecapModel+")").
+				Title("Recap system prompt — tier 1 (per turn, "+state.RecapDefault+")").
 				Description("Prepended to the recap prompt. Leave empty to use the default instructions only.").
 				Placeholder("e.g. Keep every recap under 3 sentences. Prefer active voice.").
 				Value(&plan.RecapSystemPrompt).
 				CharLimit(summarizer.SystemPromptMaxLen),
 			huh.NewText().
-				Title("Rollup system prompt — tier 2 (per session, "+state.Defaults.RollupModel+")").
+				Title("Rollup system prompt — tier 2 (per session, "+state.RollupDefault+")").
 				Description("Prepended to the rollup prompt. Leave empty to use the default instructions only.").
 				Placeholder("e.g. Focus on user intent and outcomes, not implementation details.").
 				Value(&plan.RollupSystemPrompt).
 				CharLimit(summarizer.SystemPromptMaxLen),
 			huh.NewText().
-				Title("Narrative system prompt — tier 3 (phase timeline, "+state.Defaults.NarrativeModel+")").
+				Title("Narrative system prompt — tier 3 (phase timeline, "+state.NarrativeDefault+")").
 				Description("Prepended to the narrative prompt. Leave empty to use the default instructions only.").
 				Placeholder("e.g. Use 3-6 phases per session. Prefer verb-led headlines.").
 				Value(&plan.NarrativeSystemPrompt).
 				CharLimit(summarizer.SystemPromptMaxLen),
-			huh.NewInput().
-				Title("Override recap model?").
-				Description("Default: "+state.Defaults.RecapModel+". Leave empty to keep the default.").
-				Placeholder(state.Defaults.RecapModel).
+			huh.NewSelect[string]().
+				Title("Recap model").
+				Description("Tier 1 — runs once per turn. Default is the cheapest currently-available entry from the catalog.").
+				Options(modelOptions(state.Models, summarizer.UseCaseRecap, state.RecapDefault, state.ModelsAvailable)...).
 				Value(&plan.RecapModelOverride),
-			huh.NewInput().
-				Title("Override rollup model?").
-				Description("Default: "+state.Defaults.RollupModel+". Leave empty to keep the default.").
-				Placeholder(state.Defaults.RollupModel).
+			huh.NewSelect[string]().
+				Title("Rollup model").
+				Description("Tier 2 — runs once per session. Default is the cheapest currently-available entry from the catalog.").
+				Options(modelOptions(state.Models, summarizer.UseCaseRollup, state.RollupDefault, state.ModelsAvailable)...).
 				Value(&plan.RollupModelOverride),
-			huh.NewInput().
-				Title("Override narrative model?").
-				Description("Default: "+state.Defaults.NarrativeModel+". Leave empty to keep the default.").
-				Placeholder(state.Defaults.NarrativeModel).
+			huh.NewSelect[string]().
+				Title("Narrative model").
+				Description("Tier 3 — phase timeline. Default is the cheapest currently-available entry from the catalog.").
+				Options(modelOptions(state.Models, summarizer.UseCaseNarrative, state.NarrativeDefault, state.ModelsAvailable)...).
 				Value(&plan.NarrativeModelOverride),
 		).WithHideFunc(func() bool { return opts.SkipSummarizer }),
 		huh.NewGroup(

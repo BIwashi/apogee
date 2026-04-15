@@ -9,6 +9,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **PR #35 — static model catalog + probe + dropdowns.** The
+  summarizer's three model aliases (recap / rollup / narrative) are now
+  chosen from a curated static catalog
+  (`internal/summarizer/models.go::KnownModels`) instead of hardcoded
+  config defaults. A new probe (`internal/summarizer/models_probe.go`)
+  exercises every `current` catalog entry via `claude -p --model <alias>`
+  in parallel (concurrency cap 4, 5s per-model timeout) and caches the
+  result in a new `model_availability` DuckDB table (24h TTL). A new
+  `GET /v1/models` route serves the merged catalog + defaults so the
+  Settings page and `apogee onboard` wizard can render proper
+  dropdowns — free-text inputs are gone. `validatePreferencesPatch`
+  now checks catalog membership via `summarizer.FindModel` and points
+  at `/v1/models` in the error message instead of matching a regex.
+  The worker resolver order is now `preference > config > cheapest-
+  available catalog entry`, and `summarizer.Default()` no longer
+  populates `RecapModel` / `RollupModel` / `NarrativeModel` — they
+  stay as *explicit TOML overrides* for operators who pin a specific
+  alias. `apogee onboard` loads the cache + resolver defaults at
+  `loadOnboardState` time and renders three `huh.NewSelect` rows with
+  a "Use default (Haiku 4.5)" first entry; probed-unavailable models
+  are filtered out of the list. The web Settings page gains a
+  `ModelDropdownRow` that renders a native `<select>`, dims
+  probed-unavailable entries, shows a "currently unavailable" warning
+  pill when the persisted override points at one, and links to the
+  raw `/v1/models` JSON via a "View all models →" affordance. Adds
+  60+ tests across the catalog resolver, the probe
+  concurrency/timeout paths, the DuckDB cache round-trip and prune,
+  the HTTP handler's stale-cache refresh path, and the onboard wizard's
+  `modelOptions` helper.
+
 - **PR #33 — light theme + `data-theme` toggle.** Dashboard gains a second
   palette under `:root[data-theme="light"]`. A TopRibbon toggle cycles
   through `system → light → dark` with localStorage persistence, a

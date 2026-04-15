@@ -510,7 +510,35 @@ curl -s -X PATCH http://localhost:4100/v1/preferences \
 curl -s -X DELETE http://localhost:4100/v1/preferences
 ```
 
-バリデーション: `summarizer.language` は `"en"` または `"ja"`、3 つのシステムプロンプトはそれぞれ最大 2048 文字、モデルオーバーライドは `claude-{haiku,sonnet,opus}-…` 形式の alias である必要があります。空文字列でオーバーライドをクリアすると `~/.apogee/config.toml` にフォールバックします。
+バリデーション: `summarizer.language` は `"en"` または `"ja"`、3 つのシステムプロンプトはそれぞれ最大 2048 文字、モデルオーバーライドは下記 **Summarizer モデルカタログ**（`GET /v1/models`）に含まれる alias である必要があります。空文字列でオーバーライドをクリアするとカタログのリゾルバが再計算した「現時点で利用可能な最安値」モデルにフォールバックします。
+
+### Summarizer モデルカタログ
+
+apogee は [`internal/summarizer/models.go`](../internal/summarizer/models.go) にハードコードされた静的カタログを持ちます。このカタログが UI ドロップダウン、`apogee onboard` ウィザード、`summarizer.*_model` のバリデーションすべての唯一の真実の source です。Anthropic が新モデルをリリースしたらここにエントリを追加し新しい apogee をリリースしてください。
+
+現行カタログ:
+
+| Alias | 表示名 | Status | Tier | 推奨用途 |
+| --- | --- | --- | --- | --- |
+| `claude-haiku-4-5` | Haiku 4.5 | current | 0 (最安) | recap |
+| `claude-sonnet-4-6` | Sonnet 4.6 | current | 1 | recap / rollup / narrative |
+| `claude-opus-4-6` | Opus 4.6 | current | 2 | rollup / narrative |
+| `claude-haiku-3-5` | Haiku 3.5 | legacy | 0 | recap |
+| `claude-sonnet-3-7` | Sonnet 3.7 | legacy | 1 | rollup / narrative |
+
+ランタイムで collector は `current` ステータスの各エントリを `claude -p "ping" --model <alias>` で並列プローブ（同時実行 4 / モデル毎 5 秒タイムアウト）、結果を `model_availability` DuckDB テーブル（24 時間 TTL）にキャッシュし、HTTP で公開します:
+
+```sh
+curl -s http://localhost:4100/v1/models
+```
+
+ワーカーは各ジョブ開始時に以下の順番でモデルを選択します:
+
+1. **Preference override** — `user_preferences` に永続化された `summarizer.recap_model` 等
+2. **Config override** — `config.toml` の `[summarizer].recap_model` 等
+3. **カタログリゾルバ** — `ResolveDefaultModel(use_case, availability)` がカタログを宣言順に歩き、`current` かつ利用可能な最初のエントリを選択。すべての `current` エントリが unavailable の場合のみ legacy にフォールバックします。
+
+`summarizer.Default()` はもはや alias をハードコードしません。設定を何も書かない新規インストールでも、自動的に「現時点で利用可能な最安値の current エントリ」が tier 毎に選ばれます。
 
 ### フェーズナラティブ (tier 3)
 

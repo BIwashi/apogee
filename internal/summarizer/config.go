@@ -55,12 +55,20 @@ type Config struct {
 }
 
 // Default returns a Config populated with every field's default value.
+//
+// Model aliases intentionally default to the empty string — the worker
+// resolves them at job time via ResolveModelForUseCase(..., availability)
+// so the "default model" is always the cheapest currently-available
+// catalog entry rather than a hardcoded string that goes stale whenever
+// Anthropic ships a new family. RecapModel / RollupModel / NarrativeModel
+// stay as *explicit overrides* for operators who pin a specific alias in
+// config.toml; they are no longer populated here.
 func Default() Config {
 	return Config{
 		Enabled:           true,
-		RecapModel:        "claude-haiku-4-5",
-		RollupModel:       "claude-sonnet-4-6",
-		NarrativeModel:    "claude-sonnet-4-6",
+		RecapModel:        "", // resolved via ResolveModelForUseCase(UseCaseRecap, ...)
+		RollupModel:       "", // resolved via ResolveModelForUseCase(UseCaseRollup, ...)
+		NarrativeModel:    "", // resolved via ResolveModelForUseCase(UseCaseNarrative, ...)
 		Concurrency:       1,
 		Timeout:           120 * time.Second,
 		CLIPath:           "claude",

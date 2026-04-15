@@ -359,6 +359,22 @@ Timeline タブ (phase timeline)、Sessions カタログのツールチップ。
 
 ---
 
+## `model_availability`
+
+静的カタログ内の各エントリに対する直近の `claude -p --model <alias>` プローブ結果のキャッシュです。PR #35 で追加されました。`summarizer.Probe` ([`internal/summarizer/models_probe.go`](../internal/summarizer/models_probe.go)) が書き込み、`/v1/models` HTTP ルートと 3 つの summarizer ワーカーのリゾルバが読み出します。行は `PruneStaleAvailability`（デフォルト 24 時間 TTL）で期限切れになるため、プローブ失敗で一時的に見えなくなったモデルが恒久的に非表示になることはありません。
+
+| Column | Type | Purpose |
+| --- | --- | --- |
+| `alias` | VARCHAR PK | 完全なカタログ alias（`claude-haiku-4-5` 等） |
+| `available` | BOOLEAN | 直近プローブが成功したとき true |
+| `checked_at` | TIMESTAMP | プローブ実行時刻（UTC） |
+| `last_error` | VARCHAR | 失敗時のエラーメッセージ（切り詰め済み） |
+
+**Writers:** `summarizer.Probe`（`/v1/models` ハンドラの stale-cache 更新パス + ワーカーの定期再ロード）。
+**Readers:** `summarizer.ResolveDefaultModel`（`ResolveModelForUseCase` 経由）、`GET /v1/models`、`apogee onboard` ウィザード。
+
+---
+
 ## インデックスチートシート
 
 スキーマはダッシュボードのホットパスに合わせた小さなインデックスセットを作ります。

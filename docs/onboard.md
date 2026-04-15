@@ -6,9 +6,17 @@ It chains the four install steps you would otherwise run by hand:
 1. Install Claude Code hooks into `~/.claude/settings.json`.
 2. Install apogee as a user-scope background service
    (launchd on macOS, systemd `--user` on Linux).
-3. Configure the LLM summarizer — language and optional system
-   prompts — by writing the canonical `user_preferences` rows into
-   DuckDB.
+3. Configure the LLM summarizer — language, optional system
+   prompts, and the three model overrides (recap / rollup /
+   narrative) — by writing the canonical `user_preferences` rows into
+   DuckDB. PR #35 replaces the free-text model inputs with proper
+   dropdowns sourced from the static catalog
+   (`internal/summarizer/models.go::KnownModels`); the first option on
+   each row is "Use default (Haiku 4.5)" and picks the cheapest
+   currently-available entry per tier. Probed-unavailable models are
+   filtered out of the list so you can't accidentally pin one. See
+   [`docs/cli.md`](cli.md) § *Summarizer model catalog* for the full
+   resolver walk.
 4. Optionally wire an external OTLP collector by updating the
    `[telemetry]` block in `~/.apogee/config.toml`.
 

@@ -732,6 +732,50 @@ export interface PreferencesResponse {
   updated_at: Record<string, string>;
 }
 
+/**
+ * ModelUseCase mirrors internal/summarizer.ModelUseCase. One entry per
+ * summarizer tier — the wire shape is a plain string union so new use
+ * cases can land without a wire bump.
+ */
+export type ModelUseCase = "recap" | "rollup" | "narrative";
+
+/**
+ * ModelStatus mirrors internal/summarizer.Status* constants. "current"
+ * is the live recommendation, "legacy" is a still-usable fallback, and
+ * "deprecated" marks catalogue entries on their way out.
+ */
+export type ModelStatus = "current" | "legacy" | "deprecated";
+
+/**
+ * ModelInfo mirrors internal/summarizer.ModelInfo plus the two probe
+ * fields (available / checked_at). One entry per static catalog row,
+ * served by GET /v1/models.
+ */
+export interface ModelInfo {
+  alias: string;
+  short_alias: string;
+  family: string;
+  generation: string;
+  display: string;
+  tier: number;
+  context_k: number;
+  recommended: ModelUseCase[];
+  status: ModelStatus;
+  available: boolean;
+  checked_at: string | null;
+}
+
+/** ModelsResponse mirrors the GET /v1/models response body. */
+export interface ModelsResponse {
+  models: ModelInfo[];
+  defaults: {
+    recap: string;
+    rollup: string;
+    narrative: string;
+  };
+  refreshed_at: string;
+}
+
 /** TelemetryStatus mirrors the GET /v1/telemetry/status response body. */
 export interface TelemetryStatus {
   enabled: boolean;

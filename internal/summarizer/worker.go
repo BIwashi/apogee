@@ -6,7 +6,6 @@ import (
 	"errors"
 	"io"
 	"log/slog"
-	"strings"
 	"sync"
 	"time"
 
@@ -48,6 +47,13 @@ type Worker struct {
 	clock  func() time.Time
 	prefs  PreferencesReader
 
+	// availability is a snapshot of the model_availability cache. nil
+	// means "not yet probed" — ResolveModelForUseCase treats missing
+	// entries as available so the worker degrades gracefully when
+	// nobody has populated the cache.
+	availMu sync.RWMutex
+	availability map[string]bool
+
 	queue chan Job
 	wg    sync.WaitGroup
 
@@ -87,6 +93,45 @@ func (w *Worker) SetPreferencesReader(r PreferencesReader) {
 		return
 	}
 	w.prefs = r
+}
+
+// SetAvailability installs the latest model availability snapshot so
+// ResolveModelForUseCase can skip probed-unavailable aliases. A nil
+// map reverts to "assume everything is available". Safe to call from
+// any goroutine.
+func (w *Worker) SetAvailability(avail map[string]bool) {
+	if w == nil {
+		return
+	}
+	w.availMu.Lock()
+	defer w.availMu.Unlock()
+	if avail == nil {
+		w.availability = nil
+		return
+	}
+	cp := make(map[string]bool, len(avail))
+	for k, v := range avail {
+		cp[k] = v
+	}
+	w.availability = cp
+}
+
+// Availability returns a safe copy of the current availability map.
+// Safe to call from any goroutine.
+func (w *Worker) Availability() map[string]bool {
+	if w == nil {
+		return nil
+	}
+	w.availMu.RLock()
+	defer w.availMu.RUnlock()
+	if w.availability == nil {
+		return nil
+	}
+	out := make(map[string]bool, len(w.availability))
+	for k, v := range w.availability {
+		out[k] = v
+	}
+	return out
 }
 
 // Enqueue drops a job onto the queue without blocking. A full queue logs
@@ -201,10 +246,16 @@ func (w *Worker) process(ctx context.Context, workerID int, job Job) {
 			prefs = loaded
 		}
 	}
-	model := w.cfg.RecapModel
-	if override := strings.TrimSpace(prefs.RecapModelOverride); override != "" {
-		model = override
-	}
+	// Resolve the recap model via the catalog + availability cache.
+	// Order: preference override > config override > cheapest-available
+	// current catalog entry. The resolver never returns the empty
+	// string when the catalog is non-empty.
+	model := ResolveModelForUseCase(
+		UseCaseRecap,
+		prefs.RecapModelOverride,
+		w.cfg.RecapModel,
+		w.Availability(),
+	)
 
 	prompt := BuildPrompt(PromptInput{
 		Turn:  *turn,
