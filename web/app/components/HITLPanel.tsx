@@ -149,7 +149,7 @@ function HITLEntry({
         </span>
       </div>
 
-      <p className="mt-2 font-mono text-[11px] leading-snug text-gray-200">
+      <p className="mt-2 font-mono text-[11px] leading-snug text-[var(--artemis-white)]">
         {event.question}
       </p>
 
@@ -176,7 +176,7 @@ function HITLEntry({
               key={sugg}
               type="button"
               onClick={() => void submit("custom", sugg)}
-              className="rounded border px-2 py-[2px] font-mono text-[10px] text-[var(--text-muted)] hover:text-white"
+              className="rounded border px-2 py-[2px] font-mono text-[10px] text-[var(--text-muted)] hover:text-[var(--artemis-white)]"
               style={{ borderColor: "var(--border-bright)", background: "var(--bg-overlay)" }}
             >
               {sugg}
@@ -191,8 +191,11 @@ function HITLEntry({
             type="button"
             onClick={() => void submit("allow")}
             disabled={form.submitting}
-            className="flex flex-1 items-center justify-center gap-1 rounded px-3 py-1 text-[11px] font-medium text-black disabled:opacity-50"
-            style={{ background: "var(--status-success)" }}
+            className="flex flex-1 items-center justify-center gap-1 rounded px-3 py-1 text-[11px] font-medium disabled:opacity-50"
+            style={{
+              background: "var(--status-success)",
+              color: "var(--chip-on-accent)",
+            }}
           >
             <Check size={12} strokeWidth={2.5} /> Allow
           </button>
@@ -200,8 +203,11 @@ function HITLEntry({
             type="button"
             onClick={() => void submit("deny")}
             disabled={form.submitting}
-            className="flex flex-1 items-center justify-center gap-1 rounded px-3 py-1 text-[11px] font-medium text-white disabled:opacity-50"
-            style={{ background: "var(--status-critical)" }}
+            className="flex flex-1 items-center justify-center gap-1 rounded px-3 py-1 text-[11px] font-medium disabled:opacity-50"
+            style={{
+              background: "var(--status-critical)",
+              color: "var(--chip-on-accent)",
+            }}
           >
             <X size={12} strokeWidth={2.5} /> Deny
           </button>
@@ -215,7 +221,7 @@ function HITLEntry({
               onChange={(ev) =>
                 setForm((prev) => ({ ...prev, reason: ev.target.value as HITLReason }))
               }
-              className="rounded border bg-transparent px-2 py-1 font-mono text-[11px] text-gray-200"
+              className="rounded border bg-transparent px-2 py-1 font-mono text-[11px] text-[var(--artemis-white)]"
               style={{ borderColor: "var(--border-bright)" }}
             >
               {HITL_REASONS.map((r) => (
@@ -235,7 +241,7 @@ function HITLEntry({
                   resume: ev.target.value as HITLResumeMode,
                 }))
               }
-              className="rounded border bg-transparent px-2 py-1 font-mono text-[11px] text-gray-200"
+              className="rounded border bg-transparent px-2 py-1 font-mono text-[11px] text-[var(--artemis-white)]"
               style={{ borderColor: "var(--border-bright)" }}
             >
               {HITL_RESUME_MODES.map((r) => (
@@ -256,7 +262,7 @@ function HITLEntry({
             onChange={(ev) =>
               setForm((prev) => ({ ...prev, note: ev.target.value }))
             }
-            className="resize-y rounded border bg-transparent px-2 py-1 font-mono text-[11px] text-gray-200"
+            className="resize-y rounded border bg-transparent px-2 py-1 font-mono text-[11px] text-[var(--artemis-white)]"
             style={{ borderColor: "var(--border-bright)" }}
             placeholder="optional context"
           />
@@ -292,7 +298,7 @@ function ContextChip({
     >
       <span className="uppercase tracking-wider">{label}</span>
       <span
-        className={mono ? "font-mono text-gray-200" : "text-gray-200"}
+        className={mono ? "font-mono text-[var(--artemis-white)]" : "text-gray-200"}
         style={{ maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis" }}
       >
         {value}

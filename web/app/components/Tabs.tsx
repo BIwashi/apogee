@@ -37,8 +37,8 @@ export default function Tabs<K extends string>({ items, active, onSelect }: Tabs
             onClick={() => onSelect(item.key)}
             className={`relative flex items-center gap-2 px-4 py-2 font-mono text-[12px] transition-colors ${
               isActive
-                ? "text-white"
-                : "text-[var(--artemis-space)] hover:text-gray-200"
+                ? "text-[var(--artemis-white)]"
+                : "text-[var(--artemis-space)] hover:text-[var(--artemis-white)]"
             }`}
           >
             {Icon && <Icon size={13} strokeWidth={1.5} />}

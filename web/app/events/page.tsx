@@ -175,7 +175,7 @@ export default function EventsPage() {
         <Breadcrumb segments={[{ label: "Events" }]} />
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
-            <h1 className="font-display text-4xl tracking-[0.16em] text-white">
+            <h1 className="font-display text-4xl tracking-[0.16em] text-[var(--artemis-white)]">
               EVENTS
             </h1>
             <div className="accent-gradient-bar mt-3 h-[3px] w-32 rounded-full" />
@@ -194,7 +194,7 @@ export default function EventsPage() {
           <select
             value={sourceApp}
             onChange={(e) => setSearchParam("source_app", e.target.value || null)}
-            className="rounded border border-[var(--border)] bg-[var(--bg-raised)] px-2 py-1 font-mono text-[12px] text-white"
+            className="rounded border border-[var(--border)] bg-[var(--bg-raised)] px-2 py-1 font-mono text-[12px] text-[var(--artemis-white)]"
             aria-label="Source app filter"
           >
             <option value="">source_app: all</option>
@@ -209,13 +209,13 @@ export default function EventsPage() {
             value={sessionId}
             onChange={(e) => setSearchParam("session_id", e.target.value || null)}
             placeholder="session_id"
-            className="rounded border border-[var(--border)] bg-[var(--bg-raised)] px-2 py-1 font-mono text-[12px] text-white outline-none placeholder:text-[var(--artemis-space)]"
+            className="rounded border border-[var(--border)] bg-[var(--bg-raised)] px-2 py-1 font-mono text-[12px] text-[var(--artemis-white)] outline-none placeholder:text-[var(--artemis-space)]"
             aria-label="Session id filter"
           />
           <select
             value={type}
             onChange={(e) => setSearchParam("type", e.target.value || null)}
-            className="rounded border border-[var(--border)] bg-[var(--bg-raised)] px-2 py-1 font-mono text-[12px] text-white"
+            className="rounded border border-[var(--border)] bg-[var(--bg-raised)] px-2 py-1 font-mono text-[12px] text-[var(--artemis-white)]"
             aria-label="Hook event type filter"
           >
             <option value="">type: all</option>
@@ -236,7 +236,7 @@ export default function EventsPage() {
                 next.set("page", "1");
                 router.replace(`?${next.toString()}`, { scroll: false });
               }}
-              className="rounded border border-[var(--border)] px-2 py-1 font-mono text-[11px] text-[var(--text-muted)] hover:text-white"
+              className="rounded border border-[var(--border)] px-2 py-1 font-mono text-[11px] text-[var(--text-muted)] hover:text-[var(--artemis-white)]"
             >
               clear
             </button>
@@ -266,7 +266,7 @@ export default function EventsPage() {
             type="button"
             onClick={onPrev}
             disabled={page <= 1}
-            className="inline-flex items-center gap-1 rounded border border-[var(--border)] px-3 py-1 font-mono text-[11px] text-gray-200 transition-colors hover:bg-[var(--bg-raised)] disabled:cursor-not-allowed disabled:opacity-40"
+            className="inline-flex items-center gap-1 rounded border border-[var(--border)] px-3 py-1 font-mono text-[11px] text-[var(--artemis-white)] transition-colors hover:bg-[var(--bg-raised)] disabled:cursor-not-allowed disabled:opacity-40"
           >
             <ChevronLeft size={14} strokeWidth={1.5} /> Prev
           </button>
@@ -278,7 +278,7 @@ export default function EventsPage() {
             type="button"
             onClick={onNext}
             disabled={!hasMore}
-            className="inline-flex items-center gap-1 rounded border border-[var(--border)] px-3 py-1 font-mono text-[11px] text-gray-200 transition-colors hover:bg-[var(--bg-raised)] disabled:cursor-not-allowed disabled:opacity-40"
+            className="inline-flex items-center gap-1 rounded border border-[var(--border)] px-3 py-1 font-mono text-[11px] text-[var(--artemis-white)] transition-colors hover:bg-[var(--bg-raised)] disabled:cursor-not-allowed disabled:opacity-40"
           >
             Next <ChevronRight size={14} strokeWidth={1.5} />
           </button>
@@ -329,11 +329,11 @@ function EventDrawerBody({ log }: { log: LogRow }) {
         <dt className="text-[var(--text-muted)]">source_app</dt>
         <dd className="text-gray-200">{log.source_app || "—"}</dd>
         <dt className="text-[var(--text-muted)]">session_id</dt>
-        <dd className="break-all text-gray-200">{log.session_id || "—"}</dd>
+        <dd className="break-all text-[var(--artemis-white)]">{log.session_id || "—"}</dd>
         <dt className="text-[var(--text-muted)]">turn_id</dt>
-        <dd className="break-all text-gray-200">{log.turn_id || "—"}</dd>
+        <dd className="break-all text-[var(--artemis-white)]">{log.turn_id || "—"}</dd>
         <dt className="text-[var(--text-muted)]">trace_id</dt>
-        <dd className="break-all text-gray-200">{log.trace_id || "—"}</dd>
+        <dd className="break-all text-[var(--artemis-white)]">{log.trace_id || "—"}</dd>
         <dt className="text-[var(--text-muted)]">severity</dt>
         <dd className="text-gray-200">
           {log.severity_text} ({log.severity_number})
@@ -346,13 +346,13 @@ function EventDrawerBody({ log }: { log: LogRow }) {
         <button
           type="button"
           onClick={onCopy}
-          className="inline-flex items-center gap-1 rounded border border-[var(--border)] px-2 py-1 font-mono text-[10px] text-gray-200 transition-colors hover:bg-[var(--bg-raised)]"
+          className="inline-flex items-center gap-1 rounded border border-[var(--border)] px-2 py-1 font-mono text-[10px] text-[var(--artemis-white)] transition-colors hover:bg-[var(--bg-raised)]"
         >
           <Copy size={12} strokeWidth={1.5} />
           {copied ? "copied" : "copy json"}
         </button>
       </div>
-      <pre className="max-h-[60vh] overflow-auto rounded border border-[var(--border)] bg-[var(--bg-deepspace)] p-3 font-mono text-[11px] leading-relaxed text-gray-200">
+      <pre className="max-h-[60vh] overflow-auto rounded border border-[var(--border)] bg-[var(--bg-deepspace)] p-3 font-mono text-[11px] leading-relaxed text-[var(--artemis-white)]">
         {json}
       </pre>
     </div>

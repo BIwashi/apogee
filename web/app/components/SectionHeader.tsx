@@ -18,7 +18,7 @@ export default function SectionHeader({ title, subtitle, actions }: SectionHeade
       <div className="flex items-center gap-3">
         <span className="accent-gradient-bar inline-block h-5 w-[3px] rounded-sm" />
         <div>
-          <h2 className="font-display text-[13px] text-white">{title}</h2>
+          <h2 className="font-display text-[13px] text-[var(--artemis-white)]">{title}</h2>
           {subtitle && (
             <p className="mt-0.5 text-[11px] text-[var(--text-muted)]">{subtitle}</p>
           )}

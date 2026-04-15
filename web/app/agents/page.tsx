@@ -104,7 +104,7 @@ export default function AgentsPage() {
     <div className="mx-auto flex max-w-6xl flex-col gap-6">
       <header className="flex flex-wrap items-end justify-between gap-4 pt-6">
         <div>
-          <h1 className="font-display text-3xl tracking-[0.16em] text-white">
+          <h1 className="font-display text-3xl tracking-[0.16em] text-[var(--artemis-white)]">
             AGENTS
           </h1>
           <div className="accent-gradient-bar mt-3 h-[3px] w-32 rounded-full" />
@@ -138,13 +138,13 @@ export default function AgentsPage() {
               placeholder="Search by agent id, type, or session…"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              className="w-full bg-transparent font-mono text-[12px] text-white outline-none placeholder:text-[var(--artemis-space)]"
+              className="w-full bg-transparent font-mono text-[12px] text-[var(--artemis-white)] outline-none placeholder:text-[var(--artemis-space)]"
             />
           </div>
           <select
             value={env ?? ""}
             onChange={(e) => setEnv(e.target.value || null)}
-            className="rounded border border-[var(--border)] bg-[var(--bg-raised)] px-2 py-1 font-mono text-[12px] text-white"
+            className="rounded border border-[var(--border)] bg-[var(--bg-raised)] px-2 py-1 font-mono text-[12px] text-[var(--artemis-white)]"
           >
             <option value="">source_app: all</option>
             {(filterOpts?.source_apps ?? []).map((app) => (
@@ -250,15 +250,15 @@ function FlatTable({ agents }: { agents: Agent[] }) {
                   <AttentionDot state="healthy" />
                 </td>
                 <td className="px-3 py-2">
-                  <span className="inline-flex items-center gap-1 font-mono text-[11px] text-gray-200">
+                  <span className="inline-flex items-center gap-1 font-mono text-[11px] text-[var(--artemis-white)]">
                     <AgentIcon agent={a} />
                     {Sub ? "subagent" : "main"}
                   </span>
                 </td>
-                <td className="px-3 py-2 font-mono text-[11px] text-gray-200">
+                <td className="px-3 py-2 font-mono text-[11px] text-[var(--artemis-white)]">
                   {a.agent_type || "main"}
                 </td>
-                <td className="px-3 py-2 font-mono text-[11px] text-white">
+                <td className="px-3 py-2 font-mono text-[11px] text-[var(--artemis-white)]">
                   {shortId(a.agent_id)}
                 </td>
                 <td className="px-3 py-2 font-mono text-[11px] text-[var(--text-muted)]">
@@ -272,10 +272,10 @@ function FlatTable({ agents }: { agents: Agent[] }) {
                     {shortId(a.session_id)}
                   </Link>
                 </td>
-                <td className="px-3 py-2 text-right font-mono tabular-nums text-gray-200">
+                <td className="px-3 py-2 text-right font-mono tabular-nums text-[var(--artemis-white)]">
                   {a.invocation_count}
                 </td>
-                <td className="px-3 py-2 text-right font-mono tabular-nums text-gray-200">
+                <td className="px-3 py-2 text-right font-mono tabular-nums text-[var(--artemis-white)]">
                   {humanDuration(a.total_duration_ms)}
                 </td>
                 <td className="px-3 py-2 font-mono text-[11px] text-[var(--text-muted)]">
@@ -333,7 +333,7 @@ function TreeRow({
             <span className="inline-block w-[12px]" />
           )}
           <AgentIcon agent={agent} />
-          <span className="font-mono text-[11px] text-white">
+          <span className="font-mono text-[11px] text-[var(--artemis-white)]">
             {shortId(agent.agent_id)}
           </span>
           <span className="font-mono text-[11px] text-[var(--text-muted)]">

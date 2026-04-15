@@ -103,7 +103,7 @@ export default function PhaseTimeline({ sessionId, turns }: PhaseTimelineProps) 
                 type="button"
                 onClick={onGenerate}
                 disabled={pending}
-                className="inline-flex items-center gap-1 rounded border border-[var(--border)] px-2 py-[2px] text-[10px] text-[var(--text-muted)] hover:text-white disabled:opacity-50"
+                className="inline-flex items-center gap-1 rounded border border-[var(--border)] px-2 py-[2px] text-[10px] text-[var(--text-muted)] hover:text-[var(--artemis-white)] disabled:opacity-50"
                 aria-label="Regenerate phase narrative"
               >
                 <RefreshCw
@@ -168,7 +168,7 @@ function EmptyState({
     <Card className="flex flex-col items-start gap-3 p-6">
       <div className="flex items-center gap-2">
         <Sparkles size={14} strokeWidth={1.5} color="var(--accent)" />
-        <p className="font-display text-[12px] uppercase tracking-[0.16em] text-white">
+        <p className="font-display text-[12px] uppercase tracking-[0.16em] text-[var(--artemis-white)]">
           {title}
         </p>
       </div>
@@ -179,7 +179,7 @@ function EmptyState({
         type="button"
         onClick={onGenerate}
         disabled={pending}
-        className="inline-flex items-center gap-2 rounded-md border border-[var(--border-bright)] bg-[var(--bg-raised)] px-3 py-1.5 font-mono text-[12px] text-white hover:bg-[var(--bg-overlay)] disabled:cursor-not-allowed disabled:opacity-40"
+        className="inline-flex items-center gap-2 rounded-md border border-[var(--border-bright)] bg-[var(--bg-raised)] px-3 py-1.5 font-mono text-[12px] text-[var(--artemis-white)] hover:bg-[var(--bg-overlay)] disabled:cursor-not-allowed disabled:opacity-40"
       >
         <RefreshCw
           size={13}

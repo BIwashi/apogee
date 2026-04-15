@@ -69,7 +69,7 @@ export default function RecentTurnsTable({ turns }: RecentTurnsTableProps) {
             className="text-[var(--artemis-earth)]"
           />
         </div>
-        <p className="font-display text-[12px] text-white">No turns yet</p>
+        <p className="font-display text-[12px] text-[var(--artemis-white)]">No turns yet</p>
         <p className="max-w-sm text-[12px] text-[var(--text-muted)]">
           Start a Claude Code session to see activity appear here in real time.
         </p>
@@ -122,7 +122,7 @@ export default function RecentTurnsTable({ turns }: RecentTurnsTableProps) {
                     {formatClock(turn.started_at)}
                   </Link>
                 </td>
-                <td className="px-3 py-2 font-mono text-[11px] text-gray-200">
+                <td className="px-3 py-2 font-mono text-[11px] text-[var(--artemis-white)]">
                   <Link
                     href={sessionHref}
                     className="hover:text-[var(--accent)] focus:outline-none focus-visible:underline"
@@ -130,7 +130,7 @@ export default function RecentTurnsTable({ turns }: RecentTurnsTableProps) {
                     {shortId(turn.session_id)}
                   </Link>
                 </td>
-                <td className="px-3 py-2 text-gray-200">
+                <td className="px-3 py-2 text-[var(--artemis-white)]">
                   <Link href={turnHref} className="block">
                     {turn.source_app || "—"}
                   </Link>
@@ -145,12 +145,12 @@ export default function RecentTurnsTable({ turns }: RecentTurnsTableProps) {
                     <StatusPill tone={statusTone(turn.status)}>{turn.status}</StatusPill>
                   </Link>
                 </td>
-                <td className="px-3 py-2 text-right font-mono tabular-nums text-gray-200">
+                <td className="px-3 py-2 text-right font-mono tabular-nums text-[var(--artemis-white)]">
                   <Link href={turnHref} className="block">
                     {turn.tool_call_count}
                   </Link>
                 </td>
-                <td className="px-3 py-2 text-right font-mono tabular-nums text-gray-200">
+                <td className="px-3 py-2 text-right font-mono tabular-nums text-[var(--artemis-white)]">
                   <Link href={turnHref} className="block">
                     {turn.subagent_count}
                   </Link>
@@ -178,7 +178,7 @@ export default function RecentTurnsTable({ turns }: RecentTurnsTableProps) {
                     <ChevronRight
                       size={14}
                       strokeWidth={1.5}
-                      className="text-[var(--artemis-space)] transition-colors group-hover:text-white"
+                      className="text-[var(--artemis-space)] transition-colors group-hover:text-[var(--artemis-white)]"
                     />
                   </Link>
                 </td>

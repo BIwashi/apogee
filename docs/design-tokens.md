@@ -62,6 +62,81 @@ linear-gradient(135deg, #0B3D91 0%, #27AAE1 50%, #FC3D21 100%)
 
 ---
 
+## Light theme (PR #33)
+
+apogee was dark-only until PR #33. The second palette is keyed off
+`:root[data-theme="light"]` in `web/app/globals.css`, driven by the
+`ThemeProvider` in `web/app/lib/theme.tsx`, and surfaced through three
+identical controls:
+
+1. A tri-state toggle in the TopRibbon (`Monitor` / `Sun` / `Moon` icons)
+2. An **Appearance** segmented control on `/settings`
+3. A toggle at the top of the `/styleguide` page so designers can verify
+   every token in both palettes without leaving the page
+
+The preference cycles through `system → light → dark`. `system` follows
+`prefers-color-scheme` live (via a `matchMedia` listener) and clears the
+`apogee:theme` localStorage key. `light` / `dark` are persisted as
+explicit overrides. An inline script in `app/layout.tsx` sets
+`data-theme` **before** React hydrates so the first paint never flashes
+the wrong palette.
+
+### Palette comparison
+
+| Token             | Dark       | Light      | Role                     |
+| ----------------- | ---------- | ---------- | ------------------------ |
+| `--bg-deepspace`  | `#06080f`  | `#f8fafc`  | Page background          |
+| `--bg-surface`    | `#0c1018`  | `#ffffff`  | Card / sidebar bg        |
+| `--bg-raised`     | `#141a24`  | `#f1f5f9`  | Hover / elevated         |
+| `--bg-overlay`    | `#1c2333`  | `#ffffff`  | Modals / dropdowns       |
+| `--border`        | `#1e2a3a`  | `#e2e8f0`  | Default borders          |
+| `--border-bright` | `#2a3a50`  | `#cbd5e1`  | Active borders           |
+| `--artemis-white` | `#ffffff`  | `#0f172a`  | Primary text (reversed)  |
+| `--artemis-space` | `#A7A9AC`  | `#475569`  | Secondary text           |
+| `--artemis-shadow`| `#58595B`  | `#64748b`  | Tertiary text            |
+| `--artemis-red`   | `#FC3D21`  | `#FC3D21`  | Accent (shared)          |
+| `--artemis-blue`  | `#0B3D91`  | `#0B3D91`  | Accent (shared)          |
+| `--artemis-earth` | `#27AAE1`  | `#1d91c9`  | Accent (shifted darker)  |
+| `--status-critical` | `#FC3D21` | `#dc2626` | Critical status          |
+| `--status-warning`  | `#E08B27` | `#d97706` | Warning status           |
+| `--status-success`  | `#27E0A1` | `#15803d` | Success status           |
+| `--status-info`     | `#27AAE1` | `#0e7fbf` | Info status              |
+| `--status-muted`    | `#58595B` | `#64748b` | Muted status             |
+
+### Shadows and overlays
+
+The light palette uses soft slate drop shadows rather than pure black:
+
+| Token              | Dark                            | Light                              |
+| ------------------ | ------------------------------- | ---------------------------------- |
+| `--shadow-sm`      | `0 1px 2px rgba(0,0,0,0.4)`    | `0 1px 2px rgba(15,23,42,0.08)`   |
+| `--shadow-md`      | `0 4px 12px rgba(0,0,0,0.5)`   | `0 4px 12px rgba(15,23,42,0.08)`  |
+| `--shadow-lg`      | `0 12px 32px rgba(0,0,0,0.6)`  | `0 12px 32px rgba(15,23,42,0.12)` |
+| `--overlay-backdrop` | `rgba(0,0,0,0.60)`            | `rgba(15,23,42,0.35)`             |
+
+### Accent gradient
+
+Both themes share the same three stops, but the light variant pulls the
+midpoint slightly inward so the red does not dominate over a white page:
+
+- **Dark:** `linear-gradient(135deg, #0B3D91 0%, #27AAE1 50%, #FC3D21 100%)`
+- **Light:** `linear-gradient(135deg, #0B3D91 0%, #1d91c9 55%, #dc2626 100%)`
+
+### Principles
+
+- **Dark is still the default.** `:root` without any attribute resolves to
+  the dark palette. Adding `data-theme="light"` opts in.
+- **Accents stay branded.** NASA red and blue are identical across
+  themes; only earth shifts a few LCH steps darker so chart lines are
+  still legible on white.
+- **Status tones keep their hue, lose lightness.** The five semantic
+  status colors (`critical` / `warning` / `success` / `info` / `muted`)
+  remain recognisable but contrast against light surfaces.
+- **No structural changes.** Every component already consumed CSS
+  variables; the PR is palette derivation + wiring.
+
+---
+
 ## Typography
 
 ### Display — Space Grotesk
@@ -221,7 +296,9 @@ const color = sessionColor(session.id); // deterministic hex
 
 ## Principles
 
-1. **Dark-first.** Designed for multi-hour monitoring sessions.
+1. **Dark-first.** Designed for multi-hour monitoring sessions. Light
+   theme is opt-in (PR #33) and follows `prefers-color-scheme` when
+   the preference is `system`.
 2. **Information density.** Operators want data, not whitespace.
 3. **Status at a glance.** Color coding follows the Artemis palette
    consistently — there is one `critical`, one `warning`, one `success`, one

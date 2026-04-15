@@ -79,6 +79,7 @@ for the schema, chaining, staleness guards, and cost estimate.
 | Doctor | `apogee doctor` — 7 environment checks (home, claude CLI, db path, config, DB lock, collector, hook install) with `--json` for scripts |
 | CLI | `serve`, `init`, `onboard`, `hook`, `daemon`, `status`, `logs`, `open`, `uninstall`, `menubar`, `doctor`, `version` — one binary, no Node or Python runtime |
 | Interactive setup | `apogee onboard` — one-command wizard chaining hooks + daemon + summarizer + OTel + browser, re-runnable safely, with a `--yes` non-interactive path for CI / Docker provisioning |
+| Design | Light and dark themes with automatic `prefers-color-scheme` detection and a toggle in the top ribbon. See [`docs/design-tokens.md`](docs/design-tokens.md) for the full palette spec. |
 
 <p align="center">
   <img src="assets/screenshots/session-detail.png" alt="session detail" width="49%">

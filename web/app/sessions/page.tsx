@@ -53,7 +53,7 @@ export default function SessionsPage() {
     <div className="mx-auto flex max-w-6xl flex-col gap-6">
       <header className="flex flex-wrap items-end justify-between gap-4 pt-6">
         <div>
-          <h1 className="font-display text-3xl tracking-[0.16em] text-white">SESSIONS</h1>
+          <h1 className="font-display text-3xl tracking-[0.16em] text-[var(--artemis-white)]">SESSIONS</h1>
           <div className="accent-gradient-bar mt-3 h-[3px] w-32 rounded-full" />
           <p className="mt-3 max-w-xl text-[13px] text-[var(--text-muted)]">
             Every Claude Code session reporting to this collector. Click a row to drill
@@ -71,13 +71,13 @@ export default function SessionsPage() {
               placeholder="Search by id, source_app, or prompt…"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              className="w-full bg-transparent font-mono text-[12px] text-white outline-none placeholder:text-[var(--artemis-space)]"
+              className="w-full bg-transparent font-mono text-[12px] text-[var(--artemis-white)] outline-none placeholder:text-[var(--artemis-space)]"
             />
           </div>
           <select
             value={env ?? ""}
             onChange={(e) => setEnv(e.target.value || null)}
-            className="rounded border border-[var(--border)] bg-[var(--bg-raised)] px-2 py-1 font-mono text-[12px] text-white"
+            className="rounded border border-[var(--border)] bg-[var(--bg-raised)] px-2 py-1 font-mono text-[12px] text-[var(--artemis-white)]"
           >
             <option value="">env: all</option>
             {(filterOpts?.source_apps ?? []).map((app) => (
@@ -135,7 +135,7 @@ export default function SessionsPage() {
                     <td className="px-3 py-2">
                       <AttentionDot state={hit.attention_state} />
                     </td>
-                    <td className="px-3 py-2 font-mono text-[11px] text-gray-200">
+                    <td className="px-3 py-2 font-mono text-[11px] text-[var(--artemis-white)]">
                       <Link
                         href={`/session/?id=${hit.session_id}&tab=overview`}
                         className="hover:text-[var(--accent)]"
@@ -143,7 +143,7 @@ export default function SessionsPage() {
                         {shortId(hit.session_id)}
                       </Link>
                     </td>
-                    <td className="px-3 py-2 text-gray-200">
+                    <td className="px-3 py-2 text-[var(--artemis-white)]">
                       {hit.source_app || "—"}
                     </td>
                     <td className="px-3 py-2 text-[11px] text-[var(--text-muted)]">
@@ -154,7 +154,7 @@ export default function SessionsPage() {
                     <td className="px-3 py-2 font-mono text-[11px] text-[var(--text-muted)]">
                       {timeAgo(hit.last_seen_at)}
                     </td>
-                    <td className="px-3 py-2 text-right font-mono tabular-nums text-gray-200">
+                    <td className="px-3 py-2 text-right font-mono tabular-nums text-[var(--artemis-white)]">
                       {hit.turn_count}
                     </td>
                     <td className="px-3 py-2 text-right">

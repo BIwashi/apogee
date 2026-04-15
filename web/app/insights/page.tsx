@@ -91,7 +91,7 @@ export default function InsightsPage() {
   if (isLoading) {
     return (
       <div className="mx-auto flex max-w-6xl flex-col gap-6 pt-6">
-        <h1 className="font-display text-3xl tracking-[0.16em] text-white">
+        <h1 className="font-display text-3xl tracking-[0.16em] text-[var(--artemis-white)]">
           INSIGHTS
         </h1>
         <Card>
@@ -106,7 +106,7 @@ export default function InsightsPage() {
   if (error || !data) {
     return (
       <div className="mx-auto flex max-w-6xl flex-col gap-6 pt-6">
-        <h1 className="font-display text-3xl tracking-[0.16em] text-white">
+        <h1 className="font-display text-3xl tracking-[0.16em] text-[var(--artemis-white)]">
           INSIGHTS
         </h1>
         <Card>
@@ -125,7 +125,7 @@ export default function InsightsPage() {
     <div className="mx-auto flex max-w-6xl flex-col gap-6">
       <header className="flex flex-wrap items-end justify-between gap-4 pt-6">
         <div>
-          <h1 className="font-display text-3xl tracking-[0.16em] text-white">
+          <h1 className="font-display text-3xl tracking-[0.16em] text-[var(--artemis-white)]">
             INSIGHTS
           </h1>
           <div className="accent-gradient-bar mt-3 h-[3px] w-32 rounded-full" />
@@ -296,7 +296,7 @@ export default function InsightsPage() {
                   className="flex items-center justify-between gap-3 border-b border-[var(--border)] px-4 py-2 text-[12px] last:border-b-0"
                 >
                   <div className="flex flex-1 flex-col gap-0.5">
-                    <p className="font-mono text-[11px] text-white">
+                    <p className="font-mono text-[11px] text-[var(--artemis-white)]">
                       {shortId(hit.session_id, 12)}
                     </p>
                     <p className="line-clamp-1 text-[11px] text-[var(--text-muted)]">

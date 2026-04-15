@@ -229,7 +229,7 @@ export default function SessionCommandPalette({
       ref={dialogRef}
       onCancel={handleCancel}
       onClose={onClose}
-      className="m-0 max-h-[80vh] w-full max-w-2xl rounded-lg border border-[var(--border-bright)] bg-[var(--bg-overlay)] p-0 text-gray-100 shadow-[0_12px_32px_rgba(0,0,0,0.6)] backdrop:bg-black/60"
+      className="m-0 max-h-[80vh] w-full max-w-2xl rounded-lg border border-[var(--border-bright)] bg-[var(--bg-overlay)] p-0 text-[var(--artemis-white)] shadow-[var(--shadow-lg)] backdrop:bg-[var(--overlay-backdrop)]"
       style={{ top: "12vh", left: "50%", transform: "translateX(-50%)" }}
       aria-label="Session command palette"
     >
@@ -241,14 +241,14 @@ export default function SessionCommandPalette({
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search sessions — id, source, prompt text…"
-            className="flex-1 bg-transparent font-mono text-[13px] text-white outline-none placeholder:text-[var(--artemis-space)]"
+            className="flex-1 bg-transparent font-mono text-[13px] text-[var(--artemis-white)] outline-none placeholder:text-[var(--artemis-space)]"
             autoComplete="off"
             spellCheck={false}
           />
           <button
             type="button"
             onClick={onClose}
-            className="rounded p-1 text-[var(--artemis-space)] hover:bg-[var(--bg-raised)] hover:text-white"
+            className="rounded p-1 text-[var(--artemis-space)] hover:bg-[var(--bg-raised)] hover:text-[var(--artemis-white)]"
             aria-label="Close palette"
           >
             <X size={14} strokeWidth={1.5} />
@@ -282,7 +282,7 @@ export default function SessionCommandPalette({
               clear();
               onClose();
             }}
-            className="rounded px-2 py-1 hover:bg-[var(--bg-raised)] hover:text-white"
+            className="rounded px-2 py-1 hover:bg-[var(--bg-raised)] hover:text-[var(--artemis-white)]"
           >
             Clear selection — show fleet view
           </button>
@@ -340,10 +340,10 @@ function PaletteSection({
                 }`}
               >
                 <AttentionDot state={row.attention_state} />
-                <span className="w-20 font-mono text-[11px] text-gray-200">
+                <span className="w-20 font-mono text-[11px] text-[var(--artemis-white)]">
                   {shortId(row.session_id)}
                 </span>
-                <span className="flex-1 truncate text-[12px] text-white">{row.label}</span>
+                <span className="flex-1 truncate text-[12px] text-[var(--artemis-white)]">{row.label}</span>
                 <span className="w-28 truncate font-mono text-[11px] text-[var(--artemis-space)]">
                   {row.source_app || "—"}
                 </span>

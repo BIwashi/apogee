@@ -187,7 +187,7 @@ export default function PhaseCard({
                 {phase.turn_count} turn{phase.turn_count === 1 ? "" : "s"} · {formatDuration(phase.duration_ms)}
               </span>
             </div>
-            <p className="text-[14px] font-medium leading-snug text-white">
+            <p className="text-[14px] font-medium leading-snug text-[var(--artemis-white)]">
               {phase.headline}
             </p>
             {narrativeSnippet && (
@@ -223,7 +223,7 @@ export default function PhaseCard({
           <p className="font-display text-[11px] uppercase tracking-[0.16em] text-[var(--text-muted)]">
             {phase.kind} · {phase.turn_count} turn{phase.turn_count === 1 ? "" : "s"} · {formatDuration(phase.duration_ms)}
           </p>
-          <p className="mt-1 text-[12px] font-medium text-white">{phase.headline}</p>
+          <p className="mt-1 text-[12px] font-medium text-[var(--artemis-white)]">{phase.headline}</p>
           {phase.narrative && (
             <p className="mt-2 whitespace-pre-line text-[11px] leading-relaxed text-[var(--text-muted)]">
               {phase.narrative}
@@ -232,7 +232,7 @@ export default function PhaseCard({
           {phase.key_steps.length > 0 && (
             <ul className="mt-2 flex flex-col gap-0.5 text-[11px]">
               {phase.key_steps.map((step, idx) => (
-                <li key={`preview-${phase.index}-${idx}`} className="flex gap-2 leading-snug text-gray-200">
+                <li key={`preview-${phase.index}-${idx}`} className="flex gap-2 leading-snug text-[var(--artemis-white)]">
                   <span className="font-mono text-[10px] text-[var(--text-muted)]">·</span>
                   <span>{step}</span>
                 </li>

@@ -264,7 +264,7 @@ export default function LivePage() {
     <div className="mx-auto flex max-w-7xl flex-col gap-6">
       <header className="flex flex-wrap items-end justify-between gap-4 pt-6">
         <div>
-          <h1 className="font-display text-4xl leading-none tracking-[0.16em] text-white md:text-5xl">
+          <h1 className="font-display text-4xl leading-none tracking-[0.16em] text-[var(--artemis-white)] md:text-5xl">
             LIVE
           </h1>
           <div className="accent-gradient-bar mt-3 h-[3px] w-32 rounded-full" />

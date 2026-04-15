@@ -378,7 +378,7 @@ export default function TurnDetailPage() {
           ]}
         />
         <div className="flex flex-col gap-2">
-          <h1 className="text-xl font-medium text-white">{headline}</h1>
+          <h1 className="text-xl font-medium text-[var(--artemis-white)]">{headline}</h1>
           <div className="flex flex-wrap items-center gap-3 text-[12px] text-[var(--text-muted)]">
             <AttentionDot
               state={liveTurn.attention_state}

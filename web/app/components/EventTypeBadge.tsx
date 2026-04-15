@@ -37,40 +37,40 @@ const ICON_MAP: Record<string, LucideIcon> = {
 
 const TONE_STYLES: Record<EventToneKey, { bg: string; fg: string; border: string }> = {
   critical: {
-    bg: "rgb(252 61 33 / 0.15)",
+    bg: "var(--tint-critical)",
     fg: "var(--status-critical)",
-    border: "rgb(252 61 33 / 0.3)",
+    border: "var(--tint-critical-border)",
   },
   warning: {
-    bg: "rgb(224 139 39 / 0.15)",
+    bg: "var(--tint-warning)",
     fg: "var(--status-warning)",
-    border: "rgb(224 139 39 / 0.3)",
+    border: "var(--tint-warning-border)",
   },
   success: {
-    bg: "rgb(39 224 161 / 0.15)",
+    bg: "var(--tint-success)",
     fg: "var(--status-success)",
-    border: "rgb(39 224 161 / 0.3)",
+    border: "var(--tint-success-border)",
   },
   info: {
-    bg: "rgb(39 170 225 / 0.15)",
+    bg: "var(--tint-info)",
     fg: "var(--status-info)",
-    border: "rgb(39 170 225 / 0.3)",
+    border: "var(--tint-info-border)",
   },
   muted: {
-    bg: "rgb(88 89 91 / 0.18)",
+    bg: "var(--tint-muted)",
     fg: "var(--artemis-space)",
-    border: "rgb(88 89 91 / 0.35)",
+    border: "var(--tint-muted-border)",
   },
   earth: {
-    bg: "rgb(39 170 225 / 0.12)",
+    bg: "var(--tint-earth)",
     fg: "var(--artemis-earth)",
-    border: "rgb(39 170 225 / 0.28)",
+    border: "var(--tint-earth-border)",
   },
   accent: {
     // accent renders as a subtle gradient border w/ neutral fill
-    bg: "rgb(11 61 145 / 0.18)",
-    fg: "#C8D5F5",
-    border: "rgb(39 170 225 / 0.45)",
+    bg: "var(--tint-accent)",
+    fg: "var(--accent-foreground)",
+    border: "var(--tint-accent-border)",
   },
 };
 

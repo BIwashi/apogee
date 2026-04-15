@@ -30,10 +30,10 @@ const PILLS: PillSpec[] = [
 ];
 
 const BG_BY_TONE: Record<PillSpec["tone"], string> = {
-  critical: "rgb(252 61 33 / 0.15)",
-  warning: "rgb(224 139 39 / 0.15)",
-  info: "rgb(39 170 225 / 0.15)",
-  success: "rgb(39 224 161 / 0.15)",
+  critical: "var(--tint-critical)",
+  warning: "var(--tint-warning)",
+  info: "var(--tint-info)",
+  success: "var(--tint-success)",
 };
 
 const COLOR_BY_TONE: Record<PillSpec["tone"], string> = {

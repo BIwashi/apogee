@@ -168,7 +168,7 @@ function TimelineRow({ intervention }: { intervention: Intervention }) {
         </Chip>
       </div>
       <p
-        className="mt-1 line-clamp-2 whitespace-pre-wrap font-mono text-[11px] text-gray-200"
+        className="mt-1 line-clamp-2 whitespace-pre-wrap font-mono text-[11px] text-[var(--artemis-white)]"
         style={{ wordBreak: "break-word" }}
       >
         {intervention.message}

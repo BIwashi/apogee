@@ -9,6 +9,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **PR #33 — light theme + `data-theme` toggle.** Dashboard gains a second
+  palette under `:root[data-theme="light"]`. A TopRibbon toggle cycles
+  through `system → light → dark` with localStorage persistence, a
+  pre-hydration inline script in `app/layout.tsx` (no flash of wrong
+  theme), and automatic tracking of OS-level `prefers-color-scheme`
+  changes when the preference is `system`. Settings page gains an
+  Appearance section with the same control; styleguide gains a theme
+  toggle so designers can verify every token in both themes. The
+  `web/app/globals.css` palette is restructured into a shared block, a
+  dark block (the default, applied under `:root` and
+  `:root[data-theme="dark"]`), a `:root[data-theme="light"]` block, and
+  a `prefers-color-scheme: light` fallback for the JS-off case. New
+  design-token CSS variables — `--tint-*`, `--shadow-sm`, `--shadow-md`,
+  `--shadow-lg`, `--overlay-backdrop`, `--accent-foreground`,
+  `--chip-on-accent` — replace every hard-coded hex / rgba literal that
+  used to live inside components. `web/app/lib/design-tokens.ts` is
+  restructured into `DESIGN_TOKENS.dark`, `DESIGN_TOKENS.light`, and
+  `DESIGN_TOKENS.shared` buckets while keeping the legacy top-level
+  exports dark-valued for back-compat. No structural changes — every
+  component already used CSS variables, so the PR is palette derivation
+  + wiring. See [`docs/design-tokens.md`](docs/design-tokens.md) for the
+  full palette comparison.
+
 - **PR #32 — phase narrative (summarizer tier 3).** The session rollup
   gains a `phases[]` array: an LLM-generated timeline of semantic phases
   (implement / review / debug / plan / test / commit / delegate / explore /

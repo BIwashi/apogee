@@ -461,10 +461,16 @@ export default function SwimLane({
       ))}
 
       <defs>
+        {/*
+         * Brand accent gradient. The stop colors reference the Artemis
+         * tokens so the light-theme override automatically shifts the
+         * earth and red stops without touching this component. SVG
+         * stopColor accepts `var(...)` in modern browsers.
+         */}
         <linearGradient id="swim-accent" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#0B3D91" />
-          <stop offset="50%" stopColor="#27AAE1" />
-          <stop offset="100%" stopColor="#FC3D21" />
+          <stop offset="0%" stopColor="var(--artemis-blue)" />
+          <stop offset="50%" stopColor="var(--artemis-earth)" />
+          <stop offset="100%" stopColor="var(--artemis-red)" />
         </linearGradient>
       </defs>
     </svg>

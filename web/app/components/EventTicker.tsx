@@ -155,7 +155,7 @@ export default function EventTicker({
       {showHeader && (
         <header className="flex items-center justify-between gap-3 border-b border-[var(--border)] px-3 py-2">
           <div className="flex items-center gap-2">
-            <span className="font-display text-[11px] uppercase tracking-[0.16em] text-white">
+            <span className="font-display text-[11px] uppercase tracking-[0.16em] text-[var(--artemis-white)]">
               Event ticker
             </span>
             <span className="font-mono text-[10px] text-[var(--text-muted)]">
@@ -181,7 +181,7 @@ export default function EventTicker({
               strokeWidth={1.5}
               className="text-[var(--artemis-earth)]"
             />
-            <p className="font-display text-[11px] text-white">
+            <p className="font-display text-[11px] text-[var(--artemis-white)]">
               Awaiting events
             </p>
             <p className="max-w-sm text-[11px] text-[var(--text-muted)]">
@@ -208,7 +208,7 @@ export default function EventTicker({
                     style={{ color }}
                     className="flex-shrink-0"
                   />
-                  <span className="font-mono text-[11px] text-gray-200">
+                  <span className="font-mono text-[11px] text-[var(--artemis-white)]">
                     {event.type}
                   </span>
                   {subject && (

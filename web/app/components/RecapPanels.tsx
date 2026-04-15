@@ -65,7 +65,7 @@ export default function RecapPanels({
           <div className="mb-2">
             <RecapOutcomeChip outcome={recap.outcome} />
           </div>
-          <p className="text-[13px] leading-snug text-white">
+          <p className="text-[13px] leading-snug text-[var(--artemis-white)]">
             {recap.headline}
           </p>
           {recap.failure_cause && (
@@ -82,7 +82,7 @@ export default function RecapPanels({
               No key steps recorded.
             </p>
           ) : (
-            <ol className="flex flex-col gap-1 text-[12px] text-white">
+            <ol className="flex flex-col gap-1 text-[12px] text-[var(--artemis-white)]">
               {recap.key_steps.map((step, idx) => (
                 <li key={`step-${idx}`} className="flex gap-2 leading-snug">
                   <span className="font-mono text-[10px] text-[var(--text-muted)]">
@@ -102,7 +102,7 @@ export default function RecapPanels({
               Nothing notable.
             </p>
           ) : (
-            <ul className="flex flex-col gap-1 text-[12px] text-white">
+            <ul className="flex flex-col gap-1 text-[12px] text-[var(--artemis-white)]">
               {recap.notable_events.map((ev, idx) => (
                 <li key={`ev-${idx}`} className="leading-snug">
                   · {ev}
@@ -122,7 +122,7 @@ export default function RecapPanels({
             type="button"
             onClick={onRegenerate}
             disabled={regenerating}
-            className="inline-flex items-center gap-1 rounded-[4px] border border-[var(--border)] px-2 py-[2px] text-[var(--text-muted)] transition hover:text-white disabled:opacity-50"
+            className="inline-flex items-center gap-1 rounded-[4px] border border-[var(--border)] px-2 py-[2px] text-[var(--text-muted)] transition hover:text-[var(--artemis-white)] disabled:opacity-50"
             aria-label="Regenerate recap"
           >
             <RefreshCw

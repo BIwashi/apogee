@@ -73,7 +73,7 @@ export default function RollupPanel({ sessionId }: Props) {
         subtitle="Long-range narrative across every closed turn."
       />
       <div className="flex flex-col gap-4">
-        <p className="text-[14px] font-medium leading-snug text-white">
+        <p className="text-[14px] font-medium leading-snug text-[var(--artemis-white)]">
           {rollup.headline}
         </p>
         {rollup.narrative && (
@@ -111,7 +111,7 @@ function RollupSection({
 }) {
   if (!items || items.length === 0) return null;
   const color =
-    tone === "critical" ? "text-[var(--status-critical)]" : "text-white";
+    tone === "critical" ? "text-[var(--status-critical)]" : "text-[var(--artemis-white)]";
   return (
     <div className="flex flex-col gap-1">
       <span className="font-display text-[10px] uppercase tracking-[0.14em] text-[var(--artemis-space)]">
@@ -143,7 +143,7 @@ function RegenerateButton({
       type="button"
       onClick={onClick}
       disabled={pending}
-      className="inline-flex items-center gap-1 rounded-[4px] border border-[var(--border)] px-2 py-[2px] font-mono text-[10px] text-[var(--text-muted)] transition hover:text-white disabled:opacity-50"
+      className="inline-flex items-center gap-1 rounded-[4px] border border-[var(--border)] px-2 py-[2px] font-mono text-[10px] text-[var(--text-muted)] transition hover:text-[var(--artemis-white)] disabled:opacity-50"
       aria-label="Regenerate rollup"
     >
       <RefreshCw

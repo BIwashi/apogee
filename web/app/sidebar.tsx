@@ -99,15 +99,15 @@ export default function Sidebar({ children }: { children: React.ReactNode }) {
           }`}
         >
           {!collapsed ? (
-            <h1 className="font-display text-base tracking-[0.2em] text-white">
+            <h1 className="font-display text-base tracking-[0.2em] text-[var(--artemis-white)]">
               APOGEE
             </h1>
           ) : (
-            <span className="font-display text-sm text-white">A</span>
+            <span className="font-display text-sm text-[var(--artemis-white)]">A</span>
           )}
           <button
             onClick={() => setUserCollapsed(!collapsed)}
-            className="ml-1 rounded p-1 text-[var(--text-muted)] transition-colors hover:bg-[var(--surface-raised)] hover:text-gray-300"
+            className="ml-1 rounded p-1 text-[var(--text-muted)] transition-colors hover:bg-[var(--surface-raised)] hover:text-[var(--artemis-white)]"
             title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
           >
             {collapsed ? (
@@ -127,7 +127,7 @@ export default function Sidebar({ children }: { children: React.ReactNode }) {
               "flex items-center gap-2.5 rounded px-3 py-1.5 text-[13px] transition-colors w-full";
             const tone = active
               ? "bg-[var(--accent)]/10 font-medium text-[var(--accent)]"
-              : "text-[var(--text-muted)] hover:bg-[var(--surface-raised)] hover:text-gray-200";
+              : "text-[var(--text-muted)] hover:bg-[var(--surface-raised)] hover:text-[var(--artemis-white)]";
             return (
               <li key={href}>
                 <a

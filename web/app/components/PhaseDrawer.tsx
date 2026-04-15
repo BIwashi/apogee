@@ -92,7 +92,7 @@ export default function PhaseDrawer({
                 {phase.turn_count === 1 ? "" : "s"}
               </span>
             </div>
-            <h3 className="font-display text-[18px] leading-snug text-white">
+            <h3 className="font-display text-[18px] leading-snug text-[var(--artemis-white)]">
               {phase.headline}
             </h3>
             <p className="font-mono text-[10px] text-[var(--text-muted)]">
@@ -105,7 +105,7 @@ export default function PhaseDrawer({
               <h4 className="font-display text-[10px] uppercase tracking-[0.16em] text-[var(--text-muted)]">
                 Narrative
               </h4>
-              <p className="mt-1 whitespace-pre-line text-[12px] leading-relaxed text-white">
+              <p className="mt-1 whitespace-pre-line text-[12px] leading-relaxed text-[var(--artemis-white)]">
                 {phase.narrative}
               </p>
             </section>
@@ -116,7 +116,7 @@ export default function PhaseDrawer({
               <h4 className="font-display text-[10px] uppercase tracking-[0.16em] text-[var(--text-muted)]">
                 Key steps
               </h4>
-              <ul className="mt-1 flex flex-col gap-1 text-[12px] text-white">
+              <ul className="mt-1 flex flex-col gap-1 text-[12px] text-[var(--artemis-white)]">
                 {phase.key_steps.map((step, idx) => (
                   <li
                     key={`step-${phase.index}-${idx}`}
@@ -142,7 +142,7 @@ export default function PhaseDrawer({
                   const width = maxTool > 0 ? Math.round((count / maxTool) * 100) : 0;
                   return (
                     <div key={name} className="flex items-center gap-2">
-                      <span className="w-20 truncate font-mono text-[11px] text-white">
+                      <span className="w-20 truncate font-mono text-[11px] text-[var(--artemis-white)]">
                         {name}
                       </span>
                       <div className="relative h-2 flex-1 rounded-full bg-[var(--bg-raised)]">
@@ -171,7 +171,7 @@ export default function PhaseDrawer({
                   <li key={t.turn_id}>
                     <Link
                       href={`/turn/?sess=${sessionId}&turn=${t.turn_id}`}
-                      className="flex items-center justify-between gap-3 rounded border border-transparent px-2 py-1 font-mono text-[11px] text-white transition hover:border-[var(--border)] hover:bg-[var(--bg-raised)]"
+                      className="flex items-center justify-between gap-3 rounded border border-transparent px-2 py-1 font-mono text-[11px] text-[var(--artemis-white)] transition hover:border-[var(--border)] hover:bg-[var(--bg-raised)]"
                     >
                       <span className="truncate">
                         {t.headline || t.prompt_text?.slice(0, 60) || t.turn_id}
