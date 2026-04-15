@@ -298,7 +298,7 @@ function ContextChip({
     >
       <span className="uppercase tracking-wider">{label}</span>
       <span
-        className={mono ? "font-mono text-[var(--artemis-white)]" : "text-gray-200"}
+        className={mono ? "font-mono text-[var(--artemis-white)]" : "text-[var(--text-primary)]"}
         style={{ maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis" }}
       >
         {value}

@@ -146,7 +146,7 @@ export default function RecentTurnsTable({ turns }: RecentTurnsTableProps) {
                 </td>
                 <td
                   className={`px-3 py-2 text-right font-mono tabular-nums ${
-                    turn.error_count > 0 ? "text-[var(--status-critical)]" : "text-gray-200"
+                    turn.error_count > 0 ? "text-[var(--status-critical)]" : "text-[var(--text-muted)]"
                   }`}
                 >
                   {turn.error_count}

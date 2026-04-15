@@ -200,7 +200,7 @@ export default function PhaseCard({
                 {visibleSteps.map((step, idx) => (
                   <li key={`${phase.index}-${idx}`} className="flex gap-2 leading-snug">
                     <span className="font-mono text-[10px]">·</span>
-                    <span className="text-gray-200">{step}</span>
+                    <span className="text-[var(--text-primary)]">{step}</span>
                   </li>
                 ))}
                 {extraSteps > 0 && (

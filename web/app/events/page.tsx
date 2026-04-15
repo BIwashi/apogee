@@ -436,13 +436,13 @@ function EventDrawerBody({ log }: { log: LogRow }) {
     <div className="flex flex-col gap-4">
       <dl className="grid grid-cols-2 gap-x-4 gap-y-1 font-mono text-[11px]">
         <dt className="text-[var(--text-muted)]">id</dt>
-        <dd className="text-gray-200">{log.id}</dd>
+        <dd className="text-[var(--text-primary)]">{log.id}</dd>
         <dt className="text-[var(--text-muted)]">timestamp</dt>
-        <dd className="text-gray-200">{formatClock(log.timestamp)}</dd>
+        <dd className="text-[var(--text-primary)]">{formatClock(log.timestamp)}</dd>
         <dt className="text-[var(--text-muted)]">hook_event</dt>
-        <dd className="text-gray-200">{log.hook_event || "—"}</dd>
+        <dd className="text-[var(--text-primary)]">{log.hook_event || "—"}</dd>
         <dt className="text-[var(--text-muted)]">source_app</dt>
-        <dd className="text-gray-200">{log.source_app || "—"}</dd>
+        <dd className="text-[var(--text-primary)]">{log.source_app || "—"}</dd>
         <dt className="text-[var(--text-muted)]">session_id</dt>
         <dd className="break-all text-[var(--artemis-white)]">
           {log.session_id || "—"}
@@ -456,7 +456,7 @@ function EventDrawerBody({ log }: { log: LogRow }) {
           {log.trace_id || "—"}
         </dd>
         <dt className="text-[var(--text-muted)]">severity</dt>
-        <dd className="text-gray-200">
+        <dd className="text-[var(--text-primary)]">
           {log.severity_text} ({log.severity_number})
         </dd>
       </dl>
