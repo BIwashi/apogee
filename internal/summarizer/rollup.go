@@ -59,6 +59,7 @@ type RollupWorker struct {
 	hub    *sse.Hub
 	logger *slog.Logger
 	clock  func() time.Time
+	prefs  PreferencesReader
 
 	queue chan rollupJob
 	wg    sync.WaitGroup
@@ -82,8 +83,19 @@ func NewRollupWorker(cfg Config, runner Runner, store *duckdb.Store, hub *sse.Hu
 		hub:    hub,
 		logger: logger,
 		clock:  time.Now,
+		prefs:  NewStaticPreferencesReader(Defaults()),
 		queue:  make(chan rollupJob, cfg.QueueSize),
 	}
+}
+
+// SetPreferencesReader installs the operator-controlled preferences source.
+// The worker calls this reader at the top of every job so updates land
+// without a restart. nil is a no-op.
+func (w *RollupWorker) SetPreferencesReader(r PreferencesReader) {
+	if w == nil || r == nil {
+		return
+	}
+	w.prefs = r
 }
 
 // Enqueue drops a session id onto the rollup queue without blocking. A
@@ -195,7 +207,23 @@ func (w *RollupWorker) process(ctx context.Context, job rollupJob) {
 	// returns attention-priority ordered, not chronological).
 	sortRollupTurns(closedTurns)
 
-	prompt := BuildRollupPrompt(*sess, closedTurns)
+	// Load operator preferences (language + system prompt + optional
+	// model override) at job start so updates land without a restart.
+	prefs := Defaults()
+	if w.prefs != nil {
+		loaded, err := w.prefs.LoadSummarizerPreferences(ctx)
+		if err != nil {
+			w.logger.Warn("rollup: load preferences", "session_id", job.SessionID, "err", err)
+		} else {
+			prefs = loaded
+		}
+	}
+	model := w.cfg.RollupModel
+	if override := strings.TrimSpace(prefs.RollupModelOverride); override != "" {
+		model = override
+	}
+
+	prompt := BuildRollupPrompt(*sess, closedTurns, prefs)
 	runCtx := ctx
 	if w.cfg.Timeout > 0 {
 		var cancel context.CancelFunc
@@ -205,17 +233,18 @@ func (w *RollupWorker) process(ctx context.Context, job rollupJob) {
 
 	w.logger.Info("rollup: running",
 		"session_id", job.SessionID,
-		"model", w.cfg.RollupModel,
+		"model", model,
+		"language", prefs.Language,
 		"turn_count", len(closedTurns),
 		"reason", job.Reason)
 
-	output, err := w.runner.Run(runCtx, w.cfg.RollupModel, prompt)
+	output, err := w.runner.Run(runCtx, model, prompt)
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
 			return
 		}
 		w.logger.Warn("rollup: runner error",
-			"session_id", job.SessionID, "model", w.cfg.RollupModel, "err", err)
+			"session_id", job.SessionID, "model", model, "err", err)
 		return
 	}
 
@@ -228,7 +257,7 @@ func (w *RollupWorker) process(ctx context.Context, job rollupJob) {
 	}
 	now := w.clock()
 	rollup.GeneratedAt = now
-	rollup.Model = w.cfg.RollupModel
+	rollup.Model = model
 	rollup.TurnCount = len(closedTurns)
 
 	blob, err := json.Marshal(rollup)
@@ -300,8 +329,10 @@ func ParseRollup(raw string) (Rollup, error) {
 }
 
 // BuildRollupPrompt assembles the LLM input for one rollup. The shape is
-// documented in the package README and PR #11 spec.
-func BuildRollupPrompt(sess duckdb.Session, turns []duckdb.Turn) string {
+// documented in the package README and PR #11 spec. The Preferences argument
+// controls language and an optional operator-supplied system prompt that
+// gets prepended to the instruction block.
+func BuildRollupPrompt(sess duckdb.Session, turns []duckdb.Turn, prefs Preferences) string {
 	var sb strings.Builder
 	sb.WriteString("You are summarizing a Claude Code session that contains multiple user turns.\n\n")
 	sb.WriteString("## Session metadata\n")
@@ -321,12 +352,26 @@ func BuildRollupPrompt(sess duckdb.Session, turns []duckdb.Turn) string {
 	for i, t := range turns {
 		writeTurnLine(&sb, i+1, t)
 	}
+	if extra := strings.TrimSpace(prefs.RollupSystemPrompt); extra != "" {
+		sb.WriteString("\n## User system prompt\n")
+		sb.WriteString(extra)
+		sb.WriteString("\n")
+	}
 	sb.WriteString("\n## Instruction\n")
-	sb.WriteString(rollupInstructionBlock)
+	sb.WriteString(rollupInstructionBlock(prefs.Language))
 	return sb.String()
 }
 
-const rollupInstructionBlock = `
+func rollupInstructionBlock(language string) string {
+	switch language {
+	case LanguageJA:
+		return rollupInstructionBlockJA
+	default:
+		return rollupInstructionBlockEN
+	}
+}
+
+const rollupInstructionBlockEN = `
 Produce a single JSON object matching exactly:
 
 type Rollup = {
@@ -343,6 +388,29 @@ Rules:
 - "open_threads" is zero items if the session wrapped up cleanly.
 
 Output ONLY the JSON object.
+`
+
+const rollupInstructionBlockJA = `
+日本語で応答してください。以下に正確に一致する単一の JSON オブジェクトを
+生成してください:
+
+type Rollup = {
+  headline: string;       // 一文、最大 140 文字
+  narrative: string;      // プレーンテキストで 1-3 段落、マークダウン禁止
+  highlights: string[];   // 短い箇条書き 3-8 項目
+  patterns: string[];     // 繰り返される作業パターンやエラー、0-5 項目
+  open_threads: string[]; // 未完了のタスクや既知の問題、0-5 項目
+};
+
+ルール:
+- 具体的に書いてください。抽象表現よりも、ファイル名、ツール名、エラー
+  メッセージを優先してください。
+- "narrative" はチームメイトが 15 秒で読み流せる引き継ぎノートのように
+  書いてください。
+- セッションがきれいに終わった場合 "open_threads" は 0 項目です。
+- すべてのテキストフィールドは日本語で記述してください。
+
+JSON オブジェクトのみを出力してください。
 `
 
 // writeTurnLine renders one entry in the ordered turn recaps section. The

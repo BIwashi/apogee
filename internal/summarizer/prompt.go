@@ -33,8 +33,9 @@ var hookEventsForLog = map[string]bool{
 // BuildPrompt assembles the LLM input for one turn. It returns a single
 // string ready to hand to Runner.Run. The caller passes the final
 // max-spans / max-logs caps so the worker config is the single source of
-// truth.
-func BuildPrompt(input PromptInput, maxSpans, maxLogs int) string {
+// truth, plus the operator-controlled Preferences (language + an optional
+// system prompt prepended to the instruction block).
+func BuildPrompt(input PromptInput, maxSpans, maxLogs int, prefs Preferences) string {
 	if maxSpans <= 0 {
 		maxSpans = 500
 	}
@@ -49,11 +50,29 @@ func BuildPrompt(input PromptInput, maxSpans, maxLogs int) string {
 	sb.WriteString("\n")
 	writeEventLog(&sb, input.Logs, maxLogs)
 	sb.WriteString("\n")
-	sb.WriteString(instructionBlock)
+	if extra := strings.TrimSpace(prefs.RecapSystemPrompt); extra != "" {
+		sb.WriteString("# User system prompt\n")
+		sb.WriteString(extra)
+		sb.WriteString("\n\n")
+	}
+	sb.WriteString(recapInstructionBlock(prefs.Language))
 	return sb.String()
 }
 
-const instructionBlock = `You are reviewing one execution turn of a Claude Code agent.
+// recapInstructionBlock returns the recap instruction text for the given
+// language. Unknown / empty language falls back to English. The TypeScript
+// schema block is identical across languages — only the prose rules change
+// so the model still sees the canonical Recap type.
+func recapInstructionBlock(language string) string {
+	switch language {
+	case LanguageJA:
+		return recapInstructionBlockJA
+	default:
+		return recapInstructionBlockEN
+	}
+}
+
+const recapInstructionBlockEN = `You are reviewing one execution turn of a Claude Code agent.
 
 Write a concise structured recap. Respond with a single JSON object matching
 this TypeScript type exactly — no prose, no markdown, no backticks:
@@ -83,6 +102,41 @@ Rules:
 - Use "aborted" when the turn was stopped externally before completion.
 
 Output ONLY the JSON object.
+`
+
+const recapInstructionBlockJA = `あなたは Claude Code エージェントの 1 回の実行ターンをレビューしています。
+
+簡潔な構造化レキャップを作成してください。日本語で応答してください。
+以下の TypeScript 型に正確に一致する単一の JSON オブジェクトを返してください
+— プローズ、マークダウン、バッククォートは禁止です:
+
+type Recap = {
+  headline: string;          // 一文、最大 140 文字
+  outcome: "success" | "partial" | "failure" | "aborted";
+  phases: Array<{
+    name: "plan" | "explore" | "edit" | "test" | "commit" | "delegate" | "verify" | "debug" | "idle";
+    start_span_index: number;  // 上記スパンテーブルへのインデックス、両端含む
+    end_span_index: number;    // 両端含む
+    summary: string;           // 最大 80 文字
+  }>;
+  key_steps: string[];         // 3 〜 6 項目、各最大 80 文字
+  failure_cause: string | null; // outcome が "success" でない場合のみ設定
+  notable_events: string[];    // 0 〜 5 項目、各最大 80 文字
+};
+
+ルール:
+- "headline" は「エージェントは今何をしたのか?」と尋ねたチームメイトが
+  欲しい一文の答えです。
+- フェーズはスパン範囲を重複なく連続的にタイリングする必要があります。
+- 個々のツール呼び出しがエラーになっても、エージェントが回復してターンが
+  きれいに終わった場合は "success" を優先してください。
+- ユーザーの目標が明らかに達成されなかった場合は "failure" を使用してください。
+- 依頼の一部だけが完了した場合は "partial" を使用してください。
+- 完了前に外部からターンが停止された場合は "aborted" を使用してください。
+- すべてのテキストフィールド (headline, summary, key_steps, failure_cause,
+  notable_events) は日本語で記述してください。
+
+JSON オブジェクトのみを出力してください。
 `
 
 func writeMetadata(sb *strings.Builder, t duckdb.Turn) {

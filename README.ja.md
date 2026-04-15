@@ -29,6 +29,15 @@ apogee は、マルチエージェントの [Claude Code](https://docs.claude.co
 - **このターンは、この瞬間、何をしている？** phase ヒューリスティック（plan / explore / edit / test / commit / delegate）と、全ツール・subagent・HITL をひとつの時間軸に描くライブスイムレーンを備えています。
 - **さっきのセッション全体では、何が起きた？** 二層構造の LLM サマライザ が、ターン単位の recap（Haiku）とセッション単位のナラティブ rollup（Sonnet）をローカルの `claude` CLI 経由で生成します。Anthropic API キーは不要です。
 
+### サマライザのカスタマイズ
+
+サマライザは出力言語、任意のオペレーター用システムプロンプト、任意のモデルオーバーライドを `user_preferences` DuckDB テーブルからジョブごとに読みます。管理方法は 2 つあります:
+
+- **設定ページ** (`/settings`) には専用の **Summarizer** セクションがあり、言語トグル、recap / rollup のモデルオーバーライド入力、2 つのシステムプロンプトテキストエリア（各 2048 文字まで）が並びます。
+- トップリボンのコンパクトな **EN / JA 言語ピッカー**で、recap + rollup の出力言語をワンクリックで切り替えられます。`EN ▸ JA` にすればスキーマを変えずに次の recap から日本語になります。
+
+どちらの操作も同じ `PATCH /v1/preferences` エンドポイントに書き込むので、スクリプトでの一括設定にも対応しています。HTTP の完全な仕様と検証ルールは [`docs/ja/cli.md`](docs/ja/cli.md#summarizer-設定) を参照してください。
+
 ---
 
 ## 主な機能

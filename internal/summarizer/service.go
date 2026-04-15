@@ -20,6 +20,7 @@ type Service struct {
 	store   *duckdb.Store
 	hub     *sse.Hub
 	logger  *slog.Logger
+	prefs   PreferencesReader
 	stopSch context.CancelFunc
 }
 
@@ -36,6 +37,17 @@ func NewService(cfg Config, store *duckdb.Store, hub *sse.Hub, logger *slog.Logg
 func NewServiceWithRunner(cfg Config, runner Runner, store *duckdb.Store, hub *sse.Hub, logger *slog.Logger) *Service {
 	worker := NewWorker(cfg, runner, store, hub, logger)
 	rollup := NewRollupWorker(cfg, runner, store, hub, logger)
+	// Default preferences reader pulls from the DuckDB user_preferences
+	// table so language / system prompt / model overrides applied via
+	// the /v1/preferences API or the /settings page take effect on the
+	// next job without a restart. Store-less callers (tests) can swap
+	// it via SetPreferencesReader.
+	prefs := PreferencesReader(NewStaticPreferencesReader(Defaults()))
+	if store != nil {
+		prefs = NewDuckDBPreferencesReader(store)
+	}
+	worker.SetPreferencesReader(prefs)
+	rollup.SetPreferencesReader(prefs)
 	return &Service{
 		cfg:    cfg,
 		runner: runner,
@@ -44,8 +56,27 @@ func NewServiceWithRunner(cfg Config, runner Runner, store *duckdb.Store, hub *s
 		store:  store,
 		hub:    hub,
 		logger: logger,
+		prefs:  prefs,
 	}
 }
+
+// SetPreferencesReader overrides the default DuckDB-backed reader. Useful
+// for tests that need deterministic prompt content. nil is a no-op.
+func (s *Service) SetPreferencesReader(r PreferencesReader) {
+	if s == nil || r == nil {
+		return
+	}
+	s.prefs = r
+	if s.worker != nil {
+		s.worker.SetPreferencesReader(r)
+	}
+	if s.rollup != nil {
+		s.rollup.SetPreferencesReader(r)
+	}
+}
+
+// PreferencesReader exposes the current reader for advanced tests.
+func (s *Service) PreferencesReader() PreferencesReader { return s.prefs }
 
 // Config returns the service's immutable configuration snapshot.
 func (s *Service) Config() Config { return s.cfg }

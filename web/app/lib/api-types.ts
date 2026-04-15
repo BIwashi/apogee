@@ -647,6 +647,31 @@ export interface ApogeeInfo {
   uptime_seconds: number;
 }
 
+/**
+ * SummarizerLanguage mirrors internal/summarizer.Language* constants. New
+ * languages can be added without a wire bump since the field is a union.
+ */
+export type SummarizerLanguage = "en" | "ja";
+
+/**
+ * SummarizerPreferences is the typed view of the summarizer.* keys in the
+ * collector's user_preferences table. Every field is optional so PATCH
+ * payloads can be sparse — only the keys you set get written.
+ */
+export interface SummarizerPreferences {
+  "summarizer.language"?: SummarizerLanguage;
+  "summarizer.recap_system_prompt"?: string;
+  "summarizer.rollup_system_prompt"?: string;
+  "summarizer.recap_model"?: string;
+  "summarizer.rollup_model"?: string;
+}
+
+/** PreferencesResponse mirrors the GET /v1/preferences response body. */
+export interface PreferencesResponse {
+  preferences: SummarizerPreferences;
+  updated_at: Record<string, string>;
+}
+
 /** TelemetryStatus mirrors the GET /v1/telemetry/status response body. */
 export interface TelemetryStatus {
   enabled: boolean;
