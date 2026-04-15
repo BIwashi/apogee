@@ -102,7 +102,11 @@ func runServe(ctx context.Context, opts ServeOptions) error {
 	}
 	defer store.Close()
 
-	srv := collector.New(collector.Config{HTTPAddr: opts.Addr, DBPath: resolved}, store, logger)
+	srv := collector.New(collector.Config{
+		HTTPAddr:    opts.Addr,
+		DBPath:      resolved,
+		AutoRestart: true,
+	}, store, logger)
 	if err := srv.Run(runCtx); err != nil && !errors.Is(err, context.Canceled) {
 		return err
 	}

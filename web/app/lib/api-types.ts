@@ -829,6 +829,14 @@ export interface ApogeeInfo {
   update_available?: boolean;
   available_version?: string;
   available_version_detected_at?: string;
+  // When the daemon is configured with Config.AutoRestart=true, the
+  // upgrade watcher triggers a self-restart after a grace period. These
+  // fields let the dashboard render a live countdown alongside the
+  // "Restart now" button so the operator can decide whether to click
+  // through early or just wait for the automatic fire.
+  auto_restart_enabled?: boolean;
+  auto_restart_at?: string;
+  auto_restart_in_seconds?: number;
 }
 
 /**

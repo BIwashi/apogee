@@ -1,10 +1,22 @@
 "use client";
 
-import { useState } from "react";
-import { ArrowUpCircle, Loader2 } from "lucide-react";
+import { useEffect, useState } from "react";
+import { ArrowUpCircle, Loader2, Timer } from "lucide-react";
 
 import type { ApogeeInfo } from "../lib/api-types";
 import { useApi } from "../lib/swr";
+
+// formatDuration turns a second count into "m:ss" (or "Xs" below a
+// minute) for the auto-restart countdown. Non-positive values render
+// as "now" so the label does not flicker to "-1s" between the tick
+// expiry and the page reload.
+function formatDuration(sec: number): string {
+  if (sec <= 0) return "now";
+  if (sec < 60) return `${sec}s`;
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return `${m}:${s.toString().padStart(2, "0")}`;
+}
 
 /**
  * UpgradeBanner — a slim coloured stripe that renders above the TopRibbon
@@ -26,6 +38,27 @@ export default function UpgradeBanner() {
   const { data } = useApi<ApogeeInfo>("/v1/info", { refreshInterval: 30_000 });
   const [restarting, setRestarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Local 1-second tick so the auto-restart countdown visibly updates
+  // even though /v1/info only polls every 30s. We seed from the
+  // server-reported seconds and decrement locally; the next info poll
+  // re-syncs if we drifted.
+  const serverSeconds = data?.auto_restart_in_seconds;
+  const [localRemaining, setLocalRemaining] = useState<number | null>(
+    typeof serverSeconds === "number" ? serverSeconds : null,
+  );
+  useEffect(() => {
+    if (typeof serverSeconds === "number") {
+      setLocalRemaining(serverSeconds);
+    }
+  }, [serverSeconds]);
+  useEffect(() => {
+    if (localRemaining === null || localRemaining <= 0) return;
+    const handle = window.setInterval(() => {
+      setLocalRemaining((n) => (n !== null && n > 0 ? n - 1 : n));
+    }, 1000);
+    return () => window.clearInterval(handle);
+  }, [localRemaining]);
 
   if (!data || !data.update_available) {
     return null;
@@ -78,6 +111,12 @@ export default function UpgradeBanner() {
             apogee {data.available_version ?? "(new build)"} is installed on
             disk. Restart the daemon to load it.
           </span>
+          {data.auto_restart_enabled && localRemaining !== null ? (
+            <span className="ml-2 inline-flex items-center gap-1 text-[var(--text-muted)]">
+              <Timer size={11} strokeWidth={1.75} />
+              auto-restart in {formatDuration(localRemaining)}
+            </span>
+          ) : null}
           {error && (
             <span className="ml-2 text-[var(--status-critical)]">
               · restart failed: {error}
