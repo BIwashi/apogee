@@ -271,6 +271,242 @@ func writeEventLog(sb *strings.Builder, logs []duckdb.LogRow, maxLogs int) {
 	}
 }
 
+// NarrativePromptInput is the per-session bundle the narrative prompt
+// builder serialises. The rollup field carries the tier-2 digest already
+// written to session_rollups so the tier-3 model has the big-picture
+// narrative as context. Turns is ordered by started_at oldest-first.
+type NarrativePromptInput struct {
+	SessionID string
+	SourceApp string
+	Turns     []NarrativeTurn
+	Rollup    Rollup
+}
+
+// NarrativeTurn is the projection of one turn fed to the narrative prompt.
+// Index is the 0-based position in the turn list — the model returns
+// first_turn_index / last_turn_index referring to this ordinal, which the
+// worker maps back to turn ids before persisting.
+type NarrativeTurn struct {
+	Index       int
+	TurnID      string
+	StartedAt   time.Time
+	EndedAt     time.Time
+	DurationMs  int64
+	Status      string
+	Headline    string
+	Outcome     string
+	KeySteps    []string
+	ToolSummary map[string]int
+}
+
+// BuildNarrativePrompt assembles the tier-3 LLM input. The instruction
+// block is mostly identical across languages — only the rule prose flips
+// to Japanese when prefs.Language == "ja"; the TypeScript schema stays
+// English so the model still sees the canonical type definition.
+func BuildNarrativePrompt(input NarrativePromptInput, prefs Preferences) string {
+	var sb strings.Builder
+	sb.WriteString("You are reviewing a Claude Code session. I will give you the\n")
+	sb.WriteString("session metadata, the existing session rollup, and an ordered\n")
+	sb.WriteString("list of turns with their per-turn recaps.\n\n")
+
+	sb.WriteString("## Session metadata\n")
+	sb.WriteString(fmt.Sprintf("session_id: %s\n", input.SessionID))
+	sb.WriteString(fmt.Sprintf("source_app: %s\n", input.SourceApp))
+	sb.WriteString(fmt.Sprintf("turn_count: %d\n", len(input.Turns)))
+	if len(input.Turns) > 0 {
+		first := input.Turns[0]
+		last := input.Turns[len(input.Turns)-1]
+		sb.WriteString(fmt.Sprintf("started_at: %s\n", formatTime(first.StartedAt)))
+		sb.WriteString(fmt.Sprintf("last_ended_at: %s\n", formatTime(last.EndedAt)))
+	}
+	sb.WriteString("\n")
+
+	// Tier-2 rollup context. The headline + narrative alone is enough — we
+	// want the model to build phases *from* the turn list, not to
+	// regurgitate the rollup.
+	if input.Rollup.Headline != "" || input.Rollup.Narrative != "" {
+		sb.WriteString("## Tier-2 rollup (context only)\n")
+		if input.Rollup.Headline != "" {
+			sb.WriteString("headline: ")
+			sb.WriteString(oneLine(input.Rollup.Headline))
+			sb.WriteString("\n")
+		}
+		if input.Rollup.Narrative != "" {
+			sb.WriteString("narrative: ")
+			sb.WriteString(oneLine(input.Rollup.Narrative))
+			sb.WriteString("\n")
+		}
+		if len(input.Rollup.Highlights) > 0 {
+			sb.WriteString("highlights: ")
+			sb.WriteString(strings.Join(input.Rollup.Highlights, "; "))
+			sb.WriteString("\n")
+		}
+		sb.WriteString("\n")
+	}
+
+	sb.WriteString("## Ordered turns\n")
+	for i, t := range input.Turns {
+		writeNarrativeTurn(&sb, i, t)
+	}
+	sb.WriteString("\n")
+
+	if extra := strings.TrimSpace(prefs.NarrativeSystemPrompt); extra != "" {
+		sb.WriteString("# User system prompt\n")
+		sb.WriteString(extra)
+		sb.WriteString("\n\n")
+	}
+	sb.WriteString("## Instruction\n")
+	sb.WriteString(narrativeInstructionBlock(prefs.Language))
+	return sb.String()
+}
+
+func writeNarrativeTurn(sb *strings.Builder, idx int, t NarrativeTurn) {
+	dur := "-"
+	if t.DurationMs > 0 {
+		dur = fmt.Sprintf("%dms", t.DurationMs)
+	}
+	headline := t.Headline
+	if headline == "" {
+		headline = "(no headline)"
+	}
+	sb.WriteString(fmt.Sprintf("[%d] turn_id=%s %s → %s %s status=%s outcome=%s\n",
+		idx,
+		truncate(t.TurnID, 20),
+		formatTime(t.StartedAt),
+		formatTime(t.EndedAt),
+		dur,
+		t.Status,
+		t.Outcome,
+	))
+	sb.WriteString("    headline: ")
+	sb.WriteString(oneLine(headline))
+	sb.WriteString("\n")
+	if len(t.KeySteps) > 0 {
+		sb.WriteString("    key_steps: ")
+		sb.WriteString(strings.Join(t.KeySteps, "; "))
+		sb.WriteString("\n")
+	}
+	if len(t.ToolSummary) > 0 {
+		// Deterministic ordering for test + cache friendliness.
+		keys := make([]string, 0, len(t.ToolSummary))
+		for k := range t.ToolSummary {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		parts := make([]string, 0, len(keys))
+		for _, k := range keys {
+			parts = append(parts, fmt.Sprintf("%s=%d", k, t.ToolSummary[k]))
+		}
+		sb.WriteString("    tools: ")
+		sb.WriteString(strings.Join(parts, " "))
+		sb.WriteString("\n")
+	}
+}
+
+func narrativeInstructionBlock(language string) string {
+	switch language {
+	case LanguageJA:
+		return narrativeInstructionBlockJA
+	default:
+		return narrativeInstructionBlockEN
+	}
+}
+
+const narrativeInstructionBlockEN = `
+Your job is to group the turns into a small number of semantic *phases* —
+short, human-readable chunks that describe the big-picture work being done.
+A phase can cover one turn or several consecutive turns. Every turn must
+belong to exactly one phase.
+
+Respond with a single JSON object matching this TypeScript type exactly — no
+prose, no markdown, no backticks:
+
+type NarrativeResponse = {
+  phases: Array<{
+    headline: string;          // one sentence, max 140 chars
+    narrative: string;         // 1-3 sentences, max 500 chars
+    key_steps: string[];       // 2 to 5 items, max 80 chars each
+    kind:
+      | "implement"
+      | "review"
+      | "debug"
+      | "plan"
+      | "test"
+      | "commit"
+      | "delegate"
+      | "explore"
+      | "other";
+    first_turn_index: number;  // 0-based, into the turn list I gave you
+    last_turn_index: number;   // inclusive
+  }>;
+};
+
+Rules:
+- The phases must be ordered chronologically.
+- Every turn index in [0, N-1] must be covered by exactly one phase.
+- Adjacent phases may not overlap. first_turn_index of phase i+1 must be
+  last_turn_index of phase i + 1.
+- Phase headlines read like commit messages: past tense, concrete, specific.
+- Prefer fewer phases over more. If the whole session is one coherent effort,
+  one phase is fine. Multi-hour sessions typically have 3-8 phases.
+- The "kind" enum should reflect the dominant activity in the phase:
+  implement=writing code, review=reading/approving, debug=hunting bugs,
+  plan=planning before writing, test=running tests, commit=git operations,
+  delegate=spawning subagents, explore=read-only exploration, other=anything else.
+
+Output ONLY the JSON object.
+`
+
+const narrativeInstructionBlockJA = `
+あなたの仕事はターンを少数の意味的「フェーズ」にグルーピングすることです。
+フェーズは、進行中の作業を大局的に記述する短い人間向けの塊です。1 つの
+フェーズは 1 ターンでも複数の連続したターンでも構いません。すべての
+ターンは必ずちょうど 1 つのフェーズに属する必要があります。
+
+以下の TypeScript 型に正確に一致する単一の JSON オブジェクトで応答して
+ください — プローズ、マークダウン、バッククォートは禁止です:
+
+type NarrativeResponse = {
+  phases: Array<{
+    headline: string;          // 一文、最大 140 文字
+    narrative: string;         // 1〜3 文、最大 500 文字
+    key_steps: string[];       // 2〜5 項目、各最大 80 文字
+    kind:
+      | "implement"
+      | "review"
+      | "debug"
+      | "plan"
+      | "test"
+      | "commit"
+      | "delegate"
+      | "explore"
+      | "other";
+    first_turn_index: number;  // 0-based、私が渡したターンリストへのインデックス
+    last_turn_index: number;   // 両端含む
+  }>;
+};
+
+ルール:
+- フェーズは時系列順である必要があります。
+- [0, N-1] のすべてのターンインデックスは、ちょうど 1 つのフェーズで
+  カバーされる必要があります。
+- 隣接するフェーズは重複してはいけません。フェーズ i+1 の first_turn_index
+  は、フェーズ i の last_turn_index + 1 でなければなりません。
+- フェーズの headline はコミットメッセージのように読めること: 過去形、
+  具体的、明確に。
+- フェーズは多いより少ない方を優先してください。セッション全体が 1 つの
+  まとまった取り組みなら、1 フェーズで問題ありません。数時間のセッションは
+  通常 3〜8 フェーズになります。
+- "kind" enum はフェーズの主要な活動を反映してください:
+  implement=コードを書く、review=読む/承認する、debug=バグ調査、
+  plan=書く前の計画、test=テスト実行、commit=git 操作、
+  delegate=サブエージェント起動、explore=読み取り専用の探索、other=その他。
+- すべてのテキストフィールド (headline, narrative, key_steps) は日本語で
+  記述してください。
+
+JSON オブジェクトのみを出力してください。
+`
+
 func oneLine(s string) string {
 	s = strings.ReplaceAll(s, "\r", " ")
 	s = strings.ReplaceAll(s, "\n", " ")

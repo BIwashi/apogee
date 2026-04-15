@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **PR #32 — phase narrative (summarizer tier 3).** The session rollup
+  gains a `phases[]` array: an LLM-generated timeline of semantic phases
+  (implement / review / debug / plan / test / commit / delegate / explore /
+  other) with per-phase headline, 1–3 sentence narrative, 2–5 key steps,
+  kind, duration, turn count, and tool summary. A new narrative worker
+  (`internal/summarizer/narrative.go`) runs as tier 3 of the summarizer,
+  chained after the tier-2 rollup, with a configurable model (default
+  `claude-sonnet-4-6`) and a language / system-prompt preference pair
+  (`summarizer.narrative_model`, `summarizer.narrative_system_prompt`).
+  New `POST /v1/sessions/:id/narrative` route triggers a manual refresh.
+  Session detail gains a new **Timeline** tab (now the default) that
+  renders the phases as clickable cards with hover previews and a
+  side-drawer full detail (`web/app/components/PhaseTimeline.tsx`,
+  `PhaseCard.tsx`, `PhaseDrawer.tsx`). Old rollups without `phases[]`
+  still parse. New docs: `docs/narrative.md`, `docs/narrative_ja.md`.
+
 - **PR #31 — `apogee onboard` interactive setup wizard.** New top-level
   `apogee onboard [flags]` subcommand that chains the four install steps
   (hooks + daemon + summarizer preferences + OTLP config) into a single

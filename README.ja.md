@@ -27,7 +27,7 @@ apogee は、マルチエージェントの [Claude Code](https://docs.claude.co
 
 - **いま、どこを見ればいい？** ルールベースの attention エンジンが、実行中ターンを `healthy / watchlist / watch / intervene_now` の 4 つに振り分け、一番うるさいものを常にリストの先頭へ並べ替えます。
 - **このターンは、この瞬間、何をしている？** phase ヒューリスティック（plan / explore / edit / test / commit / delegate）と、全ツール・subagent・HITL をひとつの時間軸に描くライブスイムレーンを備えています。
-- **さっきのセッション全体では、何が起きた？** 二層構造の LLM サマライザ が、ターン単位の recap（Haiku）とセッション単位のナラティブ rollup（Sonnet）をローカルの `claude` CLI 経由で生成します。Anthropic API キーは不要です。
+- **さっきのセッション全体では、何が起きた？** 三層構造の LLM サマライザが、ターン単位の recap（Haiku）、セッション単位のナラティブ rollup（Sonnet）、そして tier-3 の **フェーズナラティブ** — ターンを意味的なチャンク (implement / review / debug / plan / test / commit / delegate / explore) にグルーピングし、フェーズごとに headline、1〜3 文の narrative、key_steps を生成 — をすべてローカルの `claude` CLI で生成します。Anthropic API キーは不要です。
 
 ### サマライザのカスタマイズ
 
@@ -37,6 +37,8 @@ apogee は、マルチエージェントの [Claude Code](https://docs.claude.co
 - トップリボンのコンパクトな **EN / JA 言語ピッカー**で、recap + rollup の出力言語をワンクリックで切り替えられます。`EN ▸ JA` にすればスキーマを変えずに次の recap から日本語になります。
 
 どちらの操作も同じ `PATCH /v1/preferences` エンドポイントに書き込むので、スクリプトでの一括設定にも対応しています。HTTP の完全な仕様と検証ルールは [`docs/cli_ja.md`](docs/cli_ja.md#summarizer-設定) を参照してください。
+
+**フェーズナラティブ** (tier 3) は専用の設定キー — `summarizer.narrative_system_prompt` と `summarizer.narrative_model`（既定値 `claude-sonnet-4-6`）— と、`POST /v1/sessions/:id/narrative` の手動再生成ルートを備えています。スキーマ、チェイニング、陳腐化ガード、コスト見積もりの詳細は [`docs/narrative_ja.md`](docs/narrative_ja.md) を参照してください。
 
 ---
 
@@ -50,11 +52,12 @@ apogee は、マルチエージェントの [Claude Code](https://docs.claude.co
 | Insights | 集計分析。エラー率、継続時間パーセンタイル、上位ツール、上位 phase、直近 24 時間の watchlist セッション。 |
 | イベントブラウザ | `/events/` — 保存されたフックイベントをページネーション付きで一覧（1 ページ 50 件、Prev / Next、URL バックのページ番号、サイドドロワーで JSON インスペクタ）。Live ダッシュボードのイベントティッカーは 180 px の固定高さ＋内部スクロールに変更され、新しいイベントが届いてもページが押し下がらなくなりました。 |
 | Settings | コレクターのビルド情報と OTel エクスポータの状態。config パスや daemon / hook のインストール導線もこの画面から辿れます。 |
-| Session 詳細 | セッション単位の rollup、スコープ付き KPI、attention 順に並ぶ全ターン。 |
+| Session 詳細 | Timeline タブ（フェーズナラティブ）を既定表示。セッション単位の rollup、スコープ付き KPI、attention 順に並ぶ全ターンも引き続き利用可能。 |
 | Turn 詳細 | スイムレーン、span ツリー、recap パネル、attention の根拠、HITL キュー。 |
 | コマンドパレット | セッション・スコープ・最近のプロンプトを横断するファジー検索（⌘K）。 |
 | Recap ワーカー | ターンごとの構造化 recap をローカル `claude` CLI（Haiku）で生成。 |
 | Rollup ワーカー | セッションごとのナラティブダイジェストをローカル `claude` CLI（Sonnet）で生成。 |
+| フェーズナラティブ | すべての closed ターンを意味的なフェーズにグルーピングする tier-3 ワーカー。headline、1〜3 文の narrative、key_steps、kind チップ、duration、tool summary を備え、`/session` の Timeline タブにクリック可能なカードとサイドドロワー詳細で表示されます。 |
 | HITL キュー | 権限要求をファーストクラスのレコードとして扱い、オペレーターの判断を構造化して保持。 |
 | Operator Interventions | 実行中の Claude Code セッションへ自由文のメッセージを投入。次の `PreToolUse` / `UserPromptSubmit` フックが、それを `{"decision":"block","reason":...}` または追加コンテキストとして Claude Code に返します。 |
 | OpenTelemetry | OTLP gRPC / HTTP エクスポート、完全な `claude_code.*` semconv レジストリ。 |

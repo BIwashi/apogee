@@ -18,14 +18,74 @@ import (
 // Rollup is the structured per-session digest produced by the rollup worker.
 // Mirrors the TypeScript Rollup type in web/app/lib/api-types.ts.
 type Rollup struct {
-	Headline    string    `json:"headline"`
-	Narrative   string    `json:"narrative"`
-	Highlights  []string  `json:"highlights"`
-	Patterns    []string  `json:"patterns"`
-	OpenThreads []string  `json:"open_threads"`
+	Headline    string   `json:"headline"`
+	Narrative   string   `json:"narrative"`
+	Highlights  []string `json:"highlights"`
+	Patterns    []string `json:"patterns"`
+	OpenThreads []string `json:"open_threads"`
+
+	// Phases is the tier-3 narrative breakdown written back by the
+	// NarrativeWorker after the tier-2 rollup lands. Optional — old rows
+	// without phases still parse cleanly.
+	Phases []PhaseBlock `json:"phases,omitempty"`
+
+	// NarrativeGeneratedAt is when the tier-3 worker last wrote the phases
+	// field. Zero value means phases have never been computed.
+	NarrativeGeneratedAt time.Time `json:"narrative_generated_at,omitempty"`
+	// NarrativeModel is the model alias the tier-3 worker used. Empty when
+	// phases have never been computed.
+	NarrativeModel string `json:"narrative_model,omitempty"`
+
 	GeneratedAt time.Time `json:"generated_at"`
 	Model       string    `json:"model"`
 	TurnCount   int       `json:"turn_count"`
+}
+
+// PhaseBlock is one semantic chunk of a session timeline — produced by the
+// tier-3 narrative worker (internal/summarizer/narrative.go). A phase covers
+// one or more consecutive turns and carries an LLM-written headline,
+// narrative paragraph, and key-step bullets so the web UI can render it as
+// a clickable timeline card.
+type PhaseBlock struct {
+	Index       int            `json:"index"`
+	StartedAt   time.Time      `json:"started_at"`
+	EndedAt     time.Time      `json:"ended_at"`
+	Headline    string         `json:"headline"`
+	Narrative   string         `json:"narrative"`
+	KeySteps    []string       `json:"key_steps"`
+	Kind        string         `json:"kind"`
+	TurnIDs     []string       `json:"turn_ids"`
+	TurnCount   int            `json:"turn_count"`
+	DurationMs  int64          `json:"duration_ms"`
+	ToolSummary map[string]int `json:"tool_summary"`
+}
+
+// PhaseKind enumerates the allowed values of PhaseBlock.Kind. The set
+// mirrors the TypeScript union in web/app/lib/api-types.ts.
+const (
+	PhaseKindImplement = "implement"
+	PhaseKindReview    = "review"
+	PhaseKindDebug     = "debug"
+	PhaseKindPlan      = "plan"
+	PhaseKindTest      = "test"
+	PhaseKindCommit    = "commit"
+	PhaseKindDelegate  = "delegate"
+	PhaseKindExplore   = "explore"
+	PhaseKindOther     = "other"
+)
+
+// validPhaseKinds is the allow-list checked when parsing the narrative
+// response. Unknown kinds fall back to "other".
+var validPhaseKinds = map[string]bool{
+	PhaseKindImplement: true,
+	PhaseKindReview:    true,
+	PhaseKindDebug:     true,
+	PhaseKindPlan:      true,
+	PhaseKindTest:      true,
+	PhaseKindCommit:    true,
+	PhaseKindDelegate:  true,
+	PhaseKindExplore:   true,
+	PhaseKindOther:     true,
 }
 
 // rollupJob is the unit of work consumed by RollupWorker.loop.
@@ -66,6 +126,21 @@ type RollupWorker struct {
 
 	mu     sync.Mutex
 	closed bool
+
+	// onRollupWritten, when non-nil, is invoked after a successful
+	// UpsertSessionRollup call. The service wires this to the tier-3
+	// narrative worker so phases are computed immediately after the
+	// tier-2 rollup lands.
+	onRollupWritten func(sessionID string)
+}
+
+// SetOnRollupWritten installs the post-write callback the service uses to
+// chain the narrative worker. nil disables the chain.
+func (w *RollupWorker) SetOnRollupWritten(fn func(sessionID string)) {
+	if w == nil {
+		return
+	}
+	w.onRollupWritten = fn
 }
 
 // NewRollupWorker constructs a RollupWorker.
@@ -287,6 +362,12 @@ func (w *RollupWorker) process(ctx context.Context, job rollupJob) {
 
 	if w.hub != nil {
 		w.hub.Broadcast(sse.NewSessionEvent(now, *sess))
+	}
+
+	// Chain to the tier-3 narrative worker so phases[] are computed
+	// immediately after the rollup lands. The callback is non-blocking.
+	if w.onRollupWritten != nil {
+		w.onRollupWritten(job.SessionID)
 	}
 }
 

@@ -485,9 +485,9 @@ apogee 0.1.3 (commit abcdef1, built 2026-04-15)
 
 ## summarizer 設定
 
-LLM recap (Haiku) と rollup (Sonnet) の各ワーカーは、`user_preferences` DuckDB テーブルに永続化されたいくつかのオペレーター制御の設定を反映します。これらはジョブ開始時に毎回読み直されるので、再起動なしで変更が反映されます。管理方法は 2 つあります:
+LLM の 3 層 — recap (Haiku、ターン単位)、rollup (Sonnet、セッション単位)、narrative (Sonnet、セッション単位) — の各ワーカーは、`user_preferences` DuckDB テーブルに永続化されたいくつかのオペレーター制御の設定を反映します。これらはジョブ開始時に毎回読み直されるので、再起動なしで変更が反映されます。管理方法は 2 つあります:
 
-1. **設定ページ** (`/settings`) には「Summarizer」セクションがあり、言語トグル、recap / rollup モデルオーバーライド、2 つのシステムプロンプトテキストエリアが表示されます。Save で `PATCH /v1/preferences` 経由で永続化します。
+1. **設定ページ** (`/settings`) には「Summarizer」セクションがあり、言語トグル、recap / rollup / narrative モデルオーバーライド、3 つのシステムプロンプトテキストエリアが表示されます。Save で `PATCH /v1/preferences` 経由で永続化します。
 2. トップリボンの**コンパクトな言語ピッカー**で、`summarizer.language` を `EN` / `JA` の間でワンクリック切替できます。
 
 同じ設定はスクリプト用に HTTP でも公開されています:
@@ -510,7 +510,17 @@ curl -s -X PATCH http://localhost:4100/v1/preferences \
 curl -s -X DELETE http://localhost:4100/v1/preferences
 ```
 
-バリデーション: `summarizer.language` は `"en"` または `"ja"`、2 つのシステムプロンプトはそれぞれ最大 2048 文字、モデルオーバーライドは `claude-{haiku,sonnet,opus}-…` 形式の alias である必要があります。空文字列でオーバーライドをクリアすると `~/.apogee/config.toml` にフォールバックします。
+バリデーション: `summarizer.language` は `"en"` または `"ja"`、3 つのシステムプロンプトはそれぞれ最大 2048 文字、モデルオーバーライドは `claude-{haiku,sonnet,opus}-…` 形式の alias である必要があります。空文字列でオーバーライドをクリアすると `~/.apogee/config.toml` にフォールバックします。
+
+### フェーズナラティブ (tier 3)
+
+narrative ワーカーは rollup ワーカーから連鎖し、同じ `session_rollups` 行に `phases[]` 配列を書き込みます。手動で再生成するには:
+
+```sh
+curl -s -X POST http://localhost:4100/v1/sessions/<id>/narrative
+```
+
+レスポンスは `202 Accepted` と `{"enqueued": true}` です。完全な tier-3 の解説は [`docs/narrative_ja.md`](narrative_ja.md) を参照してください。
 
 ---
 

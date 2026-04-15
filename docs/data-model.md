@@ -264,10 +264,53 @@ rollup lands.
 | `from_turn_id` | VARCHAR NULL | First turn covered |
 | `to_turn_id` | VARCHAR NULL | Last turn covered |
 | `turn_count` | INTEGER | Number of turns covered |
-| `rollup_json` | VARCHAR | Narrative digest JSON |
+| `rollup_json` | VARCHAR | Narrative digest JSON (shape below) |
 
-**Writers:** `internal/summarizer/rollup.go`.
-**Readers:** session detail page rollup panel, sessions catalog tooltip.
+The `rollup_json` blob carries the tier-2 narrative plus the optional
+tier-3 `phases[]` array:
+
+```jsonc
+{
+  "headline": "Refactored the daemon core",
+  "narrative": "…",
+  "highlights": ["…"],
+  "patterns": [],
+  "open_threads": [],
+
+  // Tier-3 phase narrative (optional, written by internal/summarizer/narrative.go).
+  "phases": [
+    {
+      "index": 0,
+      "started_at": "2026-04-15T09:30:00Z",
+      "ended_at":   "2026-04-15T09:38:00Z",
+      "headline": "Implemented the daemon core",
+      "narrative": "Added internal/daemon with launchd/systemd units and tests.",
+      "key_steps": ["added launchd unit", "added systemd unit", "tests green"],
+      "kind": "implement",
+      "turn_ids": ["turn-a", "turn-b"],
+      "turn_count": 2,
+      "duration_ms": 480000,
+      "tool_summary": { "Edit": 8, "Bash": 3 }
+    }
+  ],
+  "narrative_generated_at": "2026-04-15T09:40:12Z",
+  "narrative_model": "claude-sonnet-4-6",
+
+  "generated_at": "2026-04-15T09:40:00Z",
+  "model": "claude-sonnet-4-6",
+  "turn_count": 3
+}
+```
+
+Old rollups without `phases[]` still parse — the Go `Rollup` struct marks
+the field `omitempty` and the TypeScript `Rollup` interface marks it
+optional. See [`narrative.md`](narrative.md) for the full tier-3
+contract.
+
+**Writers:** `internal/summarizer/rollup.go` (tier 2),
+`internal/summarizer/narrative.go` (tier 3).
+**Readers:** session detail page Overview tab (rollup panel) and
+Timeline tab (phase timeline), sessions catalog tooltip.
 
 ---
 

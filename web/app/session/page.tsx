@@ -10,11 +10,13 @@ import {
   List,
   ScrollText,
   Send,
+  Sparkles,
 } from "lucide-react";
 
 import Breadcrumb from "../components/Breadcrumb";
 import Card from "../components/Card";
 import KpiStrip from "../components/KpiStrip";
+import PhaseTimeline from "../components/PhaseTimeline";
 import RawLogsPanel from "../components/RawLogsPanel";
 import RollupPanel from "../components/RollupPanel";
 import RecentTurnsTable from "../components/RecentTurnsTable";
@@ -48,9 +50,10 @@ import { useSelection } from "../lib/url-state";
  * of data is fetched client-side exactly like the old dynamic route.
  */
 
-type TabKey = "overview" | "turns" | "trace" | "logs" | "metrics";
+type TabKey = "timeline" | "overview" | "turns" | "trace" | "logs" | "metrics";
 
 const TABS: TabItem<TabKey>[] = [
+  { key: "timeline", label: "Timeline", icon: Sparkles },
   { key: "overview", label: "Overview", icon: Layers },
   { key: "turns", label: "Turns", icon: List },
   { key: "trace", label: "Trace", icon: Activity },
@@ -80,7 +83,7 @@ export default function SessionDetailPage() {
   }, [id, setSelection]);
 
   const rawTab = searchParams.get("tab") as TabKey | null;
-  const active: TabKey = rawTab && TABS.some((t) => t.key === rawTab) ? rawTab : "overview";
+  const active: TabKey = rawTab && TABS.some((t) => t.key === rawTab) ? rawTab : "timeline";
 
   const setActive = useCallback(
     (key: TabKey) => {
@@ -190,6 +193,7 @@ export default function SessionDetailPage() {
 
       <Tabs items={TABS} active={active} onSelect={setActive} />
 
+      {active === "timeline" && <PhaseTimeline sessionId={id} turns={turns} />}
       {active === "overview" && (
         <OverviewTab
           id={id}

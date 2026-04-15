@@ -22,8 +22,10 @@ var summarizerPrefKeys = []string{
 	summarizer.PrefKeyLanguage,
 	summarizer.PrefKeyRecapSystemPrompt,
 	summarizer.PrefKeyRollupSystemPrompt,
+	summarizer.PrefKeyNarrativeSystemPrompt,
 	summarizer.PrefKeyRecapModel,
 	summarizer.PrefKeyRollupModel,
+	summarizer.PrefKeyNarrativeModel,
 }
 
 // preferencesResponse is the wire shape returned by GET / PATCH
@@ -41,11 +43,13 @@ type preferencesResponse struct {
 // field is a pointer so we can distinguish "not provided" from "set to the
 // empty string" (the latter clears the override).
 type preferencesPatch struct {
-	Language           *string `json:"summarizer.language,omitempty"`
-	RecapSystemPrompt  *string `json:"summarizer.recap_system_prompt,omitempty"`
-	RollupSystemPrompt *string `json:"summarizer.rollup_system_prompt,omitempty"`
-	RecapModel         *string `json:"summarizer.recap_model,omitempty"`
-	RollupModel        *string `json:"summarizer.rollup_model,omitempty"`
+	Language              *string `json:"summarizer.language,omitempty"`
+	RecapSystemPrompt     *string `json:"summarizer.recap_system_prompt,omitempty"`
+	RollupSystemPrompt    *string `json:"summarizer.rollup_system_prompt,omitempty"`
+	NarrativeSystemPrompt *string `json:"summarizer.narrative_system_prompt,omitempty"`
+	RecapModel            *string `json:"summarizer.recap_model,omitempty"`
+	RollupModel           *string `json:"summarizer.rollup_model,omitempty"`
+	NarrativeModel        *string `json:"summarizer.narrative_model,omitempty"`
 }
 
 // listPreferences handles GET /v1/preferences. It loads every summarizer.*
@@ -129,11 +133,13 @@ func (s *Server) deletePreferences(w http.ResponseWriter, r *http.Request) {
 func (s *Server) buildPreferencesResponse(r *http.Request) (preferencesResponse, error) {
 	out := preferencesResponse{
 		Preferences: map[string]any{
-			summarizer.PrefKeyLanguage:           summarizer.LanguageEN,
-			summarizer.PrefKeyRecapSystemPrompt:  "",
-			summarizer.PrefKeyRollupSystemPrompt: "",
-			summarizer.PrefKeyRecapModel:         "",
-			summarizer.PrefKeyRollupModel:        "",
+			summarizer.PrefKeyLanguage:              summarizer.LanguageEN,
+			summarizer.PrefKeyRecapSystemPrompt:     "",
+			summarizer.PrefKeyRollupSystemPrompt:    "",
+			summarizer.PrefKeyNarrativeSystemPrompt: "",
+			summarizer.PrefKeyRecapModel:            "",
+			summarizer.PrefKeyRollupModel:           "",
+			summarizer.PrefKeyNarrativeModel:        "",
 		},
 		UpdatedAt: map[string]string{},
 	}
@@ -186,6 +192,13 @@ func validatePreferencesPatch(p preferencesPatch) ([]preferenceUpdate, error) {
 		}
 		updates = append(updates, preferenceUpdate{key: summarizer.PrefKeyRollupSystemPrompt, value: v})
 	}
+	if p.NarrativeSystemPrompt != nil {
+		v := *p.NarrativeSystemPrompt
+		if len(v) > summarizer.SystemPromptMaxLen {
+			return nil, fmt.Errorf("summarizer.narrative_system_prompt: %d chars exceeds %d", len(v), summarizer.SystemPromptMaxLen)
+		}
+		updates = append(updates, preferenceUpdate{key: summarizer.PrefKeyNarrativeSystemPrompt, value: v})
+	}
 	if p.RecapModel != nil {
 		v := strings.TrimSpace(*p.RecapModel)
 		if v != "" && !modelAliasRegex.MatchString(v) {
@@ -199,6 +212,13 @@ func validatePreferencesPatch(p preferencesPatch) ([]preferenceUpdate, error) {
 			return nil, fmt.Errorf("summarizer.rollup_model: %q does not look like a claude model alias", v)
 		}
 		updates = append(updates, preferenceUpdate{key: summarizer.PrefKeyRollupModel, value: v})
+	}
+	if p.NarrativeModel != nil {
+		v := strings.TrimSpace(*p.NarrativeModel)
+		if v != "" && !modelAliasRegex.MatchString(v) {
+			return nil, fmt.Errorf("summarizer.narrative_model: %q does not look like a claude model alias", v)
+		}
+		updates = append(updates, preferenceUpdate{key: summarizer.PrefKeyNarrativeModel, value: v})
 	}
 	return updates, nil
 }

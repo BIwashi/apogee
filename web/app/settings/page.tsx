@@ -262,12 +262,18 @@ function SummarizerSection() {
       "summarizer.rollup_system_prompt":
         p["summarizer.rollup_system_prompt"] ??
         DEFAULT_SUMMARIZER_PREFERENCES["summarizer.rollup_system_prompt"],
+      "summarizer.narrative_system_prompt":
+        p["summarizer.narrative_system_prompt"] ??
+        DEFAULT_SUMMARIZER_PREFERENCES["summarizer.narrative_system_prompt"],
       "summarizer.recap_model":
         p["summarizer.recap_model"] ??
         DEFAULT_SUMMARIZER_PREFERENCES["summarizer.recap_model"],
       "summarizer.rollup_model":
         p["summarizer.rollup_model"] ??
         DEFAULT_SUMMARIZER_PREFERENCES["summarizer.rollup_model"],
+      "summarizer.narrative_model":
+        p["summarizer.narrative_model"] ??
+        DEFAULT_SUMMARIZER_PREFERENCES["summarizer.narrative_model"],
     };
   }, [data]);
 
@@ -288,8 +294,13 @@ function SummarizerSection() {
         persisted["summarizer.recap_system_prompt"] ||
       draft["summarizer.rollup_system_prompt"] !==
         persisted["summarizer.rollup_system_prompt"] ||
+      draft["summarizer.narrative_system_prompt"] !==
+        persisted["summarizer.narrative_system_prompt"] ||
       draft["summarizer.recap_model"] !== persisted["summarizer.recap_model"] ||
-      draft["summarizer.rollup_model"] !== persisted["summarizer.rollup_model"]
+      draft["summarizer.rollup_model"] !==
+        persisted["summarizer.rollup_model"] ||
+      draft["summarizer.narrative_model"] !==
+        persisted["summarizer.narrative_model"]
     );
   }, [draft, persisted]);
 
@@ -373,6 +384,14 @@ function SummarizerSection() {
               setDraft((d) => ({ ...d, "summarizer.rollup_model": v }))
             }
           />
+          <ModelOverrideRow
+            label="Narrative model"
+            placeholder="claude-sonnet-4-6"
+            value={draft["summarizer.narrative_model"]}
+            onChange={(v) =>
+              setDraft((d) => ({ ...d, "summarizer.narrative_model": v }))
+            }
+          />
 
           <SystemPromptField
             label="Recap system prompt"
@@ -386,6 +405,16 @@ function SummarizerSection() {
             value={draft["summarizer.rollup_system_prompt"]}
             onChange={(v) =>
               setDraft((d) => ({ ...d, "summarizer.rollup_system_prompt": v }))
+            }
+          />
+          <SystemPromptField
+            label="Narrative system prompt"
+            value={draft["summarizer.narrative_system_prompt"]}
+            onChange={(v) =>
+              setDraft((d) => ({
+                ...d,
+                "summarizer.narrative_system_prompt": v,
+              }))
             }
           />
 

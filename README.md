@@ -27,7 +27,7 @@ Running multi-agent Claude Code workflows means losing sight of what each agent 
 
 - **Where should I look right now?** A rule-based attention engine buckets every running turn into `healthy / watchlist / watch / intervene_now` and sorts the live list accordingly, so the noisiest thing is always at the top.
 - **What is this turn doing at this exact moment?** Phase heuristics (plan / explore / edit / test / commit / delegate) and a live swim lane render every tool, subagent, and HITL request on a shared time axis.
-- **What just happened across the whole session?** A two-tier LLM summarizer fills in a per-turn recap (Haiku) and a per-session narrative rollup (Sonnet), both via the local `claude` CLI — no extra API key required.
+- **What just happened across the whole session?** A three-tier LLM summarizer fills in a per-turn recap (Haiku), a per-session narrative rollup (Sonnet), and a tier-3 **phase narrative** that groups the turns into semantic chunks (implement / review / debug / plan / test / commit / delegate / explore) with a headline, 1–3 sentence narrative, and key steps per phase. Everything goes through the local `claude` CLI — no extra API key required.
 
 ### Customising the summarizer
 
@@ -46,6 +46,12 @@ Both controls write to the same `PATCH /v1/preferences` endpoint, so
 scripted rollouts work too. See [`docs/cli.md`](docs/cli.md#summarizer-preferences)
 for the full HTTP contract and validation rules.
 
+The **phase narrative** (tier 3) ships its own preference keys —
+`summarizer.narrative_system_prompt` and `summarizer.narrative_model`
+(default `claude-sonnet-4-6`) — and a manual refresh route at
+`POST /v1/sessions/:id/narrative`. See [`docs/narrative.md`](docs/narrative.md)
+for the schema, chaining, staleness guards, and cost estimate.
+
 ---
 
 ## Key features
@@ -58,11 +64,12 @@ for the full HTTP contract and validation rules.
 | Insights | Aggregate analytics — error rate, duration percentiles, top tools, top phases, watchlist sessions (last 24h). |
 | Events browser | `/events/` — paginated table of every stored hook event (50 per page, Prev / Next, URL-backed page number, side-drawer JSON inspector). The Live dashboard's event ticker is now height-capped at 180 px with internal scroll, so new events no longer push the page around. |
 | Settings | Collector build metadata + OTel exporter status; config path and daemon/hook install flows surfaced inline. |
-| Session detail | Per-session rollup, scoped KPIs, every turn ordered by attention |
+| Session detail | Timeline tab (phase narrative) as the default, plus per-session rollup, scoped KPIs, and every turn ordered by attention |
 | Turn detail | Swim lane, span tree, recap panels, attention reasoning, HITL queue |
 | Command palette | Fuzzy search across sessions, scopes, and recent prompts (⌘K) |
 | Recap worker | Per-turn structured recap via the local `claude` CLI (Haiku) |
 | Rollup worker | Per-session narrative digest via the local `claude` CLI (Sonnet) |
+| Phase narrative | Tier-3 worker that groups every closed turn into semantic phases with a headline, 1–3 sentence narrative, key steps, kind chip, duration, and tool summary — rendered as a clickable Timeline tab with a side-drawer detail view on `/session` |
 | HITL queue | Permission requests as first-class records with operator decisions |
 | Operator interventions | Push text into a live Claude Code session; next `PreToolUse` or `UserPromptSubmit` hook delivers it as `{"decision":"block","reason":...}` or additional context |
 | OpenTelemetry | OTLP gRPC/HTTP export, full claude_code.* semconv registry |

@@ -12,11 +12,13 @@ import (
 // user_preferences DuckDB table. Kept here so the HTTP handler, the worker,
 // and the web UI can refer to a single source of truth.
 const (
-	PrefKeyLanguage           = "summarizer.language"
-	PrefKeyRecapSystemPrompt  = "summarizer.recap_system_prompt"
-	PrefKeyRollupSystemPrompt = "summarizer.rollup_system_prompt"
-	PrefKeyRecapModel         = "summarizer.recap_model"
-	PrefKeyRollupModel        = "summarizer.rollup_model"
+	PrefKeyLanguage              = "summarizer.language"
+	PrefKeyRecapSystemPrompt     = "summarizer.recap_system_prompt"
+	PrefKeyRollupSystemPrompt    = "summarizer.rollup_system_prompt"
+	PrefKeyNarrativeSystemPrompt = "summarizer.narrative_system_prompt"
+	PrefKeyRecapModel            = "summarizer.recap_model"
+	PrefKeyRollupModel           = "summarizer.rollup_model"
+	PrefKeyNarrativeModel        = "summarizer.narrative_model"
 )
 
 // LanguageEN is the default summarizer output language.
@@ -34,11 +36,13 @@ const SystemPromptMaxLen = 2048
 // user_preferences table at one point in time. Empty fields mean "fall back
 // to the config / default".
 type Preferences struct {
-	Language            string
-	RecapSystemPrompt   string
-	RollupSystemPrompt  string
-	RecapModelOverride  string
-	RollupModelOverride string
+	Language               string
+	RecapSystemPrompt      string
+	RollupSystemPrompt     string
+	NarrativeSystemPrompt  string
+	RecapModelOverride     string
+	RollupModelOverride    string
+	NarrativeModelOverride string
 }
 
 // Defaults returns the zero-valued summarizer preferences. Language is "en";
@@ -113,6 +117,11 @@ func (r *duckdbPreferencesReader) LoadSummarizerPreferences(ctx context.Context)
 	} else if ok {
 		out.RollupSystemPrompt = v
 	}
+	if v, ok, err := r.loadString(ctx, PrefKeyNarrativeSystemPrompt); err != nil {
+		return out, err
+	} else if ok {
+		out.NarrativeSystemPrompt = v
+	}
 	if v, ok, err := r.loadString(ctx, PrefKeyRecapModel); err != nil {
 		return out, err
 	} else if ok {
@@ -122,6 +131,11 @@ func (r *duckdbPreferencesReader) LoadSummarizerPreferences(ctx context.Context)
 		return out, err
 	} else if ok {
 		out.RollupModelOverride = v
+	}
+	if v, ok, err := r.loadString(ctx, PrefKeyNarrativeModel); err != nil {
+		return out, err
+	} else if ok {
+		out.NarrativeModelOverride = v
 	}
 	return out, nil
 }
