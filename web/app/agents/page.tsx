@@ -53,7 +53,11 @@ function isSubagent(a: Agent): boolean {
 export default function AgentsPage() {
   const [query, setQuery] = useState("");
   const [env, setEnv] = useState<string | null>(null);
-  const [tree, setTree] = useState(false);
+  // Tree view is the default. The user's mental model is "one Claude
+  // Code terminal → one main agent row; subagents hang off it" which
+  // the tree naturally expresses. Flat view stays available via the
+  // checkbox for operators who want a sortable catalog.
+  const [tree, setTree] = useState(true);
 
   const { data: filterOpts } = useApi<FilterOptions>("/v1/filter-options");
   const { data, error, isLoading } = useApi<AgentsResponse>(
