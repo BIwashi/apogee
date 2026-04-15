@@ -150,6 +150,45 @@ func (s *Server) Reconstructor() *ingest.Reconstructor { return s.reconstructor 
 // Router exposes the chi router for tests.
 func (s *Server) Router() chi.Router { return s.router }
 
+// StartBackground launches the collector's background workers (metrics
+// sampler, summarizer, HITL ticker, intervention sweeper) without binding
+// an HTTP listener. It is used by embedding hosts like the Wails desktop
+// shell that own their own transport and only need the router plus the
+// side-effect goroutines. All workers are scoped to ctx — cancel ctx to
+// stop them. StartBackground is non-blocking.
+func (s *Server) StartBackground(ctx context.Context) {
+	if s.metrics != nil {
+		go func() {
+			if err := s.metrics.Run(ctx); err != nil {
+				s.logger.Debug("metrics collector stopped", "err", err)
+			}
+		}()
+	}
+	if s.summarizer != nil {
+		s.summarizer.Start(ctx)
+	}
+	if s.hitl != nil {
+		s.hitl.Start(ctx)
+	}
+	if s.interventions != nil {
+		s.interventions.Start(ctx)
+	}
+}
+
+// StopBackground tears down workers started by StartBackground and flushes
+// the OTel span processor. Safe to call multiple times.
+func (s *Server) StopBackground(ctx context.Context) {
+	if s.summarizer != nil {
+		s.summarizer.Stop()
+	}
+	if s.interventions != nil {
+		s.interventions.Stop()
+	}
+	if s.telemetry != nil && s.telemetry.Shutdown != nil {
+		_ = s.telemetry.Shutdown(ctx)
+	}
+}
+
 // Run starts the HTTP server and blocks until ctx is cancelled. On cancel the
 // server is shut down gracefully with a 5 s deadline.
 func (s *Server) Run(ctx context.Context) error {
@@ -159,35 +198,9 @@ func (s *Server) Run(ctx context.Context) error {
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
-	// Start the internal metrics sampler. It writes one batch of rows into
-	// metric_points per tick so the dashboard sparklines stay fresh.
-	metricsCtx, stopMetrics := context.WithCancel(ctx)
-	defer stopMetrics()
-	if s.metrics != nil {
-		go func() {
-			if err := s.metrics.Run(metricsCtx); err != nil {
-				s.logger.Debug("metrics collector stopped", "err", err)
-			}
-		}()
-	}
-
-	// Boot the summarizer worker pool. Start is non-blocking.
-	if s.summarizer != nil {
-		s.summarizer.Start(ctx)
-		defer s.summarizer.Stop()
-	}
-
-	// Boot the HITL expiration ticker. Non-blocking; the goroutine lives
-	// for the lifetime of ctx.
-	if s.hitl != nil {
-		s.hitl.Start(ctx)
-	}
-
-	// Boot the interventions auto-expire sweeper.
-	if s.interventions != nil {
-		s.interventions.Start(ctx)
-		defer s.interventions.Stop()
-	}
+	workerCtx, cancelWorkers := context.WithCancel(ctx)
+	defer cancelWorkers()
+	s.StartBackground(workerCtx)
 
 	errCh := make(chan error, 1)
 	go func() {
@@ -204,19 +217,12 @@ func (s *Server) Run(ctx context.Context) error {
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		_ = s.httpServer.Shutdown(shutdownCtx)
-		// Flush the OTel batch span processor so any in-flight spans
-		// get exported before we return. Best effort; failures are
-		// logged inside Shutdown.
-		if s.telemetry != nil && s.telemetry.Shutdown != nil {
-			_ = s.telemetry.Shutdown(shutdownCtx)
-		}
+		s.StopBackground(shutdownCtx)
 		return nil
 	case err := <-errCh:
-		if s.telemetry != nil && s.telemetry.Shutdown != nil {
-			ctx2, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer cancel()
-			_ = s.telemetry.Shutdown(ctx2)
-		}
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		s.StopBackground(shutdownCtx)
 		return err
 	}
 }
