@@ -61,6 +61,7 @@ apogee は、マルチエージェントの [Claude Code](https://docs.claude.co
 | フェーズナラティブ | すべての closed ターンを意味的なフェーズにグルーピングする tier-3 ワーカー。headline、1〜3 文の narrative、key_steps、kind チップ、duration、tool summary を備え、`/session` の Timeline タブにクリック可能なカードとサイドドロワー詳細で表示されます。 |
 | HITL キュー | 権限要求をファーストクラスのレコードとして扱い、オペレーターの判断を構造化して保持。 |
 | Operator Interventions | 実行中の Claude Code セッションへ自由文のメッセージを投入。次の `PreToolUse` / `UserPromptSubmit` フックが、それを `{"decision":"block","reason":...}` または追加コンテキストとして Claude Code に返します。 |
+| Watchdog 異常検知 | バックグラウンドのワーカーが直近 60 秒のウィンドウを過去 24 時間のベースラインと比較し、4 つの fleet メトリクスで `|z|>3` の逸脱を検知します — ヘッダーのベルアイコンと未確認バッジ、サイドドロワーで一覧表示します。詳細は [`docs/watchdog_ja.md`](docs/watchdog_ja.md) を参照。 |
 | OpenTelemetry | OTLP gRPC / HTTP エクスポート、完全な `claude_code.*` semconv レジストリ。 |
 | フックエントリポイント | `apogee hook --event X` — バイナリそのものが hook です。Python 依存は一切ありません。 |
 | バックグラウンドサービス | `apogee daemon {install,uninstall,start,stop,restart,status}` — launchd（macOS）/ systemd `--user`（Linux）。lipgloss のスタイリングで色分けされた出力。 |

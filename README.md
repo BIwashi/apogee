@@ -73,6 +73,7 @@ for the schema, chaining, staleness guards, and cost estimate.
 | Phase narrative | Tier-3 worker that groups every closed turn into semantic phases with a headline, 1–3 sentence narrative, key steps, kind chip, duration, and tool summary — rendered as a clickable Timeline tab with a side-drawer detail view on `/session` |
 | HITL queue | Permission requests as first-class records with operator decisions |
 | Operator interventions | Push text into a live Claude Code session; next `PreToolUse` or `UserPromptSubmit` hook delivers it as `{"decision":"block","reason":...}` or additional context |
+| Watchdog anomaly detector | Background worker compares a 60s window against a 24h baseline and flags `|z|>3` deviations on the four fleet metrics — surfaced as a header-bar bell with an unread badge and a side-drawer signal list. See [`docs/watchdog.md`](docs/watchdog.md). |
 | OpenTelemetry | OTLP gRPC/HTTP export, full claude_code.* semconv registry |
 | Hooks entry point | `apogee hook --event X` — the binary itself is the hook, zero Python dependency |
 | Background service | `apogee daemon {install,uninstall,start,stop,restart,status}` — launchd (macOS) / systemd `--user` (Linux), styled lipgloss output |

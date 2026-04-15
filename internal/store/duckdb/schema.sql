@@ -215,6 +215,32 @@ CREATE TABLE IF NOT EXISTS user_preferences (
   updated_at    TIMESTAMP NOT NULL
 );
 
+-- Watchdog signals: anomaly detections emitted by the background worker.
+-- One row per "spell" — a period where a metric_points tuple deviates from
+-- its rolling 24h baseline by more than 3 standard deviations. The
+-- detector dedupes while the metric stays anomalous so the UI does not
+-- see alert storms. See internal/watchdog/ for the math and
+-- internal/store/duckdb/watchdog_signals.go for the CRUD.
+CREATE SEQUENCE IF NOT EXISTS watchdog_signals_id_seq;
+CREATE TABLE IF NOT EXISTS watchdog_signals (
+  id               BIGINT PRIMARY KEY DEFAULT nextval('watchdog_signals_id_seq'),
+  detected_at      TIMESTAMP NOT NULL,
+  ended_at         TIMESTAMP,
+  metric_name      VARCHAR NOT NULL,
+  labels_json      VARCHAR NOT NULL DEFAULT '{}',
+  z_score          DOUBLE NOT NULL,
+  baseline_mean    DOUBLE NOT NULL,
+  baseline_stddev  DOUBLE NOT NULL,
+  window_value     DOUBLE NOT NULL,
+  severity         VARCHAR NOT NULL,
+  headline         VARCHAR NOT NULL,
+  evidence_json    VARCHAR NOT NULL DEFAULT '{}',
+  acknowledged     BOOLEAN NOT NULL DEFAULT FALSE,
+  acknowledged_at  TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_watchdog_detected ON watchdog_signals(detected_at DESC);
+CREATE INDEX IF NOT EXISTS idx_watchdog_unacked ON watchdog_signals(acknowledged);
+
 -- Model availability cache: one row per Claude model alias apogee knows
 -- about, recording whether the local `claude` CLI accepted the alias on
 -- the most recent probe. Populated by summarizer.Probe (see

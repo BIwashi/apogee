@@ -32,6 +32,7 @@ import {
 import { useSelection } from "../lib/url-state";
 import LiveIndicator from "./LiveIndicator";
 import SessionCommandPalette from "./SessionCommandPalette";
+import WatchdogBell from "./WatchdogBell";
 
 /**
  * TopRibbon — always-on global selector bar. The ribbon sits above the
@@ -112,6 +113,9 @@ export default function TopRibbon() {
         <RibbonDivider />
 
         <ThemeToggle />
+        <RibbonDivider />
+
+        <WatchdogBell />
         <RibbonDivider />
 
         <LanguagePicker />
