@@ -393,6 +393,7 @@ func (s *Server) buildRouter() chi.Router {
 	r.Get("/v1/sessions/{id}/rollup", s.getSessionRollup)
 	r.Post("/v1/sessions/{id}/rollup", s.postSessionRollup)
 	r.Post("/v1/sessions/{id}/narrative", s.postSessionNarrative)
+	r.Get("/v1/sessions/{id}/todos", s.getSessionTodos)
 	r.Get("/v1/turns/recent", s.listRecentTurns)
 	r.Get("/v1/turns/active", s.listActiveTurns)
 	r.Get("/v1/turns/{turn_id}", s.getTurn)
@@ -971,6 +972,91 @@ func (s *Server) postSessionNarrative(w http.ResponseWriter, r *http.Request) {
 		s.summarizer.EnqueueNarrative(id, summarizer.NarrativeReasonManual)
 	}
 	writeJSON(w, http.StatusAccepted, map[string]any{"session_id": id, "enqueued": true})
+}
+
+// todoItem is the dashboard-facing shape of one TodoWrite entry. JSON
+// tags use snake_case to stay consistent with the rest of the /v1 API.
+// The collector decodes Claude Code's camelCase `activeForm` field via
+// rawTodoItem below and re-maps into this shape before serialising.
+type todoItem struct {
+	Content    string `json:"content"`
+	Status     string `json:"status"`
+	ActiveForm string `json:"active_form,omitempty"`
+}
+
+// rawTodoItem matches the exact shape Claude Code's TodoWrite tool
+// writes into its input payload. `activeForm` is camelCase on the
+// wire — not negotiable, that is the upstream contract — so we decode
+// it here and then copy the fields over.
+type rawTodoItem struct {
+	Content    string `json:"content"`
+	Status     string `json:"status"`
+	ActiveForm string `json:"activeForm"`
+}
+
+// getSessionTodos resolves the most recent TodoWrite tool span for a
+// session and returns the parsed checklist. When the session exists but
+// TodoWrite has never been called, `todos` is an empty array rather than
+// null so the frontend can render an empty-state without a null guard.
+//
+// 404 only when the session row itself is missing.
+func (s *Server) getSessionTodos(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	sess, err := s.store.GetSession(r.Context(), id)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if sess == nil {
+		writeJSONError(w, http.StatusNotFound, "session not found")
+		return
+	}
+	row, ok, err := s.store.GetLatestToolSpan(r.Context(), id, "TodoWrite")
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if !ok {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"todos":       []todoItem{},
+			"captured_at": nil,
+			"span_id":     nil,
+		})
+		return
+	}
+	todos := parseTodoWriteInput(row.Attributes)
+	writeJSON(w, http.StatusOK, map[string]any{
+		"todos":       todos,
+		"captured_at": row.StartTime,
+		"span_id":     row.SpanID,
+	})
+}
+
+// parseTodoWriteInput extracts the `todos` array from a span's attribute
+// bag. The reconstructor stores the raw tool input JSON under
+// `claude_code.tool.input` as a string, so we have to unmarshal it a
+// second time. The function is defensive: any shape surprise (missing
+// key, wrong type, malformed JSON) collapses to an empty slice so the
+// endpoint never 500s on a stray payload.
+func parseTodoWriteInput(attrs map[string]any) []todoItem {
+	if len(attrs) == 0 {
+		return []todoItem{}
+	}
+	raw, ok := attrs["claude_code.tool.input"].(string)
+	if !ok || raw == "" {
+		return []todoItem{}
+	}
+	var payload struct {
+		Todos []rawTodoItem `json:"todos"`
+	}
+	if err := json.Unmarshal([]byte(raw), &payload); err != nil {
+		return []todoItem{}
+	}
+	out := make([]todoItem, 0, len(payload.Todos))
+	for _, r := range payload.Todos {
+		out = append(out, todoItem(r))
+	}
+	return out
 }
 
 func (s *Server) getFilterOptions(w http.ResponseWriter, r *http.Request) {

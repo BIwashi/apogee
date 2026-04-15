@@ -8,10 +8,12 @@ import {
   GitCommit,
   HelpCircle,
   Lightbulb,
+  Loader,
   Radio,
   Search,
   Send,
   Sparkles,
+  Square,
   TestTube,
   UserCog,
   Wrench,
@@ -26,6 +28,8 @@ import type {
   PhaseKind,
   Rollup,
   RollupResponse,
+  SessionTodosResponse,
+  TodoItem,
   Turn,
 } from "../lib/api-types";
 import { useApi } from "../lib/swr";
@@ -201,6 +205,10 @@ export default function MissionMap({ sessionId, turns }: MissionMapProps) {
     sessionId ? `/v1/sessions/${sessionId}/interventions?limit=200` : null,
     { refreshInterval: 10_000 },
   );
+  const { data: todosData } = useApi<SessionTodosResponse>(
+    sessionId ? `/v1/sessions/${sessionId}/todos` : null,
+    { refreshInterval: 5_000 },
+  );
 
   const rollup: Rollup | null = rollupData?.rollup ?? null;
   const phases: PhaseBlock[] = useMemo(() => rollup?.phases ?? [], [rollup]);
@@ -212,6 +220,17 @@ export default function MissionMap({ sessionId, turns }: MissionMapProps) {
     () => interventionsData?.interventions ?? [],
     [interventionsData],
   );
+  // Model-declared plan: pending + in-progress rows from the most recent
+  // TodoWrite call. Completed items are dropped because the phase spine
+  // above already tells that story. Order is preserved (Claude writes
+  // the list in execution order), with in-progress items rendered with
+  // a solid node + pulsing ring and pending items rendered dashed.
+  const activeTodos = useMemo(() => {
+    const all = todosData?.todos ?? [];
+    return all.filter(
+      (t) => t.status === "pending" || t.status === "in_progress",
+    );
+  }, [todosData]);
   const branchesByPhase = useMemo(
     () => bucketInterventions(interventions, phases),
     [interventions, phases],
@@ -276,7 +295,7 @@ export default function MissionMap({ sessionId, turns }: MissionMapProps) {
     <div className="flex flex-col gap-4">
       <SectionHeader
         title="Mission"
-        subtitle="Git graph of the session. Main spine = phases, branches = operator interventions, dashed tail = tier-3 forecast."
+        subtitle="Git graph of the session. Main spine = phases, branches = operator interventions, plan = TodoWrite, dashed tail = tier-3 forecast."
         actions={
           <button
             type="button"
@@ -330,16 +349,41 @@ export default function MissionMap({ sessionId, turns }: MissionMapProps) {
               on the right. The graph column is drawn as inline SVG
               so the spine + node + branch lines connect pixel-perfect. */}
           <ol className="flex flex-col">
-            {phases.map((phase, i) => (
-              <PhaseRow
-                key={phase.index}
-                phase={phase}
+            {phases.map((phase, i) => {
+              // The running-turn indicator attaches to the trailing
+              // real phase unless a TodoRow is going to take over the
+              // "current foothold" role right below. If there's an
+              // in_progress todo, let the todo row show the pulse so
+              // the cue lines up with Claude's own self-reported step.
+              const phaseIsLast = i === phases.length - 1;
+              const todoTakesOverPulse = activeTodos.some(
+                (t) => t.status === "in_progress",
+              );
+              return (
+                <PhaseRow
+                  key={phase.index}
+                  phase={phase}
+                  index={i}
+                  isFirst={i === 0}
+                  isLast={
+                    phaseIsLast &&
+                    activeTodos.length === 0 &&
+                    forecast.length === 0
+                  }
+                  branches={branchesByPhase.get(i) ?? []}
+                  runningTurn={
+                    phaseIsLast && !todoTakesOverPulse ? runningTurn : null
+                  }
+                  onClick={() => onPhaseClick(phase)}
+                />
+              );
+            })}
+            {activeTodos.map((todo, i) => (
+              <TodoRow
+                key={`todo-${i}-${todo.content}`}
+                todo={todo}
                 index={i}
-                isFirst={i === 0}
-                isLast={i === phases.length - 1}
-                branches={branchesByPhase.get(i) ?? []}
-                runningTurn={i === phases.length - 1 ? runningTurn : null}
-                onClick={() => onPhaseClick(phase)}
+                isLast={i === activeTodos.length - 1 && forecast.length === 0}
               />
             ))}
             {forecast.map((entry, i) => (
@@ -365,6 +409,10 @@ export default function MissionMap({ sessionId, turns }: MissionMapProps) {
             <span className="inline-flex items-center gap-1">
               <Radio size={10} strokeWidth={1.75} />
               Intervention branch
+            </span>
+            <span className="inline-flex items-center gap-1">
+              <Square size={10} strokeWidth={1.75} />
+              Plan · TodoWrite
             </span>
             <span className="inline-flex items-center gap-1">
               <span
@@ -606,6 +654,196 @@ function PhaseRow({
             ))}
           </ul>
         )}
+      </div>
+    </li>
+  );
+}
+
+// TodoRow renders one row of Claude's own self-declared plan, sourced
+// from the most recent TodoWrite tool call. The visual sits between
+// the realised phase spine (solid) and the tier-3 forecast tail
+// (dashed). An `in_progress` todo gets a solid filled node with a
+// pulsing outer ring so operators can see exactly which step Claude
+// thinks it is currently on; a `pending` todo gets a hollow dashed
+// node because the step is declared but not started.
+//
+// Unlike phase nodes, todo rows are not clickable — the underlying
+// span is already surfaced in the Events tab and clicking here would
+// collide with the PhaseDrawer flow. The row exists to answer the
+// question "what is Claude planning to do next", not to deep-link.
+function TodoRow({
+  todo,
+  index,
+  isLast,
+}: {
+  todo: TodoItem;
+  index: number;
+  isLast: boolean;
+}) {
+  const inProgress = todo.status === "in_progress";
+  const label = inProgress ? "In flight" : "Planned";
+  const body =
+    (inProgress && todo.active_form?.trim()) ||
+    todo.content?.trim() ||
+    "(no content)";
+
+  return (
+    <li className="flex min-h-[80px] gap-3">
+      <div className="relative flex-shrink-0" style={{ width: SPINE_X * 2 }}>
+        <svg
+          className="h-full w-full"
+          viewBox={`0 0 ${SPINE_X * 2} 100`}
+          preserveAspectRatio="xMidYMid meet"
+          style={{ overflow: "visible" }}
+        >
+          {/* Top spine — always drawn: todo rows always sit below a
+              phase node or another todo row, so there is never a gap
+              above. Use a half-dashed style (solid near the top, so
+              it reads as "continuation of the real spine", fading to
+              dashed near the node for "forward-looking"). */}
+          <line
+            x1={SPINE_X}
+            y1="0"
+            x2={SPINE_X}
+            y2="50"
+            stroke="var(--artemis-earth)"
+            strokeWidth="1.75"
+            strokeOpacity="0.5"
+            strokeDasharray={inProgress ? undefined : "3 4"}
+          />
+          {/* Bottom spine — hidden on the final todo row unless a
+              forecast tail is going to render below it. The parent
+              passes isLast so we know when to cut. */}
+          {!isLast && (
+            <line
+              x1={SPINE_X}
+              y1="50"
+              x2={SPINE_X}
+              y2="100"
+              stroke="var(--artemis-earth)"
+              strokeWidth="1.75"
+              strokeOpacity="0.5"
+              strokeDasharray="3 4"
+            />
+          )}
+
+          {/* Label: "TODO" column so the row visually parallels the
+              numbered phase labels on PhaseRow and the "NEXT" label
+              on ForecastRow. */}
+          <text
+            x={SPINE_X - NODE_R - 6}
+            y="54"
+            textAnchor="end"
+            className="fill-[var(--text-muted)] font-mono"
+            style={{ fontSize: "9px" }}
+          >
+            {inProgress ? "NOW" : `T${String(index + 1).padStart(2, "0")}`}
+          </text>
+
+          {/* In-progress nodes get a solid fill + glow so they pop on
+              the spine as the current foothold. Pending nodes are
+              hollow with a dashed outline. */}
+          {inProgress ? (
+            <>
+              <circle
+                cx={SPINE_X}
+                cy="50"
+                r={NODE_R + 3}
+                fill="var(--status-success)"
+                opacity="0.2"
+              />
+              <circle
+                cx={SPINE_X}
+                cy="50"
+                r={NODE_R - 2}
+                fill="var(--status-success)"
+                opacity="0.95"
+              />
+              {/* Pulsing outer ring — the same SMIL cue the phase spine
+                  uses for a running turn, lifted verbatim so the two
+                  visuals read as the same "alive right now" signal. */}
+              <circle
+                cx={SPINE_X}
+                cy="50"
+                r={NODE_R + 6}
+                fill="none"
+                stroke="var(--status-success)"
+                strokeWidth="1.5"
+                strokeOpacity="0.9"
+              >
+                <animate
+                  attributeName="r"
+                  values={`${NODE_R + 2};${NODE_R + 10};${NODE_R + 2}`}
+                  dur="2s"
+                  repeatCount="indefinite"
+                />
+                <animate
+                  attributeName="stroke-opacity"
+                  values="0.9;0;0.9"
+                  dur="2s"
+                  repeatCount="indefinite"
+                />
+              </circle>
+            </>
+          ) : (
+            <circle
+              cx={SPINE_X}
+              cy="50"
+              r={NODE_R - 2}
+              fill="var(--bg-surface)"
+              stroke="var(--artemis-earth)"
+              strokeWidth="1.25"
+              strokeDasharray="3 3"
+              strokeOpacity="0.8"
+            />
+          )}
+        </svg>
+        <div
+          className="pointer-events-none absolute flex items-center justify-center"
+          style={{
+            left: SPINE_X - NODE_R,
+            top: `calc(50% - ${NODE_R}px)`,
+            width: NODE_R * 2,
+            height: NODE_R * 2,
+            color: inProgress ? "var(--artemis-white)" : "var(--artemis-earth)",
+          }}
+        >
+          {inProgress ? (
+            <Loader size={12} strokeWidth={1.75} className="animate-spin" />
+          ) : (
+            <Square size={12} strokeWidth={1.5} />
+          )}
+        </div>
+      </div>
+
+      <div className="flex flex-1 flex-col gap-1 pb-3">
+        <div
+          className={
+            inProgress
+              ? "rounded border border-[var(--status-success)]/40 bg-[var(--status-success)]/10 p-3"
+              : "rounded border border-dashed border-[var(--artemis-earth)]/40 bg-[var(--bg-raised)]/60 p-3"
+          }
+        >
+          <span
+            className="font-display text-[10px] uppercase tracking-[0.14em]"
+            style={{
+              color: inProgress
+                ? "var(--status-success)"
+                : "var(--artemis-earth)",
+            }}
+          >
+            {label} · todo
+          </span>
+          <p
+            className={
+              inProgress
+                ? "mt-1 text-[12px] leading-snug text-[var(--artemis-white)]"
+                : "mt-1 text-[12px] leading-snug text-[var(--text-muted)]"
+            }
+          >
+            {body}
+          </p>
+        </div>
       </div>
     </li>
   );

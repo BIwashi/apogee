@@ -250,6 +250,25 @@ func (s *Store) CountPendingHITLBySession(ctx context.Context, sessionIDs []stri
 	return out, rows.Err()
 }
 
+// GetLatestToolSpan returns the most recent tool span for (session, tool)
+// ordered by start_time DESC. Returns (nil, false, nil) if the session has
+// no span with that tool_name yet. Used by /v1/sessions/:id/todos to look
+// up the last TodoWrite payload without scanning the whole span history.
+func (s *Store) GetLatestToolSpan(ctx context.Context, sessionID, toolName string) (*SpanRow, bool, error) {
+	rows, err := s.querySpans(ctx,
+		selectSpan+` WHERE session_id = ? AND tool_name = ? ORDER BY start_time DESC LIMIT 1`,
+		sessionID, toolName,
+	)
+	if err != nil {
+		return nil, false, err
+	}
+	if len(rows) == 0 {
+		return nil, false, nil
+	}
+	row := rows[0]
+	return &row, true, nil
+}
+
 // ListRecentSpans returns up to limit spans ordered by start_time DESC. This
 // is the broad debug feed.
 func (s *Store) ListRecentSpans(ctx context.Context, limit int) ([]SpanRow, error) {
