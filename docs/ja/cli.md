@@ -152,9 +152,36 @@ apogee daemon stop
 apogee daemon uninstall
 ```
 
+`apogee daemon status` は lipgloss スタイルの 2 ボックス（Daemon + Collector）を表示します（`NO_COLOR=1` でキャプチャした素のサンプル）:
+
+```
+Daemon: dev.biwashi.apogee
+╭─────────────────────────────────────────────────────────────────────────╮
+│ Status:      running                                                    │
+│ Installed:   yes                                                        │
+│ Loaded:      yes                                                        │
+│ Running:     yes                                                        │
+│ PID:         12345                                                      │
+│ Started at:  2026-04-15 13:01:20                                        │
+│ Uptime:      1h 12m 4s                                                  │
+│ Last exit:   0                                                          │
+│ Unit path:   /Users/me/Library/LaunchAgents/dev.biwashi.apogee.plist    │
+│ Logs:        ~/.apogee/logs/apogee.{out,err}.log                        │
+╰─────────────────────────────────────────────────────────────────────────╯
+
+Collector: http://127.0.0.1:4100
+╭───────────────────────────────────────────────╮
+│ Endpoint:  http://127.0.0.1:4100              │
+│ Health:    ok                                 │
+│ Detail:    ok (HTTP 200, 3 ms)                │
+│ Latency:   3ms                                │
+╰───────────────────────────────────────────────╯
+```
+
 ### 備考
 
 - ユニットファイルは macOS では `~/Library/LaunchAgents/dev.biwashi.apogee.plist`、Linux では `~/.config/systemd/user/apogee.service` に置かれます。
+- Collector ボックスは `/v1/healthz` プローブが失敗したときボーダーが赤に変わります。Daemon ボックスは未インストール時にボーダーが黄色になります。
 - スーパーバイザの挙動、デバッグ、設定は [`daemon.md`](daemon.md) を参照してください。
 
 ---
@@ -172,10 +199,24 @@ daemon と HTTP の liveness を一括確認します。シェルプロンプト
 
 ### 例
 
-```sh
+```
 $ apogee status
-daemon:    running (pid 42317)
-collector: ok (http://127.0.0.1:4100)
+APOGEE STATUS
+
+Daemon:    running (pid 42317, uptime 1h 12m 4s)
+╭─────────────────────────────────────────────────────────────────────────╮
+│ Status:      running                                                    │
+│ Installed:   yes                                                        │
+│ ...                                                                     │
+╰─────────────────────────────────────────────────────────────────────────╯
+
+Collector: http://127.0.0.1:4100 (ok (HTTP 200, 3 ms))
+╭───────────────────────────────────────────────╮
+│ Endpoint:  http://127.0.0.1:4100              │
+│ Health:    ok                                 │
+│ Detail:    ok (HTTP 200, 3 ms)                │
+│ Latency:   3ms                                │
+╰───────────────────────────────────────────────╯
 ```
 
 ### 備考
@@ -283,23 +324,90 @@ apogee menubar &
 
 ## apogee doctor
 
-ローカルインストールをヘルスチェックします。apogee バイナリが解決できるか、設定ファイルがパースできるか、DB ファイルが書けるか、`claude` が PATH にあるか、設定コレクターへの hook POST が通るかを確認します。
+ローカルインストールをヘルスチェックします。7 つのチェックを実行し、グリフ + メッセージ行とサマリフッタを表示します。
+
+### チェック一覧
+
+| 名前 | 説明 |
+| --- | --- |
+| `home` | `~/.apogee` が存在し書き込み可能か |
+| `claude_cli` | `claude` が PATH にあるか（summarizer が利用） |
+| `db_path` | 既定 DuckDB パスが書き込み可能か |
+| `config` | `~/.apogee/config.toml` の有無（情報のみ） |
+| `db_lock` | DuckDB のサイドカーロックが空、もしくはインストール済み daemon が保持しているか |
+| `collector` | `127.0.0.1:4100` の `/v1/healthz` が 200 を返すか（500ms タイムアウト） |
+| `hook_install` | `internal/cli/init.go::HookEvents` の各イベントが `~/.claude/settings.json` で apogee バイナリを指しているか |
 
 ### フラグ
 
 | フラグ | 既定値 | 説明 |
 | --- | --- | --- |
-| `--server-url` | `http://localhost:4100/v1/events` | プローブ対象のコレクター |
+| `--json` | `false` | JSON 配列で出力（CI / scripts / `apogee menubar` から消費する用途） |
 
 ### 例
 
-```sh
-apogee doctor
+```
+$ apogee doctor
+
+  ✓ /Users/me/.apogee writable
+  ✓ claude CLI on PATH (/Users/me/.local/bin/claude)
+  ✓ default db path /Users/me/.apogee/apogee.duckdb
+  ✓ no config file (defaults in use) (/Users/me/.apogee/config.toml)
+  ✓ DuckDB file is unlocked
+  ⚠ collector not running (http://127.0.0.1:4100/v1/healthz)
+  ✓ apogee hook installed for 12/12 events
+
+5 ok · 1 warning · 0 errors
+```
+
+```
+$ apogee doctor --json
+[
+  {"name": "home",         "severity": "ok",   "message": "/Users/me/.apogee writable"},
+  ...
+  {"name": "hook_install", "severity": "ok",   "message": "apogee hook installed for 12/12 events"}
+]
 ```
 
 ### 備考
 
 - `doctor` は何も書き換えません。レポートを出すだけです。
+- グリフは Unicode の `✓` / `⚠` / `✗`（U+2713, U+26A0, U+2717）です。`NO_COLOR=1` または stdout が TTY でないときは色がない素のテキストにフォールバックします。
+
+---
+
+## よくあるエラー
+
+### DuckDB ロックの競合
+
+同じ DuckDB ファイルを開こうとする 2 つ目の apogee プロセスは、生の driver エラーではなくスタイル付きエラーボックスを表示して exit 1 で終了します:
+
+```
+╭──────────────────────────────────────────────────────────╮
+│ Another apogee process is already using the DuckDB file. │
+│                                                          │
+│ Path:    /Users/me/.apogee/apogee.duckdb                 │
+│ Holder:  apogee (pid 12345)                              │
+│                                                          │
+│ To fix:                                                  │
+│   1. apogee daemon stop                                  │
+│   2. or: kill 12345                                      │
+│   3. or: apogee serve --db <alt path>                    │
+╰──────────────────────────────────────────────────────────╯
+```
+
+Holder の PID は `lsof -nP <db>` が利用できれば lsof から、なければサイドカー pid ファイルから取得します。詳しくは [`daemon.md`](daemon.md) のサイドカーファイル節を参照してください。
+
+### daemon が起動しない
+
+- `apogee daemon status` でインストール / ロード / 実行状態を確認。
+- `apogee logs -f` で daemon の stdout / stderr を tail。
+- launchd: `launchctl print gui/$(id -u)/dev.biwashi.apogee`。
+- systemd: `journalctl --user -u apogee.service -f`。
+
+### Hook が発火しない
+
+`apogee doctor` を実行して `hook_install` 行を確認します。`partial` または `missing` であれば `apogee init --force` でエントリを書き直してください。
 
 ---
 

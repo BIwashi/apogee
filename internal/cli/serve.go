@@ -93,6 +93,11 @@ func runServe(ctx context.Context, opts ServeOptions) error {
 
 	store, err := duckdb.Open(runCtx, resolved)
 	if err != nil {
+		var locked *duckdb.LockedError
+		if errors.As(err, &locked) {
+			fmt.Fprintln(styledWriter(os.Stderr), renderDBLockConflict(locked))
+			os.Exit(1)
+		}
 		return fmt.Errorf("serve: open duckdb: %w", err)
 	}
 	defer store.Close()

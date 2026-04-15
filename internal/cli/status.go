@@ -30,45 +30,64 @@ func NewStatusCmd(stdout, stderr io.Writer) *cobra.Command {
 This is the command to eyeball when you want to know if apogee is
 alive. For the raw details, use ` + "`apogee daemon status`" + `.`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			stdout := styledWriter(stdout)
 			m, err := managerFactory()
 			if err != nil {
 				return err
 			}
 			s, _ := m.Status(cmd.Context())
 
-			fmt.Fprintln(stdout, "APOGEE STATUS")
+			fmt.Fprintln(stdout, renderHeading("APOGEE STATUS"))
 			fmt.Fprintln(stdout)
 
-			if s.Running {
-				uptime := "unknown"
-				if !s.StartedAt.IsZero() {
-					uptime = s.Uptime().Round(time.Second).String()
-				}
-				if s.PID > 0 {
-					fmt.Fprintf(stdout, "Daemon:    running (pid %d, uptime %s)\n", s.PID, uptime)
-				} else {
-					fmt.Fprintf(stdout, "Daemon:    running (uptime %s)\n", uptime)
-				}
-			} else if s.Installed {
-				fmt.Fprintln(stdout, "Daemon:    installed, not running")
-			} else {
-				fmt.Fprintln(stdout, "Daemon:    not installed")
-			}
+			// Daemon section: keep the "Daemon:    <state>" prefix
+			// the existing tests assert on, while adding a styled
+			// box underneath with the full breakdown.
+			daemonLine := daemonOneLiner(s)
+			fmt.Fprintln(stdout, daemonLine)
+			fmt.Fprintln(stdout, daemonBox(m, s))
+			fmt.Fprintln(stdout)
 
 			h := probeCollector(addr)
 			fmt.Fprintf(stdout, "Collector: http://%s (%s)\n", addr, formatCollectorLine(h))
+			fmt.Fprintln(stdout, collectorBox(addr, h))
+			fmt.Fprintln(stdout)
 
 			activity := probeActivity(addr, h.OK)
+			fmt.Fprintln(stdout, renderHeading("Activity"))
 			fmt.Fprintf(stdout, "Activity:  %s\n", activity)
+			fmt.Fprintln(stdout, boxInfo.Render(keyValueLines([][2]string{
+				{"Snapshot", activity},
+			})))
 
 			fmt.Fprintln(stdout)
-			fmt.Fprintln(stdout, "Run `apogee logs` to tail the collector logs.")
-			fmt.Fprintln(stdout, "Run `apogee open` to open the dashboard.")
+			fmt.Fprintln(stdout, styleMuted.Render("Run `apogee logs` to tail the collector logs."))
+			fmt.Fprintln(stdout, styleMuted.Render("Run `apogee open` to open the dashboard."))
 			return nil
 		},
 	}
 	cmd.Flags().StringVar(&addr, "addr", daemon.DefaultAddr, "Collector address to probe")
 	return cmd
+}
+
+// daemonOneLiner returns the legacy "Daemon:    <state>" string
+// used as a prefix line above the styled daemon box. Kept stable so
+// existing tests can keep matching on it.
+func daemonOneLiner(s daemon.Status) string {
+	if s.Running {
+		uptime := "unknown"
+		if !s.StartedAt.IsZero() {
+			uptime = s.Uptime().Round(time.Second).String()
+		}
+		if s.PID > 0 {
+			return fmt.Sprintf("Daemon:    running (pid %d, uptime %s)", s.PID, uptime)
+		}
+		return fmt.Sprintf("Daemon:    running (uptime %s)", uptime)
+	}
+	if s.Installed {
+		return "Daemon:    installed, not running"
+	}
+	return "Daemon:    not installed"
 }
 
 // probeActivity asks the collector for a coarse-grained turn /
