@@ -81,14 +81,18 @@ func buildWailsOptions(handler http.Handler, onStartup, onShutdown func(context.
 		OnStartup:  onStartup,
 		OnShutdown: onShutdown,
 		Mac: &mac.Options{
-			TitleBar: &mac.TitleBar{
-				TitlebarAppearsTransparent: true,
-				HideTitle:                  false,
-				HideTitleBar:               false,
-				FullSizeContent:            true,
-				UseToolbar:                 false,
-				HideToolbarSeparator:       true,
-			},
+			// Use the default Cocoa titlebar (opaque, with the
+			// "Apogee" title centred and the traffic lights inset
+			// from the top-left corner). The previous configuration
+			// enabled FullSizeContent + TitlebarAppearsTransparent
+			// so the WebView extended under the titlebar for an
+			// edge-to-edge look, but the existing web UI's top
+			// ribbon (env / session / Last / LIVE chips) collided
+			// with the traffic lights on the wider window
+			// breakpoint. Switching to the default titlebar puts
+			// the chrome above the WebView, so nothing in the UI
+			// has to know it is running inside a native window.
+			TitleBar:             mac.TitleBarDefault(),
 			Appearance:           mac.NSAppearanceNameDarkAqua,
 			WebviewIsTransparent: false,
 			WindowIsTranslucent:  false,
