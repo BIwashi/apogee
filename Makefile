@@ -17,7 +17,7 @@
 #   make desktop-build     # go build ./desktop → bin/apogee-desktop
 #   make desktop-run       # build then launch the Wails window
 #   make desktop-app       # wails build -platform darwin/universal → desktop/build/bin/Apogee.app
-#   make desktop-dev       # wails dev (Vite-style hot reload against web/)
+#   make desktop-dev       # wails dev (attaches to an externally managed Next.js dev server)
 
 GO            ?= go
 BIN_DIR       ?= bin
@@ -117,8 +117,9 @@ clean:
 #
 # `make desktop-build` / `desktop-run` only needs a Go toolchain — the Wails
 # CLI (`go install github.com/wailsapp/wails/v2/cmd/wails@latest`) is only
-# required for `desktop-app` (code signing + .app bundling) and `desktop-dev`
-# (hot reload). See docs/desktop.md for details.
+# required for `desktop-app` (.app bundling via `wails build`) and
+# `desktop-dev` (hot reload attach). Code signing and notarization are not
+# wired up — see docs/desktop.md for the follow-up list.
 # ---------------------------------------------------------------------------
 
 DESKTOP_BIN ?= $(BIN_DIR)/apogee-desktop

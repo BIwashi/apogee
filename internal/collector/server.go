@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -31,20 +32,21 @@ import (
 // Server is the apogee collector HTTP server. It owns the chi router, the
 // reconstructor, and a reference to the store. Use New to construct one.
 type Server struct {
-	cfg           Config
-	store         *duckdb.Store
-	reconstructor *ingest.Reconstructor
-	hub           *sse.Hub
-	router        chi.Router
-	httpServer    *http.Server
-	logger        *slog.Logger
-	metrics       *metrics.Collector
-	summarizer    *summarizer.Service
-	hitl          *hitl.Service
-	interventions *interventions.Service
-	watchdog      *watchdog.Worker
-	telemetry     *telemetry.Provider
-	startedAt     time.Time
+	cfg             Config
+	store           *duckdb.Store
+	reconstructor   *ingest.Reconstructor
+	hub             *sse.Hub
+	router          chi.Router
+	httpServer      *http.Server
+	logger          *slog.Logger
+	metrics         *metrics.Collector
+	summarizer      *summarizer.Service
+	hitl            *hitl.Service
+	interventions   *interventions.Service
+	watchdog        *watchdog.Worker
+	telemetry       *telemetry.Provider
+	startedAt       time.Time
+	startBackground sync.Once // guards StartBackground against double-start
 }
 
 // New constructs a Server backed by an open store. The caller retains
@@ -159,23 +161,32 @@ func (s *Server) Router() chi.Router { return s.router }
 // shell that own their own transport and only need the router plus the
 // side-effect goroutines. All workers are scoped to ctx — cancel ctx to
 // stop them. StartBackground is non-blocking.
+//
+// StartBackground is idempotent: only the first call on a given Server
+// instance actually starts the workers. Subsequent calls are no-ops, so
+// callers that wire the method into both `Run()` and a desktop shell
+// harness cannot accidentally double-start the metrics sampler (which
+// would cause duplicate rows in metric_points) or spin up a second HITL
+// ticker.
 func (s *Server) StartBackground(ctx context.Context) {
-	if s.metrics != nil {
-		go func() {
-			if err := s.metrics.Run(ctx); err != nil {
-				s.logger.Debug("metrics collector stopped", "err", err)
-			}
-		}()
-	}
-	if s.summarizer != nil {
-		s.summarizer.Start(ctx)
-	}
-	if s.hitl != nil {
-		s.hitl.Start(ctx)
-	}
-	if s.interventions != nil {
-		s.interventions.Start(ctx)
-	}
+	s.startBackground.Do(func() {
+		if s.metrics != nil {
+			go func() {
+				if err := s.metrics.Run(ctx); err != nil {
+					s.logger.Debug("metrics collector stopped", "err", err)
+				}
+			}()
+		}
+		if s.summarizer != nil {
+			s.summarizer.Start(ctx)
+		}
+		if s.hitl != nil {
+			s.hitl.Start(ctx)
+		}
+		if s.interventions != nil {
+			s.interventions.Start(ctx)
+		}
+	})
 }
 
 // StopBackground performs the explicit shutdown steps for the background

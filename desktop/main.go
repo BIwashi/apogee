@@ -33,6 +33,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/wailsapp/wails/v2"
@@ -76,8 +77,26 @@ func run() error {
 		return fmt.Errorf("open duckdb %q: %w", dbPath, err)
 	}
 
+	// Guard the store close so the OnShutdown hook and the deferred
+	// fallback below can both call it without risking a double-free.
+	// The fallback handles the case where wails.Run() returns an error
+	// before OnShutdown fires (e.g. WebView init failure) — without it
+	// the DuckDB sidecar lock would leak on early-return paths.
+	var closeStoreOnce sync.Once
+	closeStore := func() {
+		closeStoreOnce.Do(func() {
+			if err := store.Close(); err != nil {
+				logger.Warn("close duckdb store", "err", err)
+			}
+		})
+	}
+	defer closeStore()
+
+	// The HTTPAddr field is surfaced verbatim by /v1/info → the Settings
+	// page. A blank string would render as an empty row in the UI, so
+	// label the in-process transport explicitly instead.
 	srv := collector.New(
-		collector.Config{HTTPAddr: "", DBPath: dbPath},
+		collector.Config{HTTPAddr: "in-process (wails webview)", DBPath: dbPath},
 		store,
 		logger,
 	)
@@ -110,9 +129,7 @@ func run() error {
 		stopCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		srv.StopBackground(stopCtx)
-		if err := store.Close(); err != nil {
-			logger.Warn("close duckdb store", "err", err)
-		}
+		closeStore()
 	}
 
 	return wails.Run(&options.App{
