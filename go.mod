@@ -4,6 +4,7 @@ go 1.25.0
 
 require (
 	github.com/BurntSushi/toml v1.6.0
+	github.com/caseymrm/menuet v1.0.3
 	github.com/charmbracelet/fang v1.0.0
 	github.com/go-chi/chi/v5 v5.2.5
 	github.com/marcboeker/go-duckdb/v2 v2.4.3
@@ -21,6 +22,7 @@ require (
 require (
 	charm.land/lipgloss/v2 v2.0.0-beta.3.0.20251106193318-19329a3e8410 // indirect
 	github.com/apache/arrow-go/v18 v18.4.1 // indirect
+	github.com/caseymrm/askm v1.0.0 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/charmbracelet/colorprofile v0.3.3 // indirect
