@@ -236,14 +236,15 @@ export default function TurnDetailPage() {
     [turnId, sessionId, hitlPendingQuery, hitlTurnQuery, interventionPendingQuery],
   );
 
-  useEventStream<ApogeeEvent>(
-    sessionId ? `/v1/events/stream?session_id=${sessionId}` : "",
-    {
-      onEvent,
-      historyLimit: 64,
-      enabled: !!sessionId,
-    },
+  const turnFilter = useMemo(
+    () => (sessionId ? { sessionId } : undefined),
+    [sessionId],
   );
+  const { subscribe: subscribeTurn } = useEventStream<ApogeeEvent>(turnFilter);
+  useEffect(() => {
+    if (!sessionId) return;
+    return subscribeTurn(onEvent);
+  }, [subscribeTurn, onEvent, sessionId]);
 
   const liveTurn = turnPatch ?? turn ?? null;
   const spansData = spansQuery.data;

@@ -73,17 +73,20 @@ export default function InterventionQueue({
     return () => clearInterval(interval);
   }, []);
 
-  useEventStream<AnyApogeeEvent>(
-    sessionId ? `/v1/events/stream?session_id=${sessionId}` : "",
-    {
-      enabled: !!sessionId,
-      onEvent: (event) => {
-        if (!isInterventionEvent(event)) return;
-        if (event.data?.intervention?.session_id !== sessionId) return;
-        void pendingQuery.mutate();
-      },
-    },
+  const interventionFilter = useMemo(
+    () => (sessionId ? { sessionId } : undefined),
+    [sessionId],
   );
+  const { subscribe: subscribeInterventions } = useEventStream(interventionFilter);
+  useEffect(() => {
+    if (!sessionId) return;
+    return subscribeInterventions((event) => {
+      const anyEvent = event as AnyApogeeEvent;
+      if (!isInterventionEvent(anyEvent)) return;
+      if (anyEvent.data?.intervention?.session_id !== sessionId) return;
+      void pendingQuery.mutate();
+    });
+  }, [subscribeInterventions, sessionId, pendingQuery]);
 
   const interventions: Intervention[] = useMemo(() => {
     const raw = pendingQuery.data?.interventions ?? [];
