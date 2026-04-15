@@ -32,6 +32,7 @@ import {
 import { useSelection } from "../lib/url-state";
 import LiveIndicator from "./LiveIndicator";
 import SessionCommandPalette from "./SessionCommandPalette";
+import UpgradeBanner from "./UpgradeBanner";
 import WatchdogBell from "./WatchdogBell";
 
 /**
@@ -75,6 +76,7 @@ export default function TopRibbon() {
 
   return (
     <div className="sticky top-0 z-40 border-b border-[var(--border)] bg-[var(--bg-surface)]">
+      <UpgradeBanner />
       <div className="flex items-center gap-3 px-4 py-2">
         {/* Wordmark */}
         <Link
