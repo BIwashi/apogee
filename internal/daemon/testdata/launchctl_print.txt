@@ -1,0 +1,11 @@
+gui/501/dev.biwashi.apogee = {
+	type = LaunchAgent
+	handle = 12345
+	active count = 1
+	path = /Users/me/Library/LaunchAgents/dev.biwashi.apogee.plist
+	state = running
+	program = /opt/homebrew/bin/apogee
+	pid = 67890
+	last exit code = 0
+	last exit reason = (none)
+}

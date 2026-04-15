@@ -1,0 +1,7 @@
+ActiveState=active
+SubState=running
+LoadState=loaded
+MainPID=67890
+ExecMainStartTimestamp=Wed 2026-04-15 01:42:13 UTC
+ExecMainCode=0
+ExecMainStatus=0

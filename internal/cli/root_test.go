@@ -9,11 +9,16 @@ import (
 func TestRootCmdSubcommandTree(t *testing.T) {
 	root := NewRootCmd(&bytes.Buffer{}, &bytes.Buffer{})
 	want := map[string]bool{
-		"serve":   false,
-		"init":    false,
-		"hook":    false,
-		"version": false,
-		"doctor":  false,
+		"serve":     false,
+		"init":      false,
+		"hook":      false,
+		"version":   false,
+		"doctor":    false,
+		"daemon":    false,
+		"status":    false,
+		"logs":      false,
+		"open":      false,
+		"uninstall": false,
 	}
 	for _, c := range root.Commands() {
 		if _, ok := want[c.Name()]; ok {
@@ -44,7 +49,7 @@ func TestRootCmdHelpLists(t *testing.T) {
 		t.Fatalf("help: %v", err)
 	}
 	out := stdout.String()
-	for _, name := range []string{"serve", "init", "hook", "version", "doctor"} {
+	for _, name := range []string{"serve", "init", "hook", "version", "doctor", "daemon", "status", "logs", "open", "uninstall"} {
 		if !strings.Contains(out, name) {
 			t.Errorf("help output missing %q: %s", name, out)
 		}
