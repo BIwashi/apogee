@@ -300,6 +300,7 @@ export const SSE_EVENT_TYPES = {
   InterventionConsumed: "intervention.consumed",
   InterventionExpired: "intervention.expired",
   InterventionCancelled: "intervention.cancelled",
+  WatchdogSignal: "watchdog.signal",
 } as const;
 
 export type SSEEventType =
@@ -340,7 +341,8 @@ export type AnyApogeeEvent =
   | ApogeeEvent<SpanPayload>
   | ApogeeEvent<SessionPayload>
   | ApogeeEvent<HITLPayload>
-  | ApogeeEvent<InterventionPayload>;
+  | ApogeeEvent<InterventionPayload>
+  | ApogeeEvent<WatchdogPayload>;
 
 export interface RecentTurnsResponse {
   turns: Turn[];
@@ -877,6 +879,83 @@ export interface ModelsResponse {
     narrative: string;
   };
   refreshed_at: string;
+}
+
+/**
+ * WatchdogSeverity mirrors internal/store/duckdb.WatchdogSeverity*. Tier
+ * order is info → warning → critical and is set by the detector based on
+ * the absolute z-score it observed.
+ */
+export type WatchdogSeverity = "info" | "warning" | "critical";
+
+/**
+ * WatchdogEvidencePoint is one window sample carried under
+ * WatchdogSignal.evidence.window. The detector trims to two decimal
+ * places before serialising so the wire payload stays compact.
+ */
+export interface WatchdogEvidencePoint {
+  at: string;
+  value: number;
+}
+
+/**
+ * WatchdogEvidence is the typed payload that rides under
+ * WatchdogSignal.evidence. It carries the window samples the detector
+ * evaluated against the rolling baseline plus the baseline parameters
+ * themselves so the UI can render a sparkline without a second request.
+ */
+export interface WatchdogEvidence {
+  window: WatchdogEvidencePoint[];
+  baseline: { mean: number; stddev: number };
+  z?: number[];
+}
+
+/**
+ * WatchdogSignal mirrors internal/sse.WatchdogSnapshot. One row in the
+ * watchdog_signals table projected onto its wire shape; nullable
+ * columns are unwrapped to nullable fields.
+ */
+export interface WatchdogSignal {
+  id: number;
+  detected_at: string;
+  ended_at: string | null;
+  metric_name: string;
+  labels: Record<string, string>;
+  z_score: number;
+  baseline_mean: number;
+  baseline_stddev: number;
+  window_value: number;
+  severity: WatchdogSeverity;
+  headline: string;
+  evidence: WatchdogEvidence;
+  acknowledged: boolean;
+  acknowledged_at: string | null;
+}
+
+/** WatchdogPayload is the SSE wrapper for `watchdog.signal` events. */
+export interface WatchdogPayload {
+  signal: WatchdogSignal;
+}
+
+/** WatchdogListResponse mirrors GET /v1/watchdog/signals. */
+export interface WatchdogListResponse {
+  signals: WatchdogSignal[];
+}
+
+/** WatchdogAckResponse mirrors POST /v1/watchdog/signals/:id/ack. */
+export interface WatchdogAckResponse {
+  signal: WatchdogSignal;
+}
+
+/**
+ * isWatchdogEvent narrows the mixed SSE envelope to the watchdog
+ * sub-union. There is only one watchdog event type (`watchdog.signal`)
+ * so the exact-match check is authoritative.
+ */
+export function isWatchdogEvent(
+  e: AnyApogeeEvent,
+): e is ApogeeEvent<WatchdogPayload> {
+  return e.type === "watchdog.signal";
 }
 
 /** TelemetryStatus mirrors the GET /v1/telemetry/status response body. */

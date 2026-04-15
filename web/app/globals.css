@@ -375,3 +375,30 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: var(--artemis-shadow);
 }
+
+/* ── Watchdog bell pulse ───────────────────── */
+/*
+ * The header-bar watchdog bell pulses when there is at least one
+ * critical anomaly outstanding. The animation is disabled by
+ * prefers-reduced-motion so visitors with motion sensitivities still
+ * get the badge but no flashing.
+ */
+.watchdog-bell-pulse {
+  animation: watchdog-bell-pulse 1.6s ease-in-out infinite;
+}
+@keyframes watchdog-bell-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.55;
+    transform: scale(1.12);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .watchdog-bell-pulse {
+    animation: none;
+  }
+}

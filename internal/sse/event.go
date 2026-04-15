@@ -32,6 +32,9 @@ const (
 	EventInterventionConsumed  = "intervention.consumed"
 	EventInterventionExpired   = "intervention.expired"
 	EventInterventionCancelled = "intervention.cancelled"
+	// EventWatchdogSignal fires when the background anomaly detector
+	// writes a new watchdog_signals row. Payload is WatchdogPayload.
+	EventWatchdogSignal = "watchdog.signal"
 )
 
 // Event is the broadcast wire message shape. Every SSE frame on the stream
@@ -301,6 +304,81 @@ func SpanRowFromOTel(sp *otel.Span) duckdb.SpanRow {
 		row.Events = events
 	}
 	return row
+}
+
+// WatchdogSnapshot is the flat wire projection of a duckdb.WatchdogSignal.
+// Nullable columns are unwrapped to pointers, labels are decoded from
+// labels_json so the web client does not have to parse it again, and
+// evidence_json is passed through as RawMessage so the UI can consume
+// the typed payload directly.
+type WatchdogSnapshot struct {
+	ID             int64             `json:"id"`
+	DetectedAt     time.Time         `json:"detected_at"`
+	EndedAt        *time.Time        `json:"ended_at"`
+	MetricName     string            `json:"metric_name"`
+	Labels         map[string]string `json:"labels"`
+	ZScore         float64           `json:"z_score"`
+	BaselineMean   float64           `json:"baseline_mean"`
+	BaselineStddev float64           `json:"baseline_stddev"`
+	WindowValue    float64           `json:"window_value"`
+	Severity       string            `json:"severity"`
+	Headline       string            `json:"headline"`
+	Evidence       json.RawMessage   `json:"evidence"`
+	Acknowledged   bool              `json:"acknowledged"`
+	AcknowledgedAt *time.Time        `json:"acknowledged_at"`
+}
+
+// WatchdogPayload is the SSE wrapper for watchdog.* events.
+type WatchdogPayload struct {
+	Signal WatchdogSnapshot `json:"signal"`
+}
+
+// SnapshotFromWatchdog projects a stored row onto its wire shape. It
+// decodes labels_json into a map so the web client can render the label
+// chips without running JSON.parse, and wraps evidence_json as a raw
+// message so the typed payload rides through unchanged.
+func SnapshotFromWatchdog(sig duckdb.WatchdogSignal) WatchdogSnapshot {
+	snap := WatchdogSnapshot{
+		ID:             sig.ID,
+		DetectedAt:     sig.DetectedAt,
+		MetricName:     sig.MetricName,
+		Labels:         map[string]string{},
+		ZScore:         sig.ZScore,
+		BaselineMean:   sig.BaselineMean,
+		BaselineStddev: sig.BaselineStddev,
+		WindowValue:    sig.WindowValue,
+		Severity:       sig.Severity,
+		Headline:       sig.Headline,
+		Acknowledged:   sig.Acknowledged,
+	}
+	if sig.LabelsJSON != "" {
+		var parsed map[string]string
+		if err := json.Unmarshal([]byte(sig.LabelsJSON), &parsed); err == nil && parsed != nil {
+			snap.Labels = parsed
+		}
+	}
+	if sig.EvidenceJSON != "" {
+		snap.Evidence = json.RawMessage(sig.EvidenceJSON)
+	} else {
+		snap.Evidence = json.RawMessage("{}")
+	}
+	if sig.EndedAt.Valid {
+		t := sig.EndedAt.Time
+		snap.EndedAt = &t
+	}
+	if sig.AcknowledgedAt.Valid {
+		t := sig.AcknowledgedAt.Time
+		snap.AcknowledgedAt = &t
+	}
+	return snap
+}
+
+// NewWatchdogEvent builds an SSE Event for a freshly emitted watchdog
+// signal. kind is fixed to EventWatchdogSignal — there is only one
+// watchdog event type on the wire.
+func NewWatchdogEvent(now time.Time, sig duckdb.WatchdogSignal) Event {
+	data, _ := json.Marshal(WatchdogPayload{Signal: SnapshotFromWatchdog(sig)})
+	return Event{Type: EventWatchdogSignal, At: now, Data: data}
 }
 
 // NewInitialEvent builds the synthetic bootstrap event.

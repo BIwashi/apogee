@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -462,4 +463,81 @@ func TestIntegrationSpanDetail(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, http.StatusNotFound, resp.StatusCode)
 	resp.Body.Close()
+}
+
+func TestIntegrationWatchdogSignalsHTTP(t *testing.T) {
+	srv, ts := newTestServer(t)
+
+	// Seed a single signal directly via the store — the background
+	// worker is only driven by a ticker, so bypassing it keeps the test
+	// deterministic.
+	now := time.Now().UTC().Truncate(time.Millisecond)
+	store := srv.store
+	ctx := context.Background()
+
+	row, err := store.InsertWatchdogSignal(ctx, duckdb.WatchdogSignal{
+		DetectedAt:     now,
+		MetricName:     "apogee.tools.rate",
+		LabelsJSON:     `{}`,
+		ZScore:         6.5,
+		BaselineMean:   2.0,
+		BaselineStddev: 0.5,
+		WindowValue:    15.0,
+		Severity:       duckdb.WatchdogSeverityWarning,
+		Headline:       "Unusual tool activity — 15.0/s vs baseline 2.0/s",
+		EvidenceJSON:   `{"window":[],"baseline":{"mean":2.0,"stddev":0.5}}`,
+	})
+	require.NoError(t, err)
+	require.Greater(t, row.ID, int64(0))
+
+	// GET /v1/watchdog/signals — unacked filter returns the row.
+	{
+		resp, err := http.Get(ts.URL + "/v1/watchdog/signals?status=unacked&limit=20")
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+		var out struct {
+			Signals []map[string]any `json:"signals"`
+		}
+		require.NoError(t, json.NewDecoder(resp.Body).Decode(&out))
+		require.Len(t, out.Signals, 1)
+		require.Equal(t, "apogee.tools.rate", out.Signals[0]["metric_name"])
+		require.Equal(t, float64(row.ID), out.Signals[0]["id"])
+		require.Equal(t, false, out.Signals[0]["acknowledged"])
+	}
+
+	// POST /v1/watchdog/signals/{id}/ack flips the row to acknowledged.
+	{
+		url := ts.URL + "/v1/watchdog/signals/" + strconv.FormatInt(row.ID, 10) + "/ack"
+		resp, err := http.Post(url, "application/json", nil)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+		var out struct {
+			Signal map[string]any `json:"signal"`
+		}
+		require.NoError(t, json.NewDecoder(resp.Body).Decode(&out))
+		require.Equal(t, true, out.Signal["acknowledged"])
+	}
+
+	// The unacked filter should now be empty.
+	{
+		resp, err := http.Get(ts.URL + "/v1/watchdog/signals?status=unacked")
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+		var out struct {
+			Signals []map[string]any `json:"signals"`
+		}
+		require.NoError(t, json.NewDecoder(resp.Body).Decode(&out))
+		require.Len(t, out.Signals, 0)
+	}
+
+	// Unknown ids return 404.
+	{
+		resp, err := http.Post(ts.URL+"/v1/watchdog/signals/99999/ack", "application/json", nil)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		require.Equal(t, http.StatusNotFound, resp.StatusCode)
+	}
 }

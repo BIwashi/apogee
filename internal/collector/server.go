@@ -24,6 +24,7 @@ import (
 	"github.com/BIwashi/apogee/internal/summarizer"
 	"github.com/BIwashi/apogee/internal/telemetry"
 	"github.com/BIwashi/apogee/internal/version"
+	"github.com/BIwashi/apogee/internal/watchdog"
 	"github.com/BIwashi/apogee/internal/webassets"
 )
 
@@ -41,6 +42,7 @@ type Server struct {
 	summarizer    *summarizer.Service
 	hitl          *hitl.Service
 	interventions *interventions.Service
+	watchdog      *watchdog.Worker
 	telemetry     *telemetry.Provider
 	startedAt     time.Time
 }
@@ -134,6 +136,7 @@ func New(cfg Config, store *duckdb.Store, logger *slog.Logger) *Server {
 		summarizer:    summarizerSvc,
 		hitl:          hitlSvc,
 		interventions: interventionSvc,
+		watchdog:      watchdog.NewWorker(store, hub, logger),
 		telemetry:     telProv,
 		startedAt:     time.Now(),
 	}
@@ -208,6 +211,16 @@ func (s *Server) Run(ctx context.Context) error {
 	workerCtx, cancelWorkers := context.WithCancel(ctx)
 	defer cancelWorkers()
 	s.StartBackground(workerCtx)
+
+	// Boot the watchdog anomaly detector. The worker runs a detection
+	// pass every Tick and broadcasts a watchdog.signal SSE event on
+	// emission. Start is non-blocking.
+	if s.watchdog != nil {
+		if err := s.watchdog.Start(ctx); err != nil {
+			s.logger.Debug("watchdog: start", "err", err)
+		}
+		defer s.watchdog.Stop()
+	}
 
 	errCh := make(chan error, 1)
 	go func() {
@@ -309,6 +322,10 @@ func (s *Server) buildRouter() chi.Router {
 	r.Get("/v1/sessions/{id}/interventions", s.listSessionInterventions)
 	r.Get("/v1/sessions/{id}/interventions/pending", s.listPendingSessionInterventions)
 	r.Get("/v1/turns/{turn_id}/interventions", s.listTurnInterventions)
+
+	// Watchdog anomaly detection routes.
+	r.Get("/v1/watchdog/signals", s.listWatchdogSignals)
+	r.Post("/v1/watchdog/signals/{id}/ack", s.ackWatchdogSignal)
 
 	// Embedded Next.js static export. The SPA handler is mounted as the
 	// 404 fallback so every /v1/* route above takes precedence. Anything

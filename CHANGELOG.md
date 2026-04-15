@@ -114,6 +114,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   new integration cases that exercise the new endpoints against the
   bundled hook samples. See [`docs/drawer.md`](docs/drawer.md) for the
   full design.
+- **PR #38 — Watchdog anomaly detection + header bell.** A new
+  background worker (`internal/watchdog/`) reads `metric_points` every
+  60 s, computes a rolling 24 h baseline mean + stddev for each
+  monitored metric, and writes a row to a new `watchdog_signals` table
+  whenever the latest 60 s window deviates by more than 3 standard
+  deviations. Severity tiers (`info`/`warning`/`critical`) come from
+  `|z|` thresholds at 3 / 5 / 8. The detector dedupes by spell — a
+  signal is only re-emitted after the metric has stayed below `|z|<1.5`
+  for at least 3 minutes — so the bell never alert-storms while a
+  metric is still anomalous. The worker is wired into
+  `internal/collector/server.go` next to the existing summarizer / hitl
+  / interventions services. Two new HTTP routes serve the dashboard:
+  `GET /v1/watchdog/signals?status=unacked&limit=N` returns recent
+  signals newest-first, and `POST /v1/watchdog/signals/:id/ack` flips
+  the `acknowledged` flag (idempotent). Signals broadcast over SSE as
+  the new `watchdog.signal` event so the UI updates without polling.
+  A new `WatchdogBell` component lives in the TopRibbon between the
+  language picker and the theme toggle: it shows a red badge with the
+  unread count, pulses when there is at least one critical signal
+  (disabled by `prefers-reduced-motion`), and opens a `WatchdogDrawer`
+  built on the `SideDrawer` primitive. The drawer renders one card per
+  signal — severity icon, headline, label chips, a recharts sparkline
+  with the baseline mean reference line, and an Acknowledge button.
+  Adds 16 tests across `internal/watchdog/zscore_test.go`,
+  `internal/watchdog/watchdog_test.go`,
+  `internal/store/duckdb/watchdog_signals_test.go`, and the collector
+  integration test in `internal/collector/server_test.go`.
+
 - **PR #35 — static model catalog + probe + dropdowns.** The
   summarizer's three model aliases (recap / rollup / narrative) are now
   chosen from a curated static catalog
