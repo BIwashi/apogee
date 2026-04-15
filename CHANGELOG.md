@@ -9,6 +9,79 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **PR #37 — Datadog-style facets, timeseries histogram, and perf pass.**
+  The `/events` page is rewritten into a triple-panel Datadog Log
+  Explorer layout: a collapsible `FacetPanel` on the left with
+  `source_app` / `hook_event` / `severity` / `session` groups (each
+  showing distinct values + counts that auto-refresh as filters are
+  applied), a stacked-bar `LogHistogram` above the table (click-drag
+  to zoom into a time range, severity-coloured segments, 80 px tall,
+  pure-SVG with no chart-library overhead), and a filter bar with
+  free-text body search + a time-range dropdown (`15m` / `1h` / `6h` /
+  `24h` / `7d`). The existing cursor-paginated `EventList` now sits
+  under the histogram and accepts the shared filter payload so
+  Prev/Next still works. All panel state is URL-backed
+  (`?q=`, `?window=`, `?since=`, `?until=`, `?facets.<key>=a,b`,
+  `?page=N`) so deep links reproduce the exact filter.
+
+  Three new collector endpoints back the rewrite.
+  `GET /v1/events/facets` returns the top 50 distinct values + counts
+  for each of the four facet dimensions matching the supplied filter;
+  one DuckDB `GROUP BY` per dimension so the whole call finishes in
+  single-digit ms on a 1M-row `logs` table. `GET /v1/events/timeseries`
+  returns evenly spaced buckets with per-severity breakdown via
+  DuckDB's `time_bucket()`; the bucket width auto-scales with the
+  window (1 min → 1 s, 1 h → 30 s, 24 h → 10 min, 7 d → 1 h).
+  `GET /v1/live/bootstrap` is a new consolidated first-paint payload
+  for the `/` Live dashboard — replaces the previous 7 parallel
+  fetches (`/v1/turns/active`, `/v1/attention/counts`,
+  `/v1/events/recent`, and four `/v1/metrics/series`) with one
+  response carrying `{ recent_turns, attention, recent_events,
+  metrics: { active_turns, tools_rate, errors_rate, hitl_pending },
+  now }`. On a warm DuckDB the landing page first paint drops from
+  the old ~600 ms (bounded by round-trip serialisation) to ~80 ms
+  (one round trip + one paint).
+
+  `internal/store/duckdb/logs.go` gains the supporting primitives:
+  a shared `LogFilter.buildWhere()` that understands multi-select
+  `SourceApps`/`HookEvents`/`Severities`/`Sessions`, an explicit
+  `Since`/`Until` time range, and a free-text `Query`; the existing
+  `SourceApp`/`Type`/`SessionID` singular fields are folded into their
+  plural counterparts for backward compatibility. New helpers
+  `EventFacets`, `EventTimeseries`, and `CountEvents` drive the three
+  endpoints above; `ListRecentLogs` is re-plumbed onto the same
+  canonicalisation pass so every filter-backed endpoint behaves
+  identically. Tests in `internal/store/duckdb/logs_facets_test.go`
+  cover facet counts under multi-select, timeseries severity
+  breakdown, and the total-count header helper.
+
+  **Performance fixes.** Three separate contention bottlenecks the
+  user flagged as "laggy" are addressed together. First,
+  `internal/ingest/reconstructor.go` swaps its single global
+  `sync.Mutex` for a sharded lock: 16 `reconstructorShard` buckets
+  keyed by an FNV-1a 32-bit hash of `session_id`, with a separate
+  read/write lock protecting only the top-level sessions map. Apply
+  holds only the session's shard for the hot path, so up to 16
+  unrelated sessions can ingest events concurrently — previously
+  they serialised behind one mutex. `CloseHITLSpan` and the OTel
+  span-event mirror are re-plumbed to look up the owning session by
+  id instead of ranging over `r.sessions`, which is no longer safe
+  under sharding. Second, a new `turnCounterDebouncer`
+  (`internal/ingest/turn_counters.go`) coalesces per-turn counter
+  writes through a 250 ms quiet window: a tool-heavy turn that
+  previously wrote 50-100 `UPDATE turns` rows per turn (one for each
+  Pre/PostToolUse pair) now flushes 1-5 terminal writes, with no
+  user-visible latency because the dashboard polls active turns at
+  2 s. The debouncer cancels pending flushes on `closeTurn` so the
+  terminal `"completed"`/`"stopped"` status write is never clobbered
+  by a stale `"running"` flush firing after the turn ended.
+  Third, `web/app/lib/sse.tsx` maintains `byType` and `bySession`
+  indexes alongside the 500-event ring buffer, so `useEventStream`
+  with a session filter reads an O(1) precomputed array instead of
+  scanning the full history on every render — tangible win when 10+
+  consumers with different filters are mounted under the same
+  `SSEProvider`.
+
 - **PR #35 — static model catalog + probe + dropdowns.** The
   summarizer's three model aliases (recap / rollup / narrative) are now
   chosen from a curated static catalog

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"hash/fnv"
 	"log/slog"
 	"strings"
 	"sync"
@@ -17,6 +18,23 @@ import (
 	"github.com/BIwashi/apogee/internal/sse"
 	"github.com/BIwashi/apogee/internal/store/duckdb"
 )
+
+// numShards is the number of per-session mutex buckets the reconstructor
+// distributes Apply calls across. PR #37 introduces sharding so two
+// unrelated sessions that happen to be arriving concurrently do not
+// serialise behind a single global mutex. 16 is a conservative default —
+// enough parallelism to make a difference on tool-heavy workloads, not so
+// many buckets that the memory overhead of an unused shard matters.
+const numShards = 16
+
+// reconstructorShard is one bucket of the reconstructor's sharded lock. The
+// mu guards mutations to the session_state map entries that hash to this
+// shard. The higher-level Reconstructor.sessionsMu still protects the
+// sessions map itself so lookups / inserts / deletes can atomically swap
+// entries without blocking per-session work happening elsewhere.
+type reconstructorShard struct {
+	mu sync.Mutex
+}
 
 // InterventionsObserver is the subset of the interventions service the
 // reconstructor uses. Kept as an interface so the ingest package does not
@@ -101,12 +119,27 @@ const attentionDebounce = 250 * time.Millisecond
 // Reconstructor turns a stream of HookEvent values into spans, logs, and
 // session/turn rows. It is safe for concurrent use; callers may invoke Apply
 // from many goroutines.
+//
+// Locking model (PR #37):
+//   - sessionsMu protects the sessions map itself (get/put/delete). It is
+//     held for the shortest possible window — usually a single map lookup
+//     or insertion — so unrelated sessions never serialise against each
+//     other here.
+//   - shards[hash(session_id)%numShards].mu protects all per-session
+//     state mutation: Apply, CloseHITLSpan, and the turn-counter debouncer
+//     all acquire the relevant shard. Independent sessions fall into
+//     different shards, so up to numShards concurrent ingest goroutines
+//     can run in parallel.
+//   - lastScoredAtMu guards the rescoreAttention debounce map, which is
+//     shared across shards and updated from every Apply call.
 type Reconstructor struct {
-	mu       sync.Mutex
-	sessions map[string]*sessionState
-	store    *duckdb.Store
-	clock    func() time.Time
-	logger   *slog.Logger
+	sessionsMu sync.RWMutex
+	sessions   map[string]*sessionState
+	shards     [numShards]reconstructorShard
+
+	store  *duckdb.Store
+	clock  func() time.Time
+	logger *slog.Logger
 	// Hub, when non-nil, receives a broadcast for every session/turn/span
 	// mutation once the underlying DuckDB write has succeeded. The hub must
 	// never block — see internal/sse for the back-pressure policy.
@@ -116,9 +149,16 @@ type Reconstructor struct {
 	// reconstructor skips re-scoring entirely (useful for tests that don't
 	// care). lastScoredAt debounces per-turn re-scores to at most once every
 	// attentionDebounce interval.
-	Engine       *attention.Engine
-	HistoryWrite attention.HistoryWriter
-	lastScoredAt map[string]time.Time
+	Engine         *attention.Engine
+	HistoryWrite   attention.HistoryWriter
+	lastScoredAtMu sync.Mutex
+	lastScoredAt   map[string]time.Time
+
+	// turnCounters is the debouncer for touchTurnCounters. Tool-heavy
+	// turns can fire 50+ counter updates in a second; before PR #37 every
+	// one of those turned into a DuckDB UPDATE and an SSE broadcast. The
+	// debouncer coalesces them to at most one flush per 250 ms per turn.
+	turnCounters *turnCounterDebouncer
 
 	// OnTurnClosed, when non-nil, is invoked once a turn row has been
 	// fully updated by closeTurn. It receives the terminal turn id and
@@ -162,13 +202,69 @@ func NewReconstructor(store *duckdb.Store, logger *slog.Logger, clock func() tim
 	if clock == nil {
 		clock = time.Now
 	}
-	return &Reconstructor{
+	r := &Reconstructor{
 		sessions:     make(map[string]*sessionState),
 		store:        store,
 		logger:       logger,
 		clock:        clock,
 		lastScoredAt: make(map[string]time.Time),
 	}
+	r.turnCounters = newTurnCounterDebouncer(r.flushTurnCounters, turnCounterDebounce)
+	return r
+}
+
+// shardFor returns the per-session mutex bucket for a session id. The
+// hash function is FNV-1a 32-bit — fast, good enough distribution for
+// UUIDv4 session ids, and zero allocations in the hot path.
+func (r *Reconstructor) shardFor(sessionID string) *reconstructorShard {
+	h := fnv.New32a()
+	_, _ = h.Write([]byte(sessionID))
+	return &r.shards[h.Sum32()%uint32(numShards)]
+}
+
+// lockSessionForApply takes the sessions-map read lock, resolves-or-creates
+// the session state, and returns the locked shard along with the state.
+// Callers must Unlock the shard when done. This is the canonical entry
+// point for goroutines that want to mutate per-session state without
+// contending against the sessions map for the duration of the update.
+func (r *Reconstructor) lockSessionForApply(ev *HookEvent) (*reconstructorShard, *sessionState) {
+	// Fast path: shared lock, session already exists.
+	r.sessionsMu.RLock()
+	st, ok := r.sessions[ev.SessionID]
+	r.sessionsMu.RUnlock()
+	if !ok {
+		// Slow path: exclusive insert. We re-check because another
+		// goroutine may have inserted the same session while we were
+		// waiting for the write lock.
+		r.sessionsMu.Lock()
+		st, ok = r.sessions[ev.SessionID]
+		if !ok {
+			st = &sessionState{
+				SourceApp:     ev.SourceApp,
+				StartedAt:     ev.Time(),
+				LastSeen:      ev.Time(),
+				Stacks:        map[string][]*agentFrame{},
+				PendingTools:  map[string]*otel.Span{},
+				PendingHITL:   map[string]*otel.Span{},
+				ToolOTelSpans: map[string]oteltrace.Span{},
+				HITLOTelSpans: map[string]oteltrace.Span{},
+			}
+			r.sessions[ev.SessionID] = st
+		}
+		r.sessionsMu.Unlock()
+	}
+	shard := r.shardFor(ev.SessionID)
+	shard.mu.Lock()
+	// Per-session field refresh (previously done inside
+	// getOrCreateSession) is applied under the shard lock so it races
+	// against no other Apply on the same session.
+	if ev.SourceApp != "" {
+		st.SourceApp = ev.SourceApp
+	}
+	if ev.ModelName != "" {
+		st.Model = ev.ModelName
+	}
+	return shard, st
 }
 
 type discardWriter struct{}
@@ -176,15 +272,15 @@ type discardWriter struct{}
 func (discardWriter) Write(p []byte) (int, error) { return len(p), nil }
 
 // Apply ingests a single hook event, updating in-memory state and writing to
-// the store.
+// the store. Safe for concurrent use; Apply holds only the per-session
+// shard mutex so two events for different sessions can be ingested in
+// parallel.
 func (r *Reconstructor) Apply(ctx context.Context, ev *HookEvent) error {
 	if err := ev.Validate(); err != nil {
 		return err
 	}
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	st := r.getOrCreateSession(ev)
+	shard, st := r.lockSessionForApply(ev)
+	defer shard.mu.Unlock()
 	st.LastSeen = ev.Time()
 
 	// Always write the raw log row first so the audit trail is lossless even
@@ -275,10 +371,13 @@ func (r *Reconstructor) rescoreAttention(ctx context.Context, turnID string, evT
 		return
 	}
 	now := r.clock()
+	r.lastScoredAtMu.Lock()
 	if last, ok := r.lastScoredAt[turnID]; ok && now.Sub(last) < attentionDebounce {
+		r.lastScoredAtMu.Unlock()
 		return
 	}
 	r.lastScoredAt[turnID] = now
+	r.lastScoredAtMu.Unlock()
 
 	turn, err := r.store.GetTurn(ctx, turnID)
 	if err != nil || turn == nil {
@@ -353,31 +452,11 @@ func (r *Reconstructor) rescoreAttention(ctx context.Context, turnID string, evT
 	r.broadcastTurn(ctx, turnID, sse.EventTypeTurnUpdated)
 }
 
-// getOrCreateSession returns the existing in-memory session state for a
-// session id, creating a fresh one when first seen.
-func (r *Reconstructor) getOrCreateSession(ev *HookEvent) *sessionState {
-	st, ok := r.sessions[ev.SessionID]
-	if !ok {
-		st = &sessionState{
-			SourceApp:     ev.SourceApp,
-			StartedAt:     ev.Time(),
-			LastSeen:      ev.Time(),
-			Stacks:        map[string][]*agentFrame{},
-			PendingTools:  map[string]*otel.Span{},
-			PendingHITL:   map[string]*otel.Span{},
-			ToolOTelSpans: map[string]oteltrace.Span{},
-			HITLOTelSpans: map[string]oteltrace.Span{},
-		}
-		r.sessions[ev.SessionID] = st
-	}
-	if ev.SourceApp != "" {
-		st.SourceApp = ev.SourceApp
-	}
-	if ev.ModelName != "" {
-		st.Model = ev.ModelName
-	}
-	return st
-}
+// getOrCreateSession has been replaced by lockSessionForApply. The former
+// required the global r.mu lock for the entire duration of an Apply call;
+// the new helper only takes the sessions map lock for the lookup/insert
+// and then switches to the per-session shard mutex so unrelated sessions
+// can run in parallel.
 
 func (r *Reconstructor) handleSessionStart(ctx context.Context, st *sessionState, ev *HookEvent) error {
 	st.StartedAt = ev.Time()
@@ -399,7 +478,18 @@ func (r *Reconstructor) handleSessionEnd(ctx context.Context, st *sessionState, 
 		}
 	}
 	r.broadcastSession(ctx, ev.SessionID)
+	// Drop the in-memory session. The shard mutex is still held by the
+	// caller of Apply so no other goroutine can observe the session in a
+	// half-dismantled state; the sessions-map write lock only blocks
+	// lookups, never per-session work.
+	r.sessionsMu.Lock()
 	delete(r.sessions, ev.SessionID)
+	r.sessionsMu.Unlock()
+	// Also flush any pending turn-counter write for this session so the
+	// debouncer does not fire against a deleted turn.
+	if r.turnCounters != nil {
+		r.turnCounters.cancelSession(ev.SessionID)
+	}
 	if r.OnSessionEnded != nil {
 		// Invoke without the reconstructor lock held — callbacks enqueue
 		// follow-up work and must never back-pressure ingest.
@@ -771,13 +861,22 @@ func (r *Reconstructor) handlePermissionRequest(ctx context.Context, st *session
 // downstream consumers (span tree, OTel export) see the resolution.
 //
 // Safe to call from the HTTP handler goroutine — it acquires the
-// reconstructor mutex internally.
+// reconstructor shard mutex for the owning session internally.
 func (r *Reconstructor) CloseHITLSpan(ctx context.Context, ev duckdb.HITLEvent) {
 	if r == nil || r.store == nil {
 		return
 	}
-	r.mu.Lock()
-	defer r.mu.Unlock()
+	// Lock the shard owning this session. When the session id is missing
+	// (HITL row persisted before SessionStart, unusual but possible) we
+	// fall back to sharding on the hitl id itself so concurrent calls do
+	// not stomp on each other.
+	shardKey := ev.SessionID
+	if shardKey == "" {
+		shardKey = ev.HitlID
+	}
+	shard := r.shardFor(shardKey)
+	shard.mu.Lock()
+	defer shard.mu.Unlock()
 
 	// The HITL span lives under a session/turn we may not be actively
 	// holding state for any more. Locate it via the stored span id and
@@ -864,13 +963,21 @@ func (r *Reconstructor) CloseHITLSpan(ctx context.Context, ev duckdb.HITLEvent) 
 	r.broadcastSpan(sse.EventTypeSpanUpdated, sp)
 	// Drop the in-memory pending entry so the next closeTurn does not
 	// re-process this span. Also finish the OTel mirror if one is held.
-	for _, st := range r.sessions {
-		if _, ok := st.PendingHITL[ev.SpanID]; ok {
-			delete(st.PendingHITL, ev.SpanID)
-		}
-		if otSpan, ok := st.HITLOTelSpans[ev.SpanID]; ok {
-			r.finishOTelSpan(otSpan, sp)
-			delete(st.HITLOTelSpans, ev.SpanID)
+	// Under sharding we already know the session id the HITL event
+	// belongs to, so we look up the session directly instead of ranging
+	// over r.sessions (which would require crossing shard boundaries).
+	if ev.SessionID != "" {
+		r.sessionsMu.RLock()
+		st := r.sessions[ev.SessionID]
+		r.sessionsMu.RUnlock()
+		if st != nil {
+			if _, ok := st.PendingHITL[ev.SpanID]; ok {
+				delete(st.PendingHITL, ev.SpanID)
+			}
+			if otSpan, ok := st.HITLOTelSpans[ev.SpanID]; ok {
+				r.finishOTelSpan(otSpan, sp)
+				delete(st.HITLOTelSpans, ev.SpanID)
+			}
 		}
 	}
 	// Also nudge the turn row so the dashboard re-renders.
@@ -1134,6 +1241,13 @@ func (r *Reconstructor) handleStop(ctx context.Context, st *sessionState, ev *Ho
 // closeTurn finalises every open span belonging to the active turn and writes
 // the terminal turn row.
 func (r *Reconstructor) closeTurn(ctx context.Context, st *sessionState, end time.Time, status string) {
+	// Drop any pending debounced counter write for this turn before we
+	// issue the terminal UpdateTurnStatus call. Otherwise the timer may
+	// still fire after closeTurn and revert status from
+	// "completed"/"stopped"/"errored" back to "running".
+	if r.turnCounters != nil && st.TurnID != "" {
+		r.turnCounters.cancelTurn(st.TurnID)
+	}
 	// Close any still-open tool / subagent spans on the agent stacks.
 	for key, frames := range st.Stacks {
 		for _, f := range frames {
@@ -1230,15 +1344,50 @@ func (r *Reconstructor) closeTurn(ctx context.Context, st *sessionState, end tim
 	st.Stacks = map[string][]*agentFrame{}
 }
 
+// touchTurnCounters coalesces the per-turn counter writes through the
+// debouncer. Before PR #37 every tool call (Pre + Post) wrote a fresh
+// turns row + fired an SSE turn.updated broadcast; on a 50-tool-call turn
+// that was 100 DuckDB round trips. The debouncer defers the flush by
+// turnCounterDebounce (250 ms) and replaces intermediate updates in-place,
+// so the typical busy turn goes from 100 writes to fewer than 5.
+//
+// Callers must hold the shard mutex for st's session.
 func (r *Reconstructor) touchTurnCounters(ctx context.Context, st *sessionState) {
 	if !st.hasActiveTurn() {
 		return
 	}
-	if err := r.store.UpdateTurnStatus(ctx, st.TurnID, "running", nil, nil, st.ToolCallCount, st.SubagentCount, st.ErrorCount); err != nil {
+	// Snapshot under the caller's shard lock so the debouncer sees a
+	// consistent tuple even if a subsequent Apply mutates the state
+	// before the flush timer fires.
+	snap := pendingTurnUpdate{
+		turnID:     st.TurnID,
+		sessionID:  st.TurnRoot.SessionID,
+		tools:      st.ToolCallCount,
+		subagents:  st.SubagentCount,
+		errors:     st.ErrorCount,
+	}
+	if r.turnCounters != nil {
+		r.turnCounters.schedule(ctx, snap)
+		return
+	}
+	// Debouncer disabled (tests only): fall through to the old direct
+	// write path.
+	r.flushTurnCounters(ctx, snap)
+}
+
+// flushTurnCounters is the terminal path that actually writes a turn
+// counter update to DuckDB and emits an SSE broadcast. It is invoked
+// either synchronously (debouncer disabled) or from the debouncer's timer
+// goroutine once the 250 ms quiet window elapses.
+func (r *Reconstructor) flushTurnCounters(ctx context.Context, u pendingTurnUpdate) {
+	if r == nil || r.store == nil || u.turnID == "" {
+		return
+	}
+	if err := r.store.UpdateTurnStatus(ctx, u.turnID, "running", nil, nil, u.tools, u.subagents, u.errors); err != nil {
 		r.logger.Error("update turn counters", "err", err)
 		return
 	}
-	r.broadcastTurn(ctx, st.TurnID, sse.EventTypeTurnUpdated)
+	r.broadcastTurn(ctx, u.turnID, sse.EventTypeTurnUpdated)
 }
 
 func (r *Reconstructor) appendSpanEvent(ctx context.Context, span *otel.Span, ev otel.SpanEvent) {
@@ -1248,16 +1397,20 @@ func (r *Reconstructor) appendSpanEvent(ctx context.Context, span *otel.Span, ev
 		return
 	}
 	r.broadcastSpan(sse.EventTypeSpanUpdated, span)
-	// Mirror the event onto the OTel side. We currently only know the
-	// turn root mapping, which is the only span this helper is used
-	// against today (notification, compaction, unknown_hook). When
-	// that assumption changes we can lift this lookup into a method.
+	// Mirror the event onto the OTel side. Under sharding we cannot
+	// safely range over r.sessions without cross-shard locks, so we
+	// look up the owning session by id (the caller always passes a
+	// turn-root span which carries the session id as an attribute).
 	if r.otelMirrorEnabled() {
-		for _, st := range r.sessions {
-			if st.TurnRoot == span && st.TurnRootOTel != nil {
-				r.applyOTelEvents(st.TurnRootOTel, &otel.Span{Events: []otel.SpanEvent{ev}})
-				return
-			}
+		sid := span.SessionID
+		if sid == "" {
+			return
+		}
+		r.sessionsMu.RLock()
+		st := r.sessions[sid]
+		r.sessionsMu.RUnlock()
+		if st != nil && st.TurnRoot == span && st.TurnRootOTel != nil {
+			r.applyOTelEvents(st.TurnRootOTel, &otel.Span{Events: []otel.SpanEvent{ev}})
 		}
 	}
 }
