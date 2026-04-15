@@ -25,6 +25,7 @@ import type {
 import { SSE_EVENT_TYPES } from "./lib/api-types";
 import { useEventStream } from "./lib/sse";
 import { useApi } from "./lib/swr";
+import { buildQuery, useSelection } from "./lib/url-state";
 
 /**
  * `/` — apogee Live. The focus-card driven landing page. PR #24 makes the
@@ -90,12 +91,22 @@ export default function LivePage() {
   const searchParams = useSearchParams();
   const focusParam = searchParams.get("focus");
 
+  // Read the TopRibbon selection so the TimeRangePicker's "Last 5m",
+  // "Last 1h" etc. presets actually scope the Live fetches. The
+  // apiParams bundle already carries since/until/session_id/source_app
+  // in the shape the collector /v1/turns/active and /v1/attention/counts
+  // filters accept (parseTurnFilter in internal/collector/server.go).
+  const { apiParams } = useSelection();
+
   const { data: activeTurnsData, mutate: mutateActive } =
-    useApi<RecentTurnsResponse>("/v1/turns/active", {
-      refreshInterval: 2_000,
-    });
+    useApi<RecentTurnsResponse>(
+      "/v1/turns/active" + buildQuery(apiParams),
+      {
+        refreshInterval: 2_000,
+      },
+    );
   const { data: countsData } = useApi<AttentionCounts>(
-    "/v1/attention/counts?include=ended",
+    "/v1/attention/counts" + buildQuery(apiParams, { include: "ended" }),
     { refreshInterval: 2_000 },
   );
 
