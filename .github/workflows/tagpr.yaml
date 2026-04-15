@@ -1,0 +1,61 @@
+name: tagpr
+
+# tagpr keeps a single "Release PR" open against main that bumps the
+# version, refreshes CHANGELOG.md, and (on merge) pushes the next
+# `vX.Y.Z` tag. The actual release artifacts — goreleaser builds,
+# Homebrew Formula push, Homebrew Cask push for apogee-desktop — are
+# produced by `.github/workflows/release.yml`, which fires on that tag
+# push. In other words: merge the Release PR, wait a couple of minutes,
+# `brew upgrade apogee` starts serving the new version. No manual
+# `git tag` + `git push --tags` ever again.
+#
+# Tool: https://github.com/Songmu/tagpr
+#
+# Why a custom GitHub App token instead of GITHUB_TOKEN?
+# GitHub intentionally blocks the default GITHUB_TOKEN from triggering
+# other workflows when it pushes tags or commits, to prevent accidental
+# infinite loops. That safety feature would also stop the tag push
+# coming out of tagpr from firing release.yml, which is exactly the
+# chain we want. Reusing the APOGEE_RELEASE_APP credentials (already
+# configured for release.yml so goreleaser can push to homebrew-tap)
+# sidesteps the block cleanly — the App's token is treated as a
+# first-class actor and cascades into release.yml.
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: read
+
+jobs:
+  tagpr:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mint GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.APOGEE_RELEASE_APP_ID }}
+          private-key: ${{ secrets.APOGEE_RELEASE_APP_PRIVATE_KEY }}
+          owner: BIwashi
+          repositories: |
+            apogee
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          # persist-credentials: false so the default GITHUB_TOKEN
+          # credential is not left in .git/config. We want tagpr to
+          # use the App token from GITHUB_TOKEN env below instead,
+          # so no ambient credential is the safer default.
+          persist-credentials: false
+
+      - name: Run tagpr
+        uses: Songmu/tagpr@v1
+        env:
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
