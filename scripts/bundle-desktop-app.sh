@@ -5,9 +5,17 @@
 # Usage:
 #   scripts/bundle-desktop-app.sh <binary-path> <version>
 #
-# The script writes an Apogee.app tree next to the binary (same directory)
-# and leaves the original binary in place. It is idempotent — calling it a
-# second time replaces the previous bundle.
+# The script writes an Apogee.app tree next to the input binary and then
+# REPLACES the input binary file with a tiny launcher shim (~400 bytes)
+# that execs the real Mach-O inside the .app. This is what keeps the
+# release zip small: without the shim, goreleaser's archive step includes
+# both the raw universal binary at the zip root AND the copy inside
+# Apogee.app/Contents/MacOS/, doubling the download size to ~88 MB. With
+# the shim, the zip is just the .app tree plus a tiny forwarding script,
+# for a ~44 MB total — 1x the binary instead of 2x.
+#
+# The shim is idempotent — calling the script a second time replaces both
+# the .app and the shim with fresh copies.
 #
 # We intentionally do NOT code-sign or notarize here. apogee is distributed
 # unsigned today; brew cask strips the com.apple.quarantine xattr on
@@ -44,8 +52,9 @@ rm -rf "$APP_DIR"
 mkdir -p "$MACOS_DIR" "$RES_DIR"
 
 # The executable inside Contents/MacOS must match CFBundleExecutable in
-# Info.plist. Copy rather than move so goreleaser's archive step (which
-# may still reference $BIN_PATH) keeps working.
+# Info.plist. Copy rather than move so we can then overwrite $BIN_PATH
+# with the launcher shim below — goreleaser's archive step expects a
+# file at $BIN_PATH and treats it as the build output.
 cp "$BIN_PATH" "$MACOS_DIR/apogee-desktop"
 chmod +x "$MACOS_DIR/apogee-desktop"
 
@@ -113,4 +122,55 @@ cat >"$CONTENTS/Info.plist" <<PLIST
 </plist>
 PLIST
 
-echo "bundle: wrote $APP_DIR (version ${VERSION})"
+# Replace the raw universal Mach-O that was at $BIN_PATH with a small
+# POSIX shell launcher. The launcher forwards to the real binary inside
+# the .app, which is the one file that actually needs the universal
+# Mach-O. This keeps the release zip small while still giving users a
+# CLI entry point — brew's cask `binary` directive symlinks
+# /opt/homebrew/bin/apogee-desktop to this shim, so `apogee-desktop`
+# from a terminal still opens the Wails window.
+#
+# Two search paths:
+#   1. /Applications/Apogee.app — the brew cask's `app "Apogee.app"`
+#      directive installs the bundle here, and this is the primary path
+#      used when the cask is installed.
+#   2. Sibling Apogee.app relative to $0 — used when a user downloads
+#      the release zip manually, extracts it somewhere like
+#      ~/Downloads/apogee-desktop/, and runs ./apogee-desktop directly
+#      without going through brew.
+cat >"$BIN_PATH" <<'SHIM'
+#!/bin/sh
+# apogee-desktop launcher shim. Forwards to the real Wails binary
+# bundled inside Apogee.app. Written by scripts/bundle-desktop-app.sh
+# as part of the goreleaser build — see that script for context.
+set -e
+
+PRIMARY="/Applications/Apogee.app/Contents/MacOS/apogee-desktop"
+if [ -x "$PRIMARY" ]; then
+    exec "$PRIMARY" "$@"
+fi
+
+# Resolve the directory of this script, following symlinks, so we can
+# find a sibling Apogee.app when the release zip was extracted manually.
+SELF="$0"
+while [ -L "$SELF" ]; do
+    LINK=$(readlink "$SELF")
+    case "$LINK" in
+        /*) SELF="$LINK" ;;
+        *)  SELF="$(dirname "$SELF")/$LINK" ;;
+    esac
+done
+SIBLING="$(cd "$(dirname "$SELF")" && pwd)/Apogee.app/Contents/MacOS/apogee-desktop"
+if [ -x "$SIBLING" ]; then
+    exec "$SIBLING" "$@"
+fi
+
+echo "apogee-desktop: could not find Apogee.app." >&2
+echo "  Tried: $PRIMARY" >&2
+echo "  Tried: $SIBLING" >&2
+echo "  Install via: brew install --cask BIwashi/tap/apogee-desktop" >&2
+exit 1
+SHIM
+chmod +x "$BIN_PATH"
+
+echo "bundle: wrote $APP_DIR (version ${VERSION}) + launcher shim at $BIN_PATH"
