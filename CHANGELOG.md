@@ -5,6 +5,9 @@ All notable changes to apogee will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.1.15](https://github.com/BIwashi/apogee/compare/v0.1.14...v0.1.15) - 2026-04-15
+- fix(agents): JOIN sessions for source_app filter by @BIwashi in https://github.com/BIwashi/apogee/pull/63
+
 ## [v0.1.14](https://github.com/BIwashi/apogee/compare/v0.1.13...v0.1.14) - 2026-04-15
 - feat(watchdog): signal cards deep-link to session or events context by @BIwashi in https://github.com/BIwashi/apogee/pull/60
 - fix(summarizer): stop feedback loop from re-ingesting own CLI calls by @BIwashi in https://github.com/BIwashi/apogee/pull/62
