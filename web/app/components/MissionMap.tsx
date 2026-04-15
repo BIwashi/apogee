@@ -20,6 +20,7 @@ import type { LucideIcon } from "lucide-react";
 
 import { apiUrl } from "../lib/api";
 import type {
+  ForecastPhase,
   Intervention,
   InterventionListResponse,
   PhaseBlock,
@@ -240,6 +241,10 @@ export default function MissionMap({ sessionId, turns }: MissionMapProps) {
     () => rollup?.phases ?? [],
     [rollup],
   );
+  const forecast: ForecastPhase[] = useMemo(
+    () => rollup?.forecast ?? [],
+    [rollup],
+  );
   const interventions = useMemo(
     () => interventionsData?.interventions ?? [],
     [interventionsData],
@@ -314,6 +319,31 @@ export default function MissionMap({ sessionId, turns }: MissionMapProps) {
   );
   const orbitPath = `M 120 ${ORBIT_Y_LEFT} C ${ORBIT_C1.x} ${ORBIT_C1.y}, ${ORBIT_C2.x} ${ORBIT_C2.y}, 1080 ${ORBIT_Y_RIGHT}`;
 
+  // Forecast planets extrapolate beyond the trailing real planet along
+  // a straight-line "approach vector". We project from the last real
+  // position outward at a shallow up-right angle (matching the bezier
+  // tangent at t=1) so the dotted continuation reads as the natural
+  // continuation of the orbit. If the forecast row would clip the
+  // viewBox we dynamically widen the svg.
+  const lastReal = positions[positions.length - 1];
+  const forecastSpacing = 110;
+  const forecastVec = { dx: 100, dy: -30 }; // continues upper-right
+  const forecastNorm = Math.sqrt(
+    forecastVec.dx * forecastVec.dx + forecastVec.dy * forecastVec.dy,
+  );
+  const forecastStep = {
+    dx: (forecastVec.dx / forecastNorm) * forecastSpacing,
+    dy: (forecastVec.dy / forecastNorm) * forecastSpacing,
+  };
+  const forecastPositions = forecast.map((_, i) => ({
+    x: lastReal.x + forecastStep.dx * (i + 1),
+    y: lastReal.y + forecastStep.dy * (i + 1),
+  }));
+  const viewW =
+    forecast.length > 0
+      ? Math.max(VIEW_W, Math.ceil(forecastPositions[forecast.length - 1].x + 160))
+      : VIEW_W;
+
   // Sun label is the rollup headline. Fall back to the raw narrative
   // if the headline is empty so we never render a blank sun.
   const sunLabel = rollup.headline || rollup.narrative.slice(0, 80) || "Mission";
@@ -344,10 +374,10 @@ export default function MissionMap({ sessionId, turns }: MissionMapProps) {
         <div className="mission-starfield pointer-events-none absolute inset-0" aria-hidden="true" />
 
         <svg
-          viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
+          viewBox={`0 0 ${viewW} ${VIEW_H}`}
           className="relative z-10 h-auto w-full"
           role="img"
-          aria-label={`Mission map with ${phases.length} phases and ${meteors.length} interventions`}
+          aria-label={`Mission map with ${phases.length} phases, ${forecast.length} forecast planets, and ${meteors.length} interventions`}
         >
           <defs>
             {/* Orbit path fades at the edges so the planets appear
@@ -495,6 +525,86 @@ export default function MissionMap({ sessionId, turns }: MissionMapProps) {
             );
           })}
 
+          {/* Forecast approach vector — a dashed trajectory leaving
+              the last real planet and connecting each forecast
+              planet. This is the "predicted next stops" horizon
+              the user asked for: what the agent will probably work
+              on next, still unrealised but visually anchored to the
+              chain it extends. */}
+          {forecast.length > 0 && (
+            <path
+              d={
+                `M ${lastReal.x} ${lastReal.y} ` +
+                forecastPositions
+                  .map((p) => `L ${p.x} ${p.y}`)
+                  .join(" ")
+              }
+              fill="none"
+              stroke="var(--text-muted)"
+              strokeWidth="1.5"
+              strokeDasharray="3 5"
+              strokeOpacity="0.55"
+            />
+          )}
+
+          {/* Forecast planets — one per predicted upcoming phase.
+              Rendered in muted colour with a dashed outline so they
+              read as "probable but not realised yet". Clicking is a
+              no-op because no PhaseBlock exists yet. */}
+          {forecast.map((f, i) => {
+            const { x, y } = forecastPositions[i];
+            const tone = KIND_TONE[f.kind] ?? KIND_TONE.other;
+            const Icon = KIND_ICON[f.kind] ?? KIND_ICON.other;
+            const radius = 20;
+            return (
+              <g key={`forecast-${i}`} transform={`translate(${x}, ${y})`}>
+                <circle
+                  r={radius + 8}
+                  fill={tone.fill}
+                  opacity="0.08"
+                  filter="url(#planet-glow)"
+                />
+                <circle
+                  r={radius}
+                  fill="var(--bg-surface)"
+                  stroke={tone.ring}
+                  strokeWidth="1.25"
+                  strokeDasharray="3 3"
+                  strokeOpacity="0.7"
+                />
+                <foreignObject
+                  x={-radius / 2}
+                  y={-radius / 2}
+                  width={radius}
+                  height={radius}
+                >
+                  <div className="flex h-full w-full items-center justify-center text-[var(--text-muted)]">
+                    <Icon size={radius - 10} strokeWidth={1.5} />
+                  </div>
+                </foreignObject>
+                <text
+                  x="0"
+                  y={radius + 18}
+                  textAnchor="middle"
+                  className="fill-[var(--text-muted)] font-display text-[8px] uppercase"
+                  style={{ letterSpacing: "0.14em" }}
+                >
+                  NEXT · {tone.label}
+                </text>
+                <foreignObject
+                  x={-80}
+                  y={radius + 22}
+                  width="160"
+                  height="40"
+                >
+                  <p className="text-center text-[9px] leading-snug text-[var(--text-muted)]">
+                    {f.headline}
+                  </p>
+                </foreignObject>
+              </g>
+            );
+          })}
+
           {/* Meteors — interventions branching off the phase they
               were injected into. Drawn as a NASA Red arc leaving
               the planet at the hashed angle with a small head. */}
@@ -553,6 +663,13 @@ export default function MissionMap({ sessionId, turns }: MissionMapProps) {
           <span className="flex items-center gap-1">
             <Satellite size={10} strokeWidth={1.75} />
             Phase
+          </span>
+          <span className="flex items-center gap-1">
+            <span
+              className="inline-block h-2 w-2 rounded-full border border-dashed border-[var(--text-muted)]"
+              aria-hidden="true"
+            />
+            Forecast
           </span>
           <span className="flex items-center gap-1">
             <Radio size={10} strokeWidth={1.75} />

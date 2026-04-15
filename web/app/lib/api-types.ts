@@ -136,6 +136,19 @@ export interface PhaseBlock {
 }
 
 /**
+ * ForecastPhase mirrors internal/summarizer.ForecastPhase. One predicted
+ * upcoming phase emitted by the tier-3 narrative LLM in the same call
+ * that produces phases[]. No turn indices — forecasts do not correspond
+ * to recorded turns yet. The web UI renders these as dimmed dashed
+ * planets beyond the realised phase chain on the Mission Map.
+ */
+export interface ForecastPhase {
+  kind: PhaseKind;
+  headline: string;
+  rationale?: string;
+}
+
+/**
  * Rollup mirrors internal/summarizer.Rollup. Populated by the Sonnet-powered
  * session rollup worker; one row per session. The optional `phases` array is
  * populated by the tier-3 narrative worker after the rollup lands.
@@ -148,6 +161,8 @@ export interface Rollup {
   open_threads: string[];
   /** Tier-3 phase narrative. Undefined until the narrative worker runs. */
   phases?: PhaseBlock[];
+  /** Tier-3 forecast — 0..3 predicted next phases. Undefined pre-tier-3. */
+  forecast?: ForecastPhase[];
   /** When the narrative worker last wrote phases. Absent pre-tier-3. */
   narrative_generated_at?: string;
   /** Model alias the narrative worker used. Absent pre-tier-3. */
