@@ -7,6 +7,97 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.8] - 2026-04-15
+
+### Added
+
+- **Mission Map tab (PR #50).** A new planetary view of the session arc
+  added as the default tab on session detail. Reuses the existing
+  tier-2 rollup + tier-3 phase narrative to render a solar system:
+  Sun = top-level goal, planets = semantic phases along a cubic-bezier
+  orbit, moons = individual turns, probe = the running turn (pulsing),
+  meteors = operator interventions branching off the phase they were
+  injected into. Phase kinds map to lucide icons and the NASA Artemis
+  palette so each planet reads as "this kind of work" at a glance.
+  The card ships with a CSS-only deep-space starfield background
+  (layered radial gradients + nine pixel stars) so no raster assets
+  ship. Empty state offers a Generate narrative button that triggers
+  the existing tier-3 worker. Clicking a planet opens the existing
+  PhaseDrawer side panel. No new backend endpoint, no new LLM tier —
+  the visualisation surfaces information the summariser already
+  produces.
+- **Brew upgrade detection + one-click restart (PR #45).** The
+  collector now records the running binary's size + mtime at startup
+  and re-stats it every 60 s. When the file changes (typical trigger:
+  `brew upgrade apogee`) it shells out to `<path> version` to read
+  the new version string and stores it. `/v1/info` gains
+  `update_available` / `available_version` /
+  `available_version_detected_at`. A new `UpgradeBanner` React
+  component polls `/v1/info` every 30 s and renders an accent strip
+  above the TopRibbon when an update is available; clicking "Restart
+  now" POSTs to the new `POST /v1/daemon/restart` endpoint which
+  hands off to `daemon.NewManagerWithLabel(DefaultLabel).Restart(ctx)`
+  after a brief flush window. launchctl kickstart -k / systemctl
+  --user restart does the actual relaunch. Same-version rebuilds
+  (dev flow) refresh the baseline silently so the banner never
+  shows for noise.
+- **Desktop Homebrew Cask (PR 6a5…).** A second Homebrew tap formula
+  ships the Wails macOS desktop shell as `apogee-desktop.app`,
+  installable via `brew install --cask BIwashi/tap/apogee-desktop`.
+- **Sidebar hover hint popovers (PR #41).** Each sidebar nav item
+  gains a short description (e.g. "Live focus dashboard — active
+  turns + triage rail") rendered as a CSS-only floating tooltip
+  with role tooltip and aria-label. Keyboard focus opens the same
+  popover for a11y. Helps first-time users learn what each page
+  shows without clicking through.
+- **Mission Map brand visuals (PRs #42, #43, #44, #48).** Artemis
+  Inter is reinstated as a brand accent alongside Space Grotesk
+  (the everyday display face) — the previous PR #25 wholesale swap
+  made every ALL-CAPS label unreadable at 10–14 px. Added
+  `--font-display-accent` CSS variable and a `.font-display-accent`
+  utility class used by the APOGEE wordmark (sidebar, TopRibbon)
+  and a handful of hero h1s (Live, Events, Styleguide). The README
+  banner and all branding rasters are regenerated from a rewritten
+  `scripts/generate-branding.sh` that uses the NASA Artemis
+  Graphic Standards Guide palette (Dec 16 2021) with a seamless
+  Cool Horizon Visual background and wide NASA-style tracking.
+  Wordmark is now centered on the canvas via a trim + optical
+  offset. `--artemis-earth` normalised to the exact spec `#27AAE0`.
+
+### Fixed
+
+- **Daemon plist/service PATH (PR #47).** The summarizer worker
+  shells out to the `claude` CLI to generate per-turn recaps, but
+  the generated launchd plist and systemd unit only injected HOME —
+  no PATH — so launchd fell back to `/usr/bin:/bin:/usr/sbin:/sbin`
+  which usually does not contain `~/.local/bin/claude` or
+  `/opt/homebrew/bin/claude`. Every recap job was silently failing
+  with "executable file not found in $PATH" and the dashboard
+  showed no recaps for any turn. Fix: snapshot the install-time
+  `os.Getenv("PATH")` in the new `applyDefaultEnv()` helper and
+  bake it into both the plist's EnvironmentVariables and the
+  systemd unit's Environment= line. A fallback list covers
+  stripped shells. Tests: 3 new hermetic tests for the helper plus
+  an updated golden plist. Existing installs: run
+  `apogee daemon install --force && apogee daemon restart` to pick
+  up the new unit file.
+- **Banner horizon seam (PR #44).** The PR #43 render_cool_horizon
+  composited a transparent radial glow onto a flat NASA Blue field
+  with a southeast offset, leaving an uncovered strip along the
+  bottom-right edge that read as a hard horizontal seam in the
+  README banner. Replaced with a single seamless radial gradient
+  on a 2×-tall canvas, cropped to the top half so the brightest
+  point sits on the bottom edge. No compositing, no seam.
+- **Desktop review polish (PR #39).** Follow-up fixes from
+  Copilot's review of PR #35 (Wails desktop shell): wraps
+  `StartBackground()` in `sync.Once` so double-start is safe,
+  guards `store.Close()` in a sync.Once + deferred fallback so
+  an early wails.Run error does not leak the DuckDB lock, uses
+  the sentinel `"in-process (wails webview)"` as the HTTPAddr
+  for the desktop process so `/v1/info` does not render an empty
+  row, and corrects the `make desktop-*` comments to match what
+  the targets actually do.
+
 ## [0.1.7] - 2026-04-15
 
 ### Added
