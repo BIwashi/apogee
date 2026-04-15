@@ -1,0 +1,28 @@
+# tagpr configuration — see https://github.com/Songmu/tagpr for field docs.
+# gitconfig format, not TOML / YAML.
+[tagpr]
+        # Keep the existing vX.Y.Z tag convention that release.yml matches
+        # with its `on.push.tags: 'v*'` trigger.
+        vPrefix = true
+
+        # Apogee injects its version string via ldflags at build time
+        # (-X github.com/BIwashi/apogee/internal/version.Version=...),
+        # so there is no source file for tagpr to rewrite. The literal
+        # "-" tells tagpr to skip the version-file step and rely purely
+        # on git tags (and the `tagpr:major` / `tagpr:minor` labels on
+        # the release PR) to pick the next version.
+        versionFile = -
+
+        # Let tagpr maintain CHANGELOG.md. The file already follows the
+        # "Keep a Changelog" layout with a `## [Unreleased]` section,
+        # which tagpr will consume and rewrite as `## [X.Y.Z]` on
+        # release.
+        changelog = true
+
+        # Do NOT have tagpr create the GitHub release itself. The
+        # existing .github/workflows/release.yml runs goreleaser on the
+        # tag push, and goreleaser is responsible for uploading
+        # artifacts, pushing the Homebrew Formula + Cask, and writing
+        # the actual Release body. Letting tagpr also create a release
+        # would race goreleaser and leave half-empty release pages.
+        release = false
