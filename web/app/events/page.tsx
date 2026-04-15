@@ -18,6 +18,7 @@ import FacetPanel, {
 } from "../components/FacetPanel";
 import LogHistogram from "../components/LogHistogram";
 import SideDrawer from "../components/SideDrawer";
+import VersionTag from "../components/VersionTag";
 import type {
   EventFacetsResponse,
   EventsRecentResponse,
@@ -415,9 +416,7 @@ export default function EventsPage() {
       </SideDrawer>
 
       <footer className="pb-8 pt-2">
-        <p className="font-mono text-[10px] text-[var(--text-muted)]">
-          apogee 0.0.0-dev — events · PR #37 Datadog layout
-        </p>
+        <VersionTag suffix="events" />
       </footer>
     </div>
   );

@@ -9,6 +9,7 @@ import FocusCard from "./components/FocusCard";
 import KpiStrip from "./components/KpiStrip";
 import SectionHeader from "./components/SectionHeader";
 import TriageRail from "./components/TriageRail";
+import VersionTag from "./components/VersionTag";
 import type {
   ApogeeEvent,
   AttentionCounts,
@@ -330,9 +331,7 @@ export default function LivePage() {
       </section>
 
       <footer className="pb-8 pt-2">
-        <p className="font-mono text-[10px] text-[var(--text-muted)]">
-          apogee 0.0.0-dev — Live
-        </p>
+        <VersionTag suffix="Live" />
       </footer>
     </div>
   );

@@ -5,6 +5,7 @@ import EventTypeBadge from "../components/EventTypeBadge";
 import SectionHeader from "../components/SectionHeader";
 import StatusPill from "../components/StatusPill";
 import StyleguideThemeToggle from "../components/StyleguideThemeToggle";
+import VersionTag from "../components/VersionTag";
 import { sessionPalette } from "../lib/design-tokens";
 import { EVENT_TYPES } from "../lib/event-types";
 
@@ -118,9 +119,7 @@ export default function StyleguidePage() {
       </section>
 
       <footer className="pb-8 pt-4">
-        <p className="font-mono text-[10px] text-[var(--text-muted)]">
-          apogee 0.0.0-dev — design system preview
-        </p>
+        <VersionTag suffix="design system preview" />
       </footer>
     </div>
   );
