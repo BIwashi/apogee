@@ -1,0 +1,104 @@
+package daemon
+
+import (
+	"context"
+	"strings"
+	"sync"
+	"testing"
+)
+
+// fakeRunner is the cross-platform commandRunner stub. It records
+// every (name, args) pair so tests can assert the right supervisor
+// subcommand was invoked, and returns canned responses keyed by the
+// first non-dashed argument.
+type fakeRunner struct {
+	mu    sync.Mutex
+	calls []fakeCall
+
+	// responses maps a "verb" (first non-flag arg after the binary
+	// name) to a canned response. When no entry matches, Run
+	// returns empty strings and nil error.
+	responses map[string]fakeResponse
+}
+
+type fakeCall struct {
+	name string
+	args []string
+}
+
+type fakeResponse struct {
+	stdout string
+	stderr string
+	err    error
+}
+
+func (f *fakeRunner) Run(_ context.Context, name string, args ...string) (string, string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.calls = append(f.calls, fakeCall{name: name, args: append([]string(nil), args...)})
+	key := firstNonFlag(args)
+	if f.responses != nil {
+		if r, ok := f.responses[key]; ok {
+			return r.stdout, r.stderr, r.err
+		}
+	}
+	return "", "", nil
+}
+
+func (f *fakeRunner) lastCall() (fakeCall, bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if len(f.calls) == 0 {
+		return fakeCall{}, false
+	}
+	return f.calls[len(f.calls)-1], true
+}
+
+func firstNonFlag(args []string) string {
+	for _, a := range args {
+		if strings.HasPrefix(a, "-") {
+			continue
+		}
+		return a
+	}
+	return ""
+}
+
+// TestStatusFormat exercises the cross-platform FormatStatus helper.
+// It does not touch launchctl/systemctl so it runs on every GOOS.
+func TestStatusFormat(t *testing.T) {
+	s := Status{
+		Installed: true,
+		Loaded:    true,
+		Running:   true,
+		PID:       12345,
+		UnitPath:  "/tmp/fake.plist",
+		Label:     "dev.biwashi.apogee",
+	}
+	out := FormatStatus(s)
+	for _, want := range []string{
+		"Daemon: dev.biwashi.apogee",
+		"Installed:    yes",
+		"Loaded:       yes",
+		"Running:      yes (pid 12345)",
+		"Unit path:    /tmp/fake.plist",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("FormatStatus missing %q in:\n%s", want, out)
+		}
+	}
+}
+
+func TestStatusFormatNotRunning(t *testing.T) {
+	s := Status{
+		Installed: true,
+		Loaded:    false,
+		Running:   false,
+		Label:     "dev.biwashi.apogee",
+	}
+	out := FormatStatus(s)
+	if !strings.Contains(out, "Running:      no") {
+		t.Errorf("FormatStatus should say 'Running: no', got:\n%s", out)
+	}
+}
+

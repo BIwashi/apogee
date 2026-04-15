@@ -184,6 +184,14 @@ recap_model   = "claude-haiku-4-5"
 rollup_model  = "claude-sonnet-4-6"
 concurrency   = 1
 timeout_seconds = 120
+
+[daemon]
+label         = "dev.biwashi.apogee"
+addr          = "127.0.0.1:4100"
+db_path       = "~/.apogee/apogee.duckdb"
+log_dir       = "~/.apogee/logs"
+keep_alive    = true
+run_at_load   = true
 ```
 
 Every value is also overridable via environment variables (e.g. `APOGEE_RECAP_MODEL`, `APOGEE_ROLLUP_MODEL`, `OTEL_EXPORTER_OTLP_ENDPOINT`). See `internal/summarizer/config.go` and `internal/telemetry/config.go` for the full list.
@@ -272,6 +280,36 @@ make dev              # collector and Next.js dev server together
 `make dev` already starts both the collector and the Next.js dev server, so `make dev` + `./bin/apogee init` is the minimal setup for a new contributor.
 
 > If `make dev` fails with *"address already in use"* on `:4100`, an old collector is still bound to the port. Find it with `lsof -nP -iTCP:4100 -sTCP:LISTEN` and stop it with `pkill -f "apogee serve"`.
+
+---
+
+## Run apogee as a background service
+
+Once you have apogee installed, register it as a launchd (macOS) or systemd user (Linux) service so it starts on every login:
+
+```sh
+apogee daemon install
+apogee daemon start
+apogee status
+```
+
+Stop, restart, and tail logs the same way:
+
+```sh
+apogee daemon stop
+apogee daemon restart
+apogee logs -f
+apogee open       # opens http://127.0.0.1:4100 in your browser
+```
+
+To remove apogee entirely:
+
+```sh
+apogee uninstall            # stops daemon, removes hooks, prompts before deleting data
+apogee uninstall --purge    # also wipes ~/.apogee
+```
+
+The unit file lives at `~/Library/LaunchAgents/dev.biwashi.apogee.plist` on macOS and `~/.config/systemd/user/apogee.service` on Linux. See [`docs/daemon.md`](docs/daemon.md) for the full operator cheatsheet.
 
 To regenerate the screenshots committed under `assets/screenshots/`:
 

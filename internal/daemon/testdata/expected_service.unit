@@ -1,0 +1,15 @@
+[Unit]
+Description=apogee collector for Claude Code sessions
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/apogee serve --addr 127.0.0.1:4100 --db /home/me/.apogee/apogee.duckdb
+WorkingDirectory=/home/me/.apogee
+Restart=on-failure
+RestartSec=3
+StandardOutput=append:/home/me/.apogee/logs/apogee.out.log
+StandardError=append:/home/me/.apogee/logs/apogee.err.log
+
+[Install]
+WantedBy=default.target

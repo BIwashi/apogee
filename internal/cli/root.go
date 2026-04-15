@@ -50,6 +50,11 @@ this very binary.`,
 	root.AddCommand(NewHookCmd())
 	root.AddCommand(NewVersionCmd(stdout))
 	root.AddCommand(NewDoctorCmd(stdout))
+	root.AddCommand(NewDaemonCmd(stdout, stderr))
+	root.AddCommand(NewStatusCmd(stdout, stderr))
+	root.AddCommand(NewLogsCmd(stdout, stderr))
+	root.AddCommand(NewOpenCmd(stdout, stderr))
+	root.AddCommand(NewUninstallCmd(stdout, stderr))
 
 	return root
 }
