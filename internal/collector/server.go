@@ -175,8 +175,15 @@ func (s *Server) StartBackground(ctx context.Context) {
 	}
 }
 
-// StopBackground tears down workers started by StartBackground and flushes
-// the OTel span processor. Safe to call multiple times.
+// StopBackground performs the explicit shutdown steps for the background
+// processing started by StartBackground: it stops the summarizer and
+// intervention sweeper (both of which own their own worker goroutines
+// behind sync.WaitGroup) and flushes the OTel span processor.
+//
+// Callers must additionally cancel the ctx they passed to StartBackground
+// to stop the ctx-scoped goroutines — the metrics sampler and the HITL
+// ticker both terminate on ctx.Done rather than through an explicit Stop.
+// Safe to call multiple times.
 func (s *Server) StopBackground(ctx context.Context) {
 	if s.summarizer != nil {
 		s.summarizer.Stop()

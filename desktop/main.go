@@ -99,9 +99,14 @@ func run() error {
 		if cancelWorkers != nil {
 			cancelWorkers()
 		}
-		// Bound the shutdown to 5 s so a stuck telemetry exporter or
-		// summarizer worker can never hang app exit. Matches the
-		// deadline `apogee serve` uses for graceful shutdown.
+		// Bound the ctx-aware parts of StopBackground (currently just
+		// the OTel span processor flush) to 5 s so a wedged exporter
+		// cannot hold up window exit. Note that summarizer.Stop() and
+		// interventions.Stop() do a sync.WaitGroup drain that does not
+		// honour this context — they block until their in-flight jobs
+		// return. In practice both are backed by subprocess calls that
+		// self-timeout, so we accept the worst-case wait rather than
+		// force-killing workers mid-write.
 		stopCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		srv.StopBackground(stopCtx)
