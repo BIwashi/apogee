@@ -55,23 +55,26 @@ WORDMARK="APOGEE"
 SUBTITLE="OBSERVABILITY FOR CLAUDE CODE AGENTS"
 
 # ── Helpers ────────────────────────────────────────────────────
-# Cool Horizon Visual (Artemis guide page 7 — "Background control").
-# A deep NASA Blue field with an Earth Blue glow rising from the lower
-# right corner, mimicking the sunrise-on-horizon compositions in the
-# guide's hero examples.
+# Cool Horizon Visual (Artemis guide pages 1, 7, and the cover) —
+# a single seamless radial gradient where the brightest point sits
+# just below the canvas's bottom edge, fading smoothly through Earth
+# Blue into NASA Blue at the upper corners. The guide examples are
+# always one continuous gradient; never a composite of a "field" and
+# a "glow" with a hard boundary.
+#
+# Implementation trick: build the gradient on a canvas that is twice
+# as tall, then crop to the top half. The radial gradient's center
+# falls at (w/2, h) which is exactly the bottom edge of the cropped
+# region, so the brightest point is the horizon line and the visible
+# portion is a smooth half-circle of falloff. This produces zero
+# compositing seams because there is only one source layer.
 render_cool_horizon () {
   local out="$1" w="$2" h="$3"
-  local field="${BRANDING_DIR}/.horizon-field.png"
-  local glow="${BRANDING_DIR}/.horizon-glow.png"
-  magick -size "${w}x${h}" "xc:${NASA_BLUE}" "$field"
-  magick -size "${w}x${h}" \
-    radial-gradient:"${EARTH_BLUE}-none" \
-    -channel A -evaluate multiply 0.70 +channel \
-    "$glow"
-  magick "$field" \
-    "$glow" -gravity southeast -geometry +$((w / 6))+$((h / 6)) -compose over -composite \
+  local doubleH=$((h * 2))
+  magick -size "${w}x${doubleH}" \
+    radial-gradient:"${EARTH_BLUE}-${NASA_BLUE}" \
+    -crop "${w}x${h}+0+0" +repage \
     "$out"
-  rm -f "$field" "$glow"
 }
 
 # Render the Artemis "trajectory" — a short NASA Red crescent that gives
@@ -88,7 +91,10 @@ render_trajectory () {
 # ── Banner (972×352) ───────────────────────────────────────────
 # Primary README hero. Cool Horizon Visual background, Artemis Inter
 # wordmark in white with wide NASA-style tracking, subtitle in Space
-# Grotesk medium.
+# Grotesk medium. The wordmark sits slightly above the visual centre
+# so the brightest part of the horizon glow forms a luminous base for
+# the type rather than competing with it — mirroring the page-1 cover
+# composition where the Artemis logo floats above its glow.
 render_banner () {
   local out="$1"
   local w=972 h=352
@@ -107,8 +113,8 @@ render_banner () {
     "label:${SUBTITLE}" "$subtitle"
 
   magick "$bg" \
-    "$wordmark" -gravity center -geometry +0-30 -compose over -composite \
-    "$subtitle" -gravity center -geometry +0+70 -compose over -composite \
+    "$wordmark" -gravity center -geometry +0-44 -compose over -composite \
+    "$subtitle" -gravity center -geometry +0+58 -compose over -composite \
     "$out"
 
   rm -f "$bg" "$wordmark" "$subtitle"
