@@ -253,9 +253,7 @@ const (
 // claude_code.compaction.*
 // ----------------------------------------------------------------------------
 
-var (
-	CompactionTrigger = attribute.Key("claude_code.compaction.trigger")
-)
+var CompactionTrigger = attribute.Key("claude_code.compaction.trigger")
 
 // ----------------------------------------------------------------------------
 // claude_code.prompt.* (event attributes)

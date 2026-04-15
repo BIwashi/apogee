@@ -45,9 +45,9 @@ func TestApplyDefaultEnvRespectsCallerPATH(t *testing.T) {
 // stripped shell). The helper falls back to a known-good list rather
 // than leaving PATH unset.
 func TestApplyDefaultEnvFallback(t *testing.T) {
-	// Save and clear PATH for this test.
-	old := os.Getenv("PATH")
-	t.Cleanup(func() { _ = os.Setenv("PATH", old) })
+	// t.Setenv both sets the value for the test and restores the
+	// previous one on teardown.
+	t.Setenv("PATH", "")
 	_ = os.Unsetenv("PATH")
 	got := applyDefaultEnv(nil)
 	if got["PATH"] != fallbackUnitPATH {
@@ -91,15 +91,6 @@ func (f *fakeRunner) Run(_ context.Context, name string, args ...string) (string
 		}
 	}
 	return "", "", nil
-}
-
-func (f *fakeRunner) lastCall() (fakeCall, bool) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	if len(f.calls) == 0 {
-		return fakeCall{}, false
-	}
-	return f.calls[len(f.calls)-1], true
 }
 
 func firstNonFlag(args []string) string {
@@ -149,4 +140,3 @@ func TestStatusFormatNotRunning(t *testing.T) {
 		t.Errorf("FormatStatus should say 'Running: no', got:\n%s", out)
 	}
 }
-

@@ -99,10 +99,10 @@ func SeverityFor(z float64) string {
 // value that produced it. Count is the number of samples the window
 // contained.
 type WindowStats struct {
-	MaxAbsZ    float64
-	PeakValue  float64
-	Count      int
-	AllBelow   bool // true when every |z| < NormalThreshold
+	MaxAbsZ   float64
+	PeakValue float64
+	Count     int
+	AllBelow  bool // true when every |z| < NormalThreshold
 }
 
 // EvaluateWindow walks window through Baseline b and returns the

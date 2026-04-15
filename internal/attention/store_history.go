@@ -9,9 +9,15 @@ import (
 // StoreHistory adapts a *duckdb.Store to the attention.HistoryReader and
 // HistoryWriter interfaces. It lets the engine consult the persistent
 // task_type_history table without knowing anything about DuckDB.
+//
+// Ctx is deliberately stored on the struct because HistoryReader /
+// HistoryWriter are contextless interfaces owned by the attention
+// engine; plumbing a context through every Lookup / Upsert would
+// reshape the engine's call sites for no additional correctness
+// benefit. The ctx flows in at adapter construction time.
 type StoreHistory struct {
 	DB  *duckdb.Store
-	Ctx context.Context
+	Ctx context.Context //nolint:containedctx // see doc comment above
 }
 
 // Lookup implements HistoryReader.

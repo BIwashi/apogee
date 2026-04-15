@@ -90,8 +90,8 @@ type onboardState struct {
 	MenubarStatus   daemon.Status
 	MenubarOK       bool
 	MenubarPlatform bool
-	Prefs          summarizer.Preferences
-	Defaults       summarizer.Config // canonical defaults for placeholder hints
+	Prefs           summarizer.Preferences
+	Defaults        summarizer.Config // canonical defaults for placeholder hints
 	// Models is the merged catalog + availability view the wizard
 	// drives the model dropdowns from. Populated by loadOnboardState
 	// best-effort: a fresh install with no DuckDB cache still yields a
@@ -1099,4 +1099,3 @@ func shortenPath(p string) string {
 	}
 	return p
 }
-

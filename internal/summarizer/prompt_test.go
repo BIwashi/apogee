@@ -29,17 +29,17 @@ func TestBuildPromptContainsKeySections(t *testing.T) {
 	}
 	spans := []duckdb.SpanRow{
 		{
-			SpanID:    "sp1",
-			Name:      "claude_code.tool.Edit",
-			StartTime: start.Add(100 * time.Millisecond),
-			ToolName:  "Edit",
+			SpanID:     "sp1",
+			Name:       "claude_code.tool.Edit",
+			StartTime:  start.Add(100 * time.Millisecond),
+			ToolName:   "Edit",
 			StatusCode: "OK",
 		},
 		{
-			SpanID:    "sp2",
-			Name:      "claude_code.tool.Bash",
-			StartTime: start.Add(1500 * time.Millisecond),
-			ToolName:  "Bash",
+			SpanID:     "sp2",
+			Name:       "claude_code.tool.Bash",
+			StartTime:  start.Add(1500 * time.Millisecond),
+			ToolName:   "Bash",
 			StatusCode: "OK",
 		},
 	}
@@ -111,10 +111,10 @@ func TestBuildPromptTruncatesSpans(t *testing.T) {
 	var spans []duckdb.SpanRow
 	for i := 0; i < 20; i++ {
 		spans = append(spans, duckdb.SpanRow{
-			SpanID:    "sp" + string(rune('a'+i)),
-			Name:      "claude_code.tool.x",
-			StartTime: start.Add(time.Duration(i) * time.Second),
-			ToolName:  "x",
+			SpanID:     "sp" + string(rune('a'+i)),
+			Name:       "claude_code.tool.x",
+			StartTime:  start.Add(time.Duration(i) * time.Second),
+			ToolName:   "x",
 			StatusCode: "OK",
 		})
 	}

@@ -124,7 +124,7 @@ func writeTail(w io.Writer, path string, n int) error {
 	}
 	const chunk int64 = 8192
 	var buf []byte
-	var offset int64 = size
+	offset := size
 	var newlines int
 	for offset > 0 && newlines <= n {
 		readSize := chunk

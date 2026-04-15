@@ -16,16 +16,16 @@ import (
 // the top-level `type` key. Keep this list aligned with the TypeScript client
 // in web/app/lib/api-types.ts.
 const (
-	EventTypeInitial        = "initial"
-	EventTypeTurnStarted    = "turn.started"
-	EventTypeTurnUpdated    = "turn.updated"
-	EventTypeTurnEnded      = "turn.ended"
-	EventTypeSpanInserted   = "span.inserted"
-	EventTypeSpanUpdated    = "span.updated"
-	EventTypeSessionUpdated = "session.updated"
-	EventHITLRequested      = "hitl.requested"
-	EventHITLResponded      = "hitl.responded"
-	EventHITLExpired        = "hitl.expired"
+	EventTypeInitial           = "initial"
+	EventTypeTurnStarted       = "turn.started"
+	EventTypeTurnUpdated       = "turn.updated"
+	EventTypeTurnEnded         = "turn.ended"
+	EventTypeSpanInserted      = "span.inserted"
+	EventTypeSpanUpdated       = "span.updated"
+	EventTypeSessionUpdated    = "session.updated"
+	EventHITLRequested         = "hitl.requested"
+	EventHITLResponded         = "hitl.responded"
+	EventHITLExpired           = "hitl.expired"
 	EventInterventionSubmitted = "intervention.submitted"
 	EventInterventionClaimed   = "intervention.claimed"
 	EventInterventionDelivered = "intervention.delivered"
@@ -64,23 +64,23 @@ type SessionPayload struct {
 // fields are emitted as null when unset so the TypeScript client can rely
 // on a stable schema without having to inspect database null wrappers.
 type HITLSnapshot struct {
-	HitlID         string                  `json:"hitl_id"`
-	SpanID         string                  `json:"span_id"`
-	TraceID        string                  `json:"trace_id"`
-	SessionID      string                  `json:"session_id"`
-	TurnID         string                  `json:"turn_id"`
-	Kind           string                  `json:"kind"`
-	Status         string                  `json:"status"`
-	RequestedAt    time.Time               `json:"requested_at"`
-	RespondedAt    *time.Time              `json:"responded_at"`
-	Question       string                  `json:"question"`
-	Suggestions    []string                `json:"suggestions"`
-	Context        map[string]any          `json:"context"`
-	Decision       *string                 `json:"decision"`
-	ReasonCategory *string                 `json:"reason_category"`
-	OperatorNote   *string                 `json:"operator_note"`
-	ResumeMode     *string                 `json:"resume_mode"`
-	OperatorID     *string                 `json:"operator_id"`
+	HitlID         string         `json:"hitl_id"`
+	SpanID         string         `json:"span_id"`
+	TraceID        string         `json:"trace_id"`
+	SessionID      string         `json:"session_id"`
+	TurnID         string         `json:"turn_id"`
+	Kind           string         `json:"kind"`
+	Status         string         `json:"status"`
+	RequestedAt    time.Time      `json:"requested_at"`
+	RespondedAt    *time.Time     `json:"responded_at"`
+	Question       string         `json:"question"`
+	Suggestions    []string       `json:"suggestions"`
+	Context        map[string]any `json:"context"`
+	Decision       *string        `json:"decision"`
+	ReasonCategory *string        `json:"reason_category"`
+	OperatorNote   *string        `json:"operator_note"`
+	ResumeMode     *string        `json:"resume_mode"`
+	OperatorID     *string        `json:"operator_id"`
 }
 
 // HITLPayload is the SSE wrapper for HITL lifecycle events.

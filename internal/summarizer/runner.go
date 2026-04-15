@@ -148,9 +148,9 @@ func (f *FakeRunner) Run(_ context.Context, model, prompt string) (string, error
 	return f.Responder(model, prompt)
 }
 
-func truncate(s string, max int) string {
-	if max <= 0 || len(s) <= max {
+func truncate(s string, maxLen int) string {
+	if maxLen <= 0 || len(s) <= maxLen {
 		return s
 	}
-	return s[:max] + "…"
+	return s[:maxLen] + "…"
 }

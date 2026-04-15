@@ -249,6 +249,7 @@ func (r *recordingMenubarManager) Install(ctx context.Context, cfg daemon.Config
 	}
 	return r.fake.Install(ctx, cfg)
 }
+
 func (r *recordingMenubarManager) Uninstall(ctx context.Context) error {
 	return r.fake.Uninstall(ctx)
 }
@@ -257,6 +258,7 @@ func (r *recordingMenubarManager) Stop(ctx context.Context) error  { return r.fa
 func (r *recordingMenubarManager) Restart(ctx context.Context) error {
 	return r.fake.Restart(ctx)
 }
+
 func (r *recordingMenubarManager) Status(ctx context.Context) (daemon.Status, error) {
 	return r.fake.Status(ctx)
 }

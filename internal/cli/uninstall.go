@@ -287,4 +287,3 @@ func confirm(stdin io.Reader, prompt io.Writer, message string) (bool, error) {
 	line = strings.ToLower(strings.TrimSpace(line))
 	return line == "y" || line == "yes", nil
 }
-

@@ -51,7 +51,7 @@ type Worker struct {
 	// means "not yet probed" — ResolveModelForUseCase treats missing
 	// entries as available so the worker degrades gracefully when
 	// nobody has populated the cache.
-	availMu sync.RWMutex
+	availMu      sync.RWMutex
 	availability map[string]bool
 
 	queue chan Job

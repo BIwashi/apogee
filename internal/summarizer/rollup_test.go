@@ -1,7 +1,6 @@
 package summarizer
 
 import (
-	"context"
 	"testing"
 	"time"
 
@@ -15,7 +14,7 @@ import (
 // rollup worker has something to digest.
 func seedClosedTurns(t *testing.T, store *duckdb.Store, sessionID string, n int) {
 	t.Helper()
-	ctx := context.Background()
+	ctx := t.Context()
 	now := time.Now().UTC().Truncate(time.Millisecond).Add(-time.Hour)
 
 	require.NoError(t, store.UpsertSession(ctx, duckdb.Session{
@@ -50,7 +49,6 @@ func TestRollupWorkerProcessesJob(t *testing.T) {
 		closedTurns int
 		response    string
 		wantWritten bool
-		wantErr     bool
 	}
 	cases := []tc{
 		{
@@ -74,7 +72,7 @@ func TestRollupWorkerProcessesJob(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			ctx := context.Background()
+			ctx := t.Context()
 			store, err := duckdb.Open(ctx, ":memory:")
 			require.NoError(t, err)
 			defer store.Close()

@@ -1,7 +1,6 @@
 package duckdb
 
 import (
-	"context"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -24,7 +23,7 @@ func baseInterventionRequest(sessionID, turnID string) InterventionRequest {
 }
 
 func TestInterventionHappyPath(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	s := newTestStore(t)
 
 	req := baseInterventionRequest("sess-1", "turn-1")
@@ -63,7 +62,7 @@ func TestInterventionHappyPath(t *testing.T) {
 }
 
 func TestInterventionPriorityHighBeatsFIFO(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	s := newTestStore(t)
 
 	// Two normal, then one high submitted last.
@@ -92,7 +91,7 @@ func TestInterventionPriorityHighBeatsFIFO(t *testing.T) {
 }
 
 func TestInterventionScopeTurnIsolated(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	s := newTestStore(t)
 
 	req := baseInterventionRequest("sess-1", "turn-A")
@@ -111,7 +110,7 @@ func TestInterventionScopeTurnIsolated(t *testing.T) {
 }
 
 func TestInterventionSessionScopeClaimedByAnyTurn(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	s := newTestStore(t)
 
 	// Session-scoped intervention: turn_id left blank.
@@ -128,7 +127,7 @@ func TestInterventionSessionScopeClaimedByAnyTurn(t *testing.T) {
 }
 
 func TestInterventionModeFilterPreToolUse(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	s := newTestStore(t)
 
 	// context-only mode should NOT be claimable by PreToolUse.
@@ -148,7 +147,7 @@ func TestInterventionModeFilterPreToolUse(t *testing.T) {
 }
 
 func TestInterventionModeBothClaimedByEither(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	s := newTestStore(t)
 
 	req := baseInterventionRequest("sess-1", "turn-1")
@@ -169,7 +168,7 @@ func TestInterventionModeBothClaimedByEither(t *testing.T) {
 }
 
 func TestInterventionConcurrentClaims(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	s := newTestStore(t)
 
 	req := baseInterventionRequest("sess-1", "turn-1")
@@ -201,7 +200,7 @@ func TestInterventionConcurrentClaims(t *testing.T) {
 }
 
 func TestInterventionCancelTransitions(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	s := newTestStore(t)
 
 	req := baseInterventionRequest("sess-1", "turn-1")
@@ -240,7 +239,7 @@ func TestInterventionCancelTransitions(t *testing.T) {
 }
 
 func TestInterventionAutoExpireScan(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	s := newTestStore(t)
 
 	// Stale row with a 1 ms TTL.
@@ -272,7 +271,7 @@ func TestInterventionAutoExpireScan(t *testing.T) {
 }
 
 func TestInterventionListingsAndPending(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	s := newTestStore(t)
 
 	req := baseInterventionRequest("sess-1", "turn-1")

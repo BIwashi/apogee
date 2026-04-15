@@ -2,7 +2,6 @@ package cli
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -22,12 +21,12 @@ type hookServer struct {
 
 	srv *httptest.Server
 
-	mu       sync.Mutex
-	reqs     map[string][][]byte
-	claim    func() (int, []byte) // per-request claim override
-	delivered func()              // hook for delivered requests
-	events   func(int) (int, []byte)
-	eventsN  int
+	mu        sync.Mutex
+	reqs      map[string][][]byte
+	claim     func() (int, []byte) // per-request claim override
+	delivered func()               // hook for delivered requests
+	events    func(int) (int, []byte)
+	eventsN   int
 }
 
 func newHookServer(t *testing.T) *hookServer {
@@ -138,7 +137,7 @@ func TestRunHook_DefaultSourceAppIsDerived(t *testing.T) {
 	derived := "derive-fired"
 	opts.DeriveSourceApp = func() string { return derived }
 
-	if err := runHook(context.Background(), opts); err != nil {
+	if err := runHook(t.Context(), opts); err != nil {
 		t.Fatalf("runHook: %v", err)
 	}
 	body := decodeLastEvent(t, srv)
@@ -155,7 +154,7 @@ func TestRunHook_PinnedSourceAppOverridesDerive(t *testing.T) {
 		t.Fatal("DeriveSourceApp should not be called when SourceApp is pinned")
 		return ""
 	}
-	if err := runHook(context.Background(), opts); err != nil {
+	if err := runHook(t.Context(), opts); err != nil {
 		t.Fatalf("runHook: %v", err)
 	}
 	body := decodeLastEvent(t, srv)
@@ -168,7 +167,7 @@ func TestRunHook_FlattenFields(t *testing.T) {
 	srv := newHookServer(t)
 	stdin := `{"session_id":"sess-1","tool_name":"Bash","tool_use_id":"toolu-1","error":"boom","prompt":"write more tests"}`
 	opts := newHookOpts(t, srv, "PostToolUse", stdin)
-	if err := runHook(context.Background(), opts); err != nil {
+	if err := runHook(t.Context(), opts); err != nil {
 		t.Fatalf("runHook: %v", err)
 	}
 	body := decodeLastEvent(t, srv)
@@ -201,7 +200,7 @@ func TestRunHook_StdinEcho(t *testing.T) {
 	srv := newHookServer(t)
 	stdin := `{"session_id":"sess-1","tool_name":"Read"}`
 	opts := newHookOpts(t, srv, "PostToolUse", stdin)
-	if err := runHook(context.Background(), opts); err != nil {
+	if err := runHook(t.Context(), opts); err != nil {
 		t.Fatalf("runHook: %v", err)
 	}
 	out := opts.Stdout.(*bytes.Buffer).String()
@@ -223,7 +222,7 @@ func TestRunHook_SkipEnvVarShortCircuits(t *testing.T) {
 	srv := newHookServer(t)
 	stdin := `{"session_id":"sess-1","tool_name":"Read"}`
 	opts := newHookOpts(t, srv, "PostToolUse", stdin)
-	if err := runHook(context.Background(), opts); err != nil {
+	if err := runHook(t.Context(), opts); err != nil {
 		t.Fatalf("runHook: %v", err)
 	}
 	// stdin must still be echoed — the Claude Code pipeline expects
@@ -255,7 +254,7 @@ func TestRunHook_InterruptInterventionEmitsDecisionJSON(t *testing.T) {
 	srv.delivered = func() { delivered <- struct{}{} }
 	stdin := `{"session_id":"sess-1","turn_id":"turn-1","tool_name":"Bash"}`
 	opts := newHookOpts(t, srv, "PreToolUse", stdin)
-	if err := runHook(context.Background(), opts); err != nil {
+	if err := runHook(t.Context(), opts); err != nil {
 		t.Fatalf("runHook: %v", err)
 	}
 	out := strings.TrimSpace(opts.Stdout.(*bytes.Buffer).String())
@@ -289,7 +288,7 @@ func TestRunHook_ContextInterventionEmitsAdditionalContext(t *testing.T) {
 	}
 	stdin := `{"session_id":"sess-1"}`
 	opts := newHookOpts(t, srv, "UserPromptSubmit", stdin)
-	if err := runHook(context.Background(), opts); err != nil {
+	if err := runHook(t.Context(), opts); err != nil {
 		t.Fatalf("runHook: %v", err)
 	}
 	out := strings.TrimSpace(opts.Stdout.(*bytes.Buffer).String())
@@ -315,7 +314,7 @@ func TestRunHook_BothModePreToolUse(t *testing.T) {
 	}
 	stdin := `{"session_id":"sess-1"}`
 	opts := newHookOpts(t, srv, "PreToolUse", stdin)
-	if err := runHook(context.Background(), opts); err != nil {
+	if err := runHook(t.Context(), opts); err != nil {
 		t.Fatalf("runHook: %v", err)
 	}
 	out := strings.TrimSpace(opts.Stdout.(*bytes.Buffer).String())
@@ -332,7 +331,7 @@ func TestRunHook_NoClaimOnPostToolUse(t *testing.T) {
 	}
 	stdin := `{"session_id":"sess-1"}`
 	opts := newHookOpts(t, srv, "PostToolUse", stdin)
-	if err := runHook(context.Background(), opts); err != nil {
+	if err := runHook(t.Context(), opts); err != nil {
 		t.Fatalf("runHook: %v", err)
 	}
 	if len(srv.requestsMatching("/v1/sessions")) != 0 {
@@ -351,7 +350,7 @@ func TestRunHook_NetworkErrorDoesNotFail(t *testing.T) {
 	}
 	stdin := `{"session_id":"sess-1"}`
 	opts := newHookOpts(t, srv, "PostToolUse", stdin)
-	if err := runHook(context.Background(), opts); err != nil {
+	if err := runHook(t.Context(), opts); err != nil {
 		t.Fatalf("runHook should not return an error on HTTP 500: %v", err)
 	}
 	stderr := opts.Stderr.(*bytes.Buffer).String()
@@ -363,7 +362,7 @@ func TestRunHook_NetworkErrorDoesNotFail(t *testing.T) {
 func TestRunHook_BlankStdin(t *testing.T) {
 	srv := newHookServer(t)
 	opts := newHookOpts(t, srv, "SessionStart", "")
-	if err := runHook(context.Background(), opts); err != nil {
+	if err := runHook(t.Context(), opts); err != nil {
 		t.Fatalf("runHook: %v", err)
 	}
 	body := decodeLastEvent(t, srv)
@@ -381,7 +380,7 @@ func TestRunHook_BlankStdin(t *testing.T) {
 func TestRunHook_InvalidJSONStdin(t *testing.T) {
 	srv := newHookServer(t)
 	opts := newHookOpts(t, srv, "SessionStart", `{not valid json`)
-	if err := runHook(context.Background(), opts); err != nil {
+	if err := runHook(t.Context(), opts); err != nil {
 		t.Fatalf("runHook: %v", err)
 	}
 	body := decodeLastEvent(t, srv)
@@ -397,7 +396,7 @@ func TestRunHook_InvalidJSONStdin(t *testing.T) {
 func TestRunHook_NonObjectStdin(t *testing.T) {
 	srv := newHookServer(t)
 	opts := newHookOpts(t, srv, "SessionStart", `["array", "payload"]`)
-	if err := runHook(context.Background(), opts); err != nil {
+	if err := runHook(t.Context(), opts); err != nil {
 		t.Fatalf("runHook: %v", err)
 	}
 	body := decodeLastEvent(t, srv)
@@ -426,7 +425,7 @@ func TestRunHook_DeliveredCallback(t *testing.T) {
 	srv.delivered = func() { received <- struct{}{} }
 	stdin := `{"session_id":"sess-1"}`
 	opts := newHookOpts(t, srv, "PreToolUse", stdin)
-	if err := runHook(context.Background(), opts); err != nil {
+	if err := runHook(t.Context(), opts); err != nil {
 		t.Fatalf("runHook: %v", err)
 	}
 	select {
@@ -453,7 +452,7 @@ func TestRunHook_ClaimNoInterventionFallsThroughToEcho(t *testing.T) {
 	}
 	stdin := `{"session_id":"sess-1"}`
 	opts := newHookOpts(t, srv, "PreToolUse", stdin)
-	if err := runHook(context.Background(), opts); err != nil {
+	if err := runHook(t.Context(), opts); err != nil {
 		t.Fatalf("runHook: %v", err)
 	}
 	out := opts.Stdout.(*bytes.Buffer).String()
@@ -478,7 +477,7 @@ func TestRunHook_ContextModeOnPreToolUseIsNoDecision(t *testing.T) {
 	}
 	stdin := `{"session_id":"sess-1"}`
 	opts := newHookOpts(t, srv, "PreToolUse", stdin)
-	if err := runHook(context.Background(), opts); err != nil {
+	if err := runHook(t.Context(), opts); err != nil {
 		t.Fatalf("runHook: %v", err)
 	}
 	out := opts.Stdout.(*bytes.Buffer).String()
@@ -489,12 +488,12 @@ func TestRunHook_ContextModeOnPreToolUseIsNoDecision(t *testing.T) {
 
 func TestStripEventsSuffix(t *testing.T) {
 	cases := map[string]string{
-		"http://localhost:4100/v1/events":   "http://localhost:4100",
-		"http://localhost:4100/v1/events/":  "http://localhost:4100",
-		"http://localhost:4100":             "http://localhost:4100",
-		"http://localhost:4100/":            "http://localhost:4100",
-		"":                                  "",
-		"http://proxy/api/v1/events/":       "http://proxy/api",
+		"http://localhost:4100/v1/events":  "http://localhost:4100",
+		"http://localhost:4100/v1/events/": "http://localhost:4100",
+		"http://localhost:4100":            "http://localhost:4100",
+		"http://localhost:4100/":           "http://localhost:4100",
+		"":                                 "",
+		"http://proxy/api/v1/events/":      "http://proxy/api",
 	}
 	for in, want := range cases {
 		if got := stripEventsSuffix(in); got != want {
@@ -519,7 +518,7 @@ func TestRunHook_ExitCodeAlwaysZeroOnClientError(t *testing.T) {
 		NowMillis:       func() int64 { return 1 },
 		DeriveSourceApp: func() string { return "x" },
 	}
-	if err := runHook(context.Background(), opts); err != nil {
+	if err := runHook(t.Context(), opts); err != nil {
 		t.Errorf("runHook should swallow dial errors, got %v", err)
 	}
 	// Stdin still echoed.
@@ -598,7 +597,7 @@ func TestHookPayloadRaw_EmptyEverything(t *testing.T) {
 }
 
 func TestRunHook_NilOptsError(t *testing.T) {
-	if err := runHook(context.Background(), nil); err == nil {
+	if err := runHook(t.Context(), nil); err == nil {
 		t.Error("nil opts should return an error (programmer-level)")
 	}
 }
@@ -608,7 +607,7 @@ func TestRunHook_DefaultSourceAppFallsBackToUnknown(t *testing.T) {
 	opts := newHookOpts(t, srv, "PostToolUse", `{"session_id":"sess-1"}`)
 	opts.SourceApp = ""
 	opts.DeriveSourceApp = func() string { return "" } // every probe returned empty
-	if err := runHook(context.Background(), opts); err != nil {
+	if err := runHook(t.Context(), opts); err != nil {
 		t.Fatalf("runHook: %v", err)
 	}
 	body := decodeLastEvent(t, srv)

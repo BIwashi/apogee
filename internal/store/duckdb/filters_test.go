@@ -1,7 +1,6 @@
 package duckdb
 
 import (
-	"context"
 	"testing"
 	"time"
 
@@ -12,7 +11,7 @@ import (
 // have a small but meaningful dataset to filter against.
 func seedThreeTurns(t *testing.T, s *Store) time.Time {
 	t.Helper()
-	ctx := context.Background()
+	ctx := t.Context()
 	now := time.Now().UTC().Truncate(time.Millisecond)
 
 	require.NoError(t, s.UpsertSession(ctx, Session{
@@ -67,7 +66,7 @@ func turnIDs(turns []Turn) []string {
 func TestListRecentTurnsFiltered_BySession(t *testing.T) {
 	s := newTestStore(t)
 	seedThreeTurns(t, s)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	got, err := s.ListRecentTurnsFiltered(ctx, TurnFilter{SessionID: "sess-a"}, 100)
 	require.NoError(t, err)
@@ -77,7 +76,7 @@ func TestListRecentTurnsFiltered_BySession(t *testing.T) {
 func TestListRecentTurnsFiltered_BySourceApp(t *testing.T) {
 	s := newTestStore(t)
 	seedThreeTurns(t, s)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	got, err := s.ListRecentTurnsFiltered(ctx, TurnFilter{SourceApp: "app-b"}, 100)
 	require.NoError(t, err)
@@ -87,7 +86,7 @@ func TestListRecentTurnsFiltered_BySourceApp(t *testing.T) {
 func TestListRecentTurnsFiltered_ByTimeRange(t *testing.T) {
 	s := newTestStore(t)
 	now := seedThreeTurns(t, s)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	since := now.Add(-10 * time.Minute)
 	got, err := s.ListRecentTurnsFiltered(ctx, TurnFilter{Since: &since}, 100)
@@ -98,7 +97,7 @@ func TestListRecentTurnsFiltered_ByTimeRange(t *testing.T) {
 func TestListRecentTurnsFiltered_Combined(t *testing.T) {
 	s := newTestStore(t)
 	now := seedThreeTurns(t, s)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	since := now.Add(-10 * time.Minute)
 	got, err := s.ListRecentTurnsFiltered(ctx, TurnFilter{
@@ -112,7 +111,7 @@ func TestListRecentTurnsFiltered_Combined(t *testing.T) {
 func TestCountAttentionFiltered(t *testing.T) {
 	s := newTestStore(t)
 	seedThreeTurns(t, s)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	// Include ended rows so the count matches every inserted turn.
 	counts, err := s.CountAttentionFiltered(ctx, TurnFilter{SessionID: "sess-a"}, true)
@@ -126,7 +125,7 @@ func TestCountAttentionFiltered(t *testing.T) {
 
 func TestSearchSessions_FuzzyMatch(t *testing.T) {
 	s := newTestStore(t)
-	ctx := context.Background()
+	ctx := t.Context()
 	now := time.Now().UTC().Truncate(time.Millisecond)
 
 	// Two sessions with distinctive source apps + latest prompt text.
@@ -184,7 +183,7 @@ func TestSearchSessions_FuzzyMatch(t *testing.T) {
 
 func TestGetSessionSummary(t *testing.T) {
 	s := newTestStore(t)
-	ctx := context.Background()
+	ctx := t.Context()
 	now := time.Now().UTC().Truncate(time.Millisecond)
 
 	require.NoError(t, s.UpsertSession(ctx, Session{

@@ -156,7 +156,7 @@ func writeInstalledByDesktopMarker(tag string) error {
 		return err
 	}
 	path := filepath.Join(dir, "installed-by-desktop")
-	return os.WriteFile(path, []byte(tag+"\n"), 0o644)
+	return os.WriteFile(path, []byte(tag+"\n"), 0o600)
 }
 
 // showConfirmDialog pops a modal native confirmation dialog via

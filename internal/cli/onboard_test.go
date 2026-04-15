@@ -107,7 +107,7 @@ func TestOnboard_PlanFromCurrentState_FreshInstall(t *testing.T) {
 	// fakeManager starts with installed=false, so the plan should
 	// propose installing everything.
 	fillDefaults(&h.opts)
-	state, err := loadOnboardState(context.Background(), h.opts)
+	state, err := loadOnboardState(t.Context(), h.opts)
 	if err != nil {
 		t.Fatalf("loadOnboardState: %v", err)
 	}
@@ -174,7 +174,7 @@ func TestOnboard_PlanFromCurrentState_Reinstall(t *testing.T) {
 	}
 
 	fillDefaults(&h.opts)
-	state, err := loadOnboardState(context.Background(), h.opts)
+	state, err := loadOnboardState(t.Context(), h.opts)
 	if err != nil {
 		t.Fatalf("loadOnboardState: %v", err)
 	}

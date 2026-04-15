@@ -49,9 +49,9 @@ var (
 			Padding(0, 1)
 
 	boxInfo = lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("#27AAE0")).
-			Padding(0, 1)
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("#27AAE0")).
+		Padding(0, 1)
 
 	boxWarn = lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
@@ -138,32 +138,6 @@ func styleGlyph(severity string) string {
 // the top of a multi-section status page.
 func renderHeading(text string) string {
 	return styleHeading.Render(text)
-}
-
-// renderBoxLabelled wraps body inside a coloured rounded border
-// matching kind (success | error | info | warn). The first line of
-// body is treated as the section heading and rendered bold.
-func renderBoxLabelled(kind, heading, body string) string {
-	var box lipgloss.Style
-	switch kind {
-	case "success":
-		box = boxSuccess
-	case "error":
-		box = boxError
-	case "warn":
-		box = boxWarn
-	default:
-		box = boxInfo
-	}
-	inner := heading
-	if heading != "" && body != "" {
-		inner = styleHeading.Render(heading) + "\n\n" + body
-	} else if heading != "" {
-		inner = styleHeading.Render(heading)
-	} else {
-		inner = body
-	}
-	return box.Render(inner)
 }
 
 // formatBytesLine formats a key/value pair as a single styled line,

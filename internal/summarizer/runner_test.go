@@ -1,7 +1,6 @@
 package summarizer
 
 import (
-	"context"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -19,7 +18,7 @@ func TestCLIRunnerReturnsInnerResult(t *testing.T) {
 	require.NoError(t, err)
 
 	runner := NewCLIRunner(script, 5*time.Second, nil)
-	out, err := runner.Run(context.Background(), "claude-haiku-4-5", "ignored")
+	out, err := runner.Run(t.Context(), "claude-haiku-4-5", "ignored")
 	require.NoError(t, err)
 	require.True(t, strings.Contains(out, "fake recap"), "got %q", out)
 }
@@ -29,7 +28,7 @@ func TestFakeRunnerInjection(t *testing.T) {
 		require.Equal(t, "m", model)
 		return "hello", nil
 	}}
-	out, err := f.Run(context.Background(), "m", "p")
+	out, err := f.Run(t.Context(), "m", "p")
 	require.NoError(t, err)
 	require.Equal(t, "hello", out)
 	require.Equal(t, 1, f.Calls)

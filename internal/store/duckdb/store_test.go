@@ -1,7 +1,6 @@
 package duckdb
 
 import (
-	"context"
 	"path/filepath"
 	"testing"
 	"time"
@@ -13,7 +12,7 @@ import (
 
 func newTestStore(t *testing.T) *Store {
 	t.Helper()
-	ctx := context.Background()
+	ctx := t.Context()
 	s, err := Open(ctx, ":memory:")
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = s.Close() })
@@ -21,14 +20,14 @@ func newTestStore(t *testing.T) *Store {
 }
 
 func TestOpenInMemory(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	s, err := Open(ctx, ":memory:")
 	require.NoError(t, err)
 	require.NoError(t, s.Close())
 }
 
 func TestOpenFile(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	dir := t.TempDir()
 	dsn := filepath.Join(dir, "test.duckdb")
 	s, err := Open(ctx, dsn)
@@ -42,7 +41,7 @@ func TestOpenFile(t *testing.T) {
 }
 
 func TestSessionTurnSpanRoundTrip(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	s := newTestStore(t)
 
 	now := time.Now().UTC().Truncate(time.Millisecond)
@@ -132,15 +131,15 @@ func TestSessionTurnSpanRoundTrip(t *testing.T) {
 
 	// Logs.
 	require.NoError(t, s.InsertLog(ctx, &otel.LogRecord{
-		Timestamp:  now,
-		TraceID:    tr,
+		Timestamp:    now,
+		TraceID:      tr,
 		SeverityText: "INFO",
-		Body:       "hi",
-		SessionID:  "sess-1",
-		TurnID:     "turn-1",
-		HookEvent:  "PreToolUse",
-		SourceApp:  "demo",
-		Attributes: map[string]any{"tool": "Bash"},
+		Body:         "hi",
+		SessionID:    "sess-1",
+		TurnID:       "turn-1",
+		HookEvent:    "PreToolUse",
+		SourceApp:    "demo",
+		Attributes:   map[string]any{"tool": "Bash"},
 	}))
 
 	// Filter options.
@@ -170,7 +169,7 @@ func TestSessionTurnSpanRoundTrip(t *testing.T) {
 }
 
 func TestUpsertSessionIdempotent(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	s := newTestStore(t)
 
 	now := time.Now().UTC().Truncate(time.Millisecond)

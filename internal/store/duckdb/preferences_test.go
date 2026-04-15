@@ -1,7 +1,6 @@
 package duckdb
 
 import (
-	"context"
 	"encoding/json"
 	"testing"
 
@@ -9,7 +8,7 @@ import (
 )
 
 func TestPreferencesRoundTrip(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	s := newTestStore(t)
 
 	// Missing key returns (_, false, nil).
@@ -62,7 +61,7 @@ func TestPreferencesRoundTrip(t *testing.T) {
 }
 
 func TestPreferencesAcceptsRawJSON(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	s := newTestStore(t)
 
 	raw := json.RawMessage(`{"primary":"haiku","fallback":"sonnet"}`)
@@ -79,7 +78,7 @@ func TestPreferencesAcceptsRawJSON(t *testing.T) {
 }
 
 func TestPreferencesEmptyKeyRejected(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	s := newTestStore(t)
 
 	require.Error(t, s.UpsertPreference(ctx, "", "ja"))

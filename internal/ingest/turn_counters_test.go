@@ -24,7 +24,7 @@ func TestTurnCounterDebouncerCoalesces(t *testing.T) {
 		mu.Unlock()
 	}
 	d := newTurnCounterDebouncer(flush, 40*time.Millisecond)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	for i := 0; i < 50; i++ {
 		d.schedule(ctx, pendingTurnUpdate{turnID: "t1", tools: i + 1})
@@ -46,7 +46,7 @@ func TestTurnCounterDebouncerCancelTurn(t *testing.T) {
 		flushes.Add(1)
 	}
 	d := newTurnCounterDebouncer(flush, 40*time.Millisecond)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	d.schedule(ctx, pendingTurnUpdate{turnID: "t2", tools: 3})
 	d.cancelTurn("t2")
@@ -63,7 +63,7 @@ func TestTurnCounterDebouncerStopFlushes(t *testing.T) {
 		flushes.Add(1)
 	}
 	d := newTurnCounterDebouncer(flush, time.Second)
-	ctx := context.Background()
+	ctx := t.Context()
 	d.schedule(ctx, pendingTurnUpdate{turnID: "t3", tools: 1})
 	d.schedule(ctx, pendingTurnUpdate{turnID: "t4", tools: 1})
 	d.Stop(ctx)

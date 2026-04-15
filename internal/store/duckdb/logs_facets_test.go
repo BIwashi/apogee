@@ -1,7 +1,6 @@
 package duckdb
 
 import (
-	"context"
 	"fmt"
 	"testing"
 	"time"
@@ -15,7 +14,7 @@ import (
 // correct per-dimension distinct values + counts when the store holds a
 // mixed workload across source apps, hook events, and severities.
 func TestEventFacets(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	s := newTestStore(t)
 
 	now := time.Now().UTC().Truncate(time.Millisecond)
@@ -112,7 +111,7 @@ func TestEventFacets(t *testing.T) {
 // TestEventTimeseries asserts EventTimeseries bucketises events by the
 // requested step and breaks totals down by severity.
 func TestEventTimeseries(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	s := newTestStore(t)
 
 	base := time.Now().UTC().Truncate(time.Minute)
@@ -157,7 +156,7 @@ func TestEventTimeseries(t *testing.T) {
 // TestCountEvents covers the lightweight helper that powers the "N
 // events found" header over the histogram.
 func TestCountEvents(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	s := newTestStore(t)
 
 	now := time.Now().UTC()

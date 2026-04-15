@@ -15,7 +15,7 @@ import (
 
 func newTestStore(t *testing.T) *duckdb.Store {
 	t.Helper()
-	ctx := context.Background()
+	ctx := t.Context()
 	s, err := duckdb.Open(ctx, ":memory:")
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = s.Close() })
@@ -39,7 +39,7 @@ func mkPending(id string, requestedAt time.Time) duckdb.HITLEvent {
 }
 
 func TestServiceRespondBroadcastsAndUpdatesStore(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	store := newTestStore(t)
 	hub := sse.NewHub(slog.Default())
 	now := time.Date(2026, 4, 14, 10, 0, 0, 0, time.UTC)
@@ -82,7 +82,7 @@ func TestServiceRespondBroadcastsAndUpdatesStore(t *testing.T) {
 }
 
 func TestServiceRespondConflictAndMissing(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	store := newTestStore(t)
 	svc := New(store, sse.NewHub(slog.Default()), DefaultConfig(), slog.Default())
 
@@ -101,7 +101,7 @@ func TestServiceRespondConflictAndMissing(t *testing.T) {
 }
 
 func TestServiceExpireOnceFlipsStaleRows(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	store := newTestStore(t)
 	hub := sse.NewHub(slog.Default())
 	cfg := Config{AutoExpireSeconds: 30, TickInterval: time.Second}
@@ -134,7 +134,7 @@ func TestServiceExpireOnceFlipsStaleRows(t *testing.T) {
 }
 
 func TestServiceBroadcastRequested(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	store := newTestStore(t)
 	hub := sse.NewHub(slog.Default())
 	svc := New(store, hub, DefaultConfig(), slog.Default())

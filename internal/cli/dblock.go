@@ -75,7 +75,10 @@ func lookupCommandByPID(pid int) string {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 250*time.Millisecond)
 	defer cancel()
-	out, err := exec.CommandContext(ctx, "ps", "-p", strconv.Itoa(pid), "-o", "comm=").Output()
+	// pid has already been parsed into an int; strconv.Itoa yields a
+	// pure digit run so there is no user-tainted string flowing into
+	// exec here.
+	out, err := exec.CommandContext(ctx, "ps", "-p", strconv.Itoa(pid), "-o", "comm=").Output() //nolint:gosec // see comment above
 	if err != nil {
 		return ""
 	}
@@ -113,7 +116,7 @@ func renderDBLockConflict(locked *duckdb.LockedError) string {
 	fix.WriteString("\n")
 	fix.WriteString("  1. apogee daemon stop\n")
 	if pidForFix > 0 {
-		fix.WriteString(fmt.Sprintf("  2. or: kill %d\n", pidForFix))
+		fmt.Fprintf(&fix, "  2. or: kill %d\n", pidForFix)
 	} else {
 		fix.WriteString("  2. or: kill the process holding the lock\n")
 	}

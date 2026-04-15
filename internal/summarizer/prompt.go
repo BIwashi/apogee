@@ -22,12 +22,12 @@ type PromptInput struct {
 // prompt surfaces. Everything else is filtered out so the model sees a
 // dense, relevant event log.
 var hookEventsForLog = map[string]bool{
-	"PreToolUse":          true,
-	"PostToolUse":         true,
-	"PostToolUseFailure":  true,
-	"UserPromptSubmit":    true,
-	"PermissionRequest":   true,
-	"Notification":        true,
+	"PreToolUse":         true,
+	"PostToolUse":        true,
+	"PostToolUseFailure": true,
+	"UserPromptSubmit":   true,
+	"PermissionRequest":  true,
+	"Notification":       true,
 }
 
 // BuildPrompt assembles the LLM input for one turn. It returns a single
@@ -141,29 +141,29 @@ JSON オブジェクトのみを出力してください。
 
 func writeMetadata(sb *strings.Builder, t duckdb.Turn) {
 	sb.WriteString("TURN METADATA\n")
-	sb.WriteString(fmt.Sprintf("session_id: %s\n", t.SessionID))
-	sb.WriteString(fmt.Sprintf("turn_id: %s\n", t.TurnID))
-	sb.WriteString(fmt.Sprintf("started_at: %s\n", formatTime(t.StartedAt)))
+	fmt.Fprintf(sb, "session_id: %s\n", t.SessionID)
+	fmt.Fprintf(sb, "turn_id: %s\n", t.TurnID)
+	fmt.Fprintf(sb, "started_at: %s\n", formatTime(t.StartedAt))
 	if t.EndedAt != nil {
-		sb.WriteString(fmt.Sprintf("ended_at: %s\n", formatTime(*t.EndedAt)))
+		fmt.Fprintf(sb, "ended_at: %s\n", formatTime(*t.EndedAt))
 	} else {
 		sb.WriteString("ended_at: (still running)\n")
 	}
 	if t.DurationMs != nil {
-		sb.WriteString(fmt.Sprintf("duration_ms: %d\n", *t.DurationMs))
+		fmt.Fprintf(sb, "duration_ms: %d\n", *t.DurationMs)
 	}
-	sb.WriteString(fmt.Sprintf("status: %s\n", t.Status))
-	sb.WriteString(fmt.Sprintf("tool_call_count: %d\n", t.ToolCallCount))
-	sb.WriteString(fmt.Sprintf("subagent_count: %d\n", t.SubagentCount))
-	sb.WriteString(fmt.Sprintf("error_count: %d\n", t.ErrorCount))
+	fmt.Fprintf(sb, "status: %s\n", t.Status)
+	fmt.Fprintf(sb, "tool_call_count: %d\n", t.ToolCallCount)
+	fmt.Fprintf(sb, "subagent_count: %d\n", t.SubagentCount)
+	fmt.Fprintf(sb, "error_count: %d\n", t.ErrorCount)
 	if t.Model != "" {
-		sb.WriteString(fmt.Sprintf("model: %s\n", t.Model))
+		fmt.Fprintf(sb, "model: %s\n", t.Model)
 	}
 	prompt := t.PromptText
 	if len(prompt) > 500 {
 		prompt = prompt[:500] + "…"
 	}
-	sb.WriteString(fmt.Sprintf("prompt_text: %s\n", oneLine(prompt)))
+	fmt.Fprintf(sb, "prompt_text: %s\n", oneLine(prompt))
 }
 
 func writeSpanTable(sb *strings.Builder, spans []duckdb.SpanRow, maxSpans int, turnStart time.Time) {
@@ -197,7 +197,7 @@ func writeSpanTable(sb *strings.Builder, spans []duckdb.SpanRow, maxSpans int, t
 	idx := 0
 	for i, sp := range keep {
 		if skipped > 0 && i == len(keep)/2 {
-			sb.WriteString(fmt.Sprintf("... (%d spans skipped) ...\n", skipped))
+			fmt.Fprintf(sb, "... (%d spans skipped) ...\n", skipped)
 		}
 		elapsedMs := int64(0)
 		if !turnStart.IsZero() {
@@ -213,9 +213,9 @@ func writeSpanTable(sb *strings.Builder, spans []duckdb.SpanRow, maxSpans int, t
 		}
 		shortAttrs := shortSpanAttrs(sp)
 		if durMs < 0 {
-			sb.WriteString(fmt.Sprintf("[%d] t+%dms open %s %s %s\n", idx, elapsedMs, status, sp.Name, shortAttrs))
+			fmt.Fprintf(sb, "[%d] t+%dms open %s %s %s\n", idx, elapsedMs, status, sp.Name, shortAttrs)
 		} else {
-			sb.WriteString(fmt.Sprintf("[%d] t+%dms %dms %s %s %s\n", idx, elapsedMs, durMs, status, sp.Name, shortAttrs))
+			fmt.Fprintf(sb, "[%d] t+%dms %dms %s %s %s\n", idx, elapsedMs, durMs, status, sp.Name, shortAttrs)
 		}
 		idx++
 	}
@@ -267,7 +267,7 @@ func writeEventLog(sb *strings.Builder, logs []duckdb.LogRow, maxLogs int) {
 		if len(body) > 160 {
 			body = body[:160] + "…"
 		}
-		sb.WriteString(fmt.Sprintf("%s  %s  %s\n", formatTime(l.Timestamp), l.HookEvent, body))
+		fmt.Fprintf(sb, "%s  %s  %s\n", formatTime(l.Timestamp), l.HookEvent, body)
 	}
 }
 
@@ -310,14 +310,14 @@ func BuildNarrativePrompt(input NarrativePromptInput, prefs Preferences) string 
 	sb.WriteString("list of turns with their per-turn recaps.\n\n")
 
 	sb.WriteString("## Session metadata\n")
-	sb.WriteString(fmt.Sprintf("session_id: %s\n", input.SessionID))
-	sb.WriteString(fmt.Sprintf("source_app: %s\n", input.SourceApp))
-	sb.WriteString(fmt.Sprintf("turn_count: %d\n", len(input.Turns)))
+	fmt.Fprintf(&sb, "session_id: %s\n", input.SessionID)
+	fmt.Fprintf(&sb, "source_app: %s\n", input.SourceApp)
+	fmt.Fprintf(&sb, "turn_count: %d\n", len(input.Turns))
 	if len(input.Turns) > 0 {
 		first := input.Turns[0]
 		last := input.Turns[len(input.Turns)-1]
-		sb.WriteString(fmt.Sprintf("started_at: %s\n", formatTime(first.StartedAt)))
-		sb.WriteString(fmt.Sprintf("last_ended_at: %s\n", formatTime(last.EndedAt)))
+		fmt.Fprintf(&sb, "started_at: %s\n", formatTime(first.StartedAt))
+		fmt.Fprintf(&sb, "last_ended_at: %s\n", formatTime(last.EndedAt))
 	}
 	sb.WriteString("\n")
 
@@ -369,15 +369,14 @@ func writeNarrativeTurn(sb *strings.Builder, idx int, t NarrativeTurn) {
 	if headline == "" {
 		headline = "(no headline)"
 	}
-	sb.WriteString(fmt.Sprintf("[%d] turn_id=%s %s → %s %s status=%s outcome=%s\n",
+	fmt.Fprintf(sb, "[%d] turn_id=%s %s → %s %s status=%s outcome=%s\n",
 		idx,
 		truncate(t.TurnID, 20),
 		formatTime(t.StartedAt),
 		formatTime(t.EndedAt),
 		dur,
 		t.Status,
-		t.Outcome,
-	))
+		t.Outcome)
 	sb.WriteString("    headline: ")
 	sb.WriteString(oneLine(headline))
 	sb.WriteString("\n")

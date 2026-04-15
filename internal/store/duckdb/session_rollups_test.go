@@ -1,7 +1,6 @@
 package duckdb
 
 import (
-	"context"
 	"testing"
 	"time"
 
@@ -9,7 +8,7 @@ import (
 )
 
 func TestSessionRollupsUpsertAndGet(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	s := newTestStore(t)
 	now := time.Now().UTC().Truncate(time.Millisecond)
 
@@ -78,7 +77,7 @@ func TestSessionRollupsUpsertAndGet(t *testing.T) {
 }
 
 func TestListRollupCandidates(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	s := newTestStore(t)
 	now := time.Now().UTC().Truncate(time.Millisecond)
 

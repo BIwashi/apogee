@@ -145,13 +145,13 @@ func (s *Store) ListRecentSessions(ctx context.Context, limit int) ([]Session, e
 // enriched with the latest turn's headline / prompt snippet so the command
 // palette can render a single-line label per session.
 type SessionSearchHit struct {
-	SessionID            string    `json:"session_id"`
-	SourceApp            string    `json:"source_app"`
-	LastSeenAt           time.Time `json:"last_seen_at"`
-	TurnCount            int       `json:"turn_count"`
-	LatestHeadline       string    `json:"latest_headline,omitempty"`
-	LatestPromptSnippet  string    `json:"latest_prompt_snippet,omitempty"`
-	AttentionState       string    `json:"attention_state,omitempty"`
+	SessionID           string    `json:"session_id"`
+	SourceApp           string    `json:"source_app"`
+	LastSeenAt          time.Time `json:"last_seen_at"`
+	TurnCount           int       `json:"turn_count"`
+	LatestHeadline      string    `json:"latest_headline,omitempty"`
+	LatestPromptSnippet string    `json:"latest_prompt_snippet,omitempty"`
+	AttentionState      string    `json:"attention_state,omitempty"`
 }
 
 // SearchSessions returns up to limit sessions matching q. Empty q returns
@@ -231,20 +231,20 @@ WHERE s.source_app NOT LIKE '.%'
 // SessionSummary is the denormalized header surfaced by
 // GET /v1/sessions/:id/summary.
 type SessionSummary struct {
-	SessionID        string     `json:"session_id"`
-	SourceApp        string     `json:"source_app"`
-	StartedAt        time.Time  `json:"started_at"`
-	LastSeenAt       time.Time  `json:"last_seen_at"`
-	EndedAt          *time.Time `json:"ended_at,omitempty"`
-	Model            string     `json:"model,omitempty"`
-	MachineID        string     `json:"machine_id,omitempty"`
-	TurnCount        int        `json:"turn_count"`
-	RunningCount     int        `json:"running_count"`
-	CompletedCount   int        `json:"completed_count"`
-	ErroredCount     int        `json:"errored_count"`
-	LatestHeadline   string     `json:"latest_headline,omitempty"`
-	LatestTurnID     string     `json:"latest_turn_id,omitempty"`
-	AttentionState   string     `json:"attention_state,omitempty"`
+	SessionID      string     `json:"session_id"`
+	SourceApp      string     `json:"source_app"`
+	StartedAt      time.Time  `json:"started_at"`
+	LastSeenAt     time.Time  `json:"last_seen_at"`
+	EndedAt        *time.Time `json:"ended_at,omitempty"`
+	Model          string     `json:"model,omitempty"`
+	MachineID      string     `json:"machine_id,omitempty"`
+	TurnCount      int        `json:"turn_count"`
+	RunningCount   int        `json:"running_count"`
+	CompletedCount int        `json:"completed_count"`
+	ErroredCount   int        `json:"errored_count"`
+	LatestHeadline string     `json:"latest_headline,omitempty"`
+	LatestTurnID   string     `json:"latest_turn_id,omitempty"`
+	AttentionState string     `json:"attention_state,omitempty"`
 }
 
 // attentionPriority maps the four engine states onto a compare-friendly

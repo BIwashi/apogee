@@ -81,17 +81,6 @@ func (r *Reconstructor) finishOTelSpan(otSpan oteltrace.Span, sp *otel.Span) {
 	}
 }
 
-// updateOTelSpan refreshes attributes/events on a still-open mirror
-// span. Used when the apogee side appends a span event without
-// finishing the span (e.g. notifications, compaction markers).
-func (r *Reconstructor) updateOTelSpan(otSpan oteltrace.Span, sp *otel.Span) {
-	if otSpan == nil || sp == nil {
-		return
-	}
-	r.applyOTelAttributes(otSpan, sp)
-	r.applyOTelEvents(otSpan, sp)
-}
-
 // applyOTelAttributes maps the apogee in-memory attribute bag to OTel
 // KeyValues using the constants from `semconv/attrs.go`. Unknown keys
 // are forwarded verbatim so callers can experiment without editing

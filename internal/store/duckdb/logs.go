@@ -21,11 +21,11 @@ type LogRow struct {
 	SeverityText   string         `json:"severity_text"`
 	SeverityNumber int            `json:"severity_number"`
 	Body           string         `json:"body"`
-	SessionID     string          `json:"session_id,omitempty"`
-	TurnID        string          `json:"turn_id,omitempty"`
-	HookEvent     string          `json:"hook_event"`
-	SourceApp     string          `json:"source_app"`
-	Attributes    map[string]any  `json:"attributes,omitempty"`
+	SessionID      string         `json:"session_id,omitempty"`
+	TurnID         string         `json:"turn_id,omitempty"`
+	HookEvent      string         `json:"hook_event"`
+	SourceApp      string         `json:"source_app"`
+	Attributes     map[string]any `json:"attributes,omitempty"`
 }
 
 // InsertLog appends a log record. The id column is auto-assigned.

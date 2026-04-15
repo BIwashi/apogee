@@ -1,7 +1,6 @@
 package duckdb
 
 import (
-	"context"
 	"database/sql"
 	"testing"
 	"time"
@@ -26,7 +25,7 @@ func mkHITL(id string, sessionID, turnID string, requestedAt time.Time) HITLEven
 }
 
 func TestHITLInsertAndGet(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	s := newTestStore(t)
 	now := time.Now().UTC().Truncate(time.Millisecond)
 
@@ -50,7 +49,7 @@ func TestHITLInsertAndGet(t *testing.T) {
 }
 
 func TestHITLRespondTransitions(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	s := newTestStore(t)
 	now := time.Now().UTC().Truncate(time.Millisecond)
 
@@ -90,7 +89,7 @@ func TestHITLRespondTransitions(t *testing.T) {
 }
 
 func TestHITLExpire(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	s := newTestStore(t)
 	now := time.Now().UTC().Truncate(time.Millisecond)
 	require.NoError(t, s.InsertHITL(ctx, mkHITL("hitl-1", "sess-1", "turn-1", now)))
@@ -109,7 +108,7 @@ func TestHITLExpire(t *testing.T) {
 }
 
 func TestHITLPendingListings(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	s := newTestStore(t)
 	now := time.Now().UTC().Truncate(time.Millisecond)
 
@@ -149,7 +148,7 @@ func TestHITLPendingListings(t *testing.T) {
 }
 
 func TestHITLExpiredCandidates(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	s := newTestStore(t)
 	now := time.Now().UTC().Truncate(time.Millisecond)
 
@@ -163,7 +162,7 @@ func TestHITLExpiredCandidates(t *testing.T) {
 }
 
 func TestHITLCountPendingBySession(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	s := newTestStore(t)
 	now := time.Now().UTC().Truncate(time.Millisecond)
 
@@ -181,7 +180,7 @@ func TestHITLCountPendingBySession(t *testing.T) {
 // Sanity-check that scanHITL handles the nullable sql.* fields when a row
 // has just been inserted with empty optional values.
 func TestHITLScanNullables(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	s := newTestStore(t)
 	now := time.Now().UTC().Truncate(time.Millisecond)
 	require.NoError(t, s.InsertHITL(ctx, mkHITL("hitl-1", "sess-1", "turn-1", now)))

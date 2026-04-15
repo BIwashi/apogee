@@ -114,8 +114,8 @@ type rollupJob struct {
 
 // Reason strings for rollup jobs. Extend as new triggers land.
 const (
-	RollupReasonManual    = "manual"
-	RollupReasonScheduled = "scheduled"
+	RollupReasonManual     = "manual"
+	RollupReasonScheduled  = "scheduled"
 	RollupReasonSessionEnd = "session_end"
 )
 
@@ -478,16 +478,16 @@ func BuildRollupPrompt(sess duckdb.Session, turns []duckdb.Turn, prefs Preferenc
 	var sb strings.Builder
 	sb.WriteString("You are summarizing a Claude Code session that contains multiple user turns.\n\n")
 	sb.WriteString("## Session metadata\n")
-	sb.WriteString(fmt.Sprintf("session_id: %s\n", sess.SessionID))
-	sb.WriteString(fmt.Sprintf("source_app: %s\n", sess.SourceApp))
-	sb.WriteString(fmt.Sprintf("turn_count: %d\n", len(turns)))
+	fmt.Fprintf(&sb, "session_id: %s\n", sess.SessionID)
+	fmt.Fprintf(&sb, "source_app: %s\n", sess.SourceApp)
+	fmt.Fprintf(&sb, "turn_count: %d\n", len(turns))
 	if len(turns) > 0 {
-		sb.WriteString(fmt.Sprintf("started_at: %s\n", formatTime(turns[0].StartedAt)))
+		fmt.Fprintf(&sb, "started_at: %s\n", formatTime(turns[0].StartedAt))
 		last := turns[len(turns)-1]
 		if last.EndedAt != nil {
-			sb.WriteString(fmt.Sprintf("last_seen_at: %s\n", formatTime(*last.EndedAt)))
+			fmt.Fprintf(&sb, "last_seen_at: %s\n", formatTime(*last.EndedAt))
 		} else {
-			sb.WriteString(fmt.Sprintf("last_seen_at: %s\n", formatTime(last.StartedAt)))
+			fmt.Fprintf(&sb, "last_seen_at: %s\n", formatTime(last.StartedAt))
 		}
 	}
 	sb.WriteString("\n## Ordered turn recaps\n")
@@ -585,13 +585,12 @@ func writeTurnLine(sb *strings.Builder, idx int, t duckdb.Turn) {
 			headline = headline[:100] + "…"
 		}
 	}
-	sb.WriteString(fmt.Sprintf("[%d] %s %s %s %s\n",
+	fmt.Fprintf(sb, "[%d] %s %s %s %s\n",
 		idx,
 		formatTime(t.StartedAt),
 		dur,
 		t.Status,
-		headline,
-	))
+		headline)
 	if len(keySteps) > 0 {
 		sb.WriteString("    key_steps: ")
 		sb.WriteString(strings.Join(keySteps, "; "))

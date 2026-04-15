@@ -2,7 +2,6 @@ package cli
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -17,7 +16,7 @@ func TestUninstallPromptAborts(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	stdin := strings.NewReader("n\n")
-	if err := runUninstall(context.Background(), &stdout, &stderr, stdin, false, false); err != nil {
+	if err := runUninstall(t.Context(), &stdout, &stderr, stdin, false, false); err != nil {
 		t.Fatalf("uninstall: %v", err)
 	}
 	if !strings.Contains(stdout.String(), "aborted") {
@@ -68,7 +67,7 @@ func TestUninstallYesRemovesHooksAndDaemon(t *testing.T) {
 	// skipped via --yes). But we don't have a data dir, so the
 	// prompt is not shown.
 	var stdout, stderr bytes.Buffer
-	if err := runUninstall(context.Background(), &stdout, &stderr, strings.NewReader(""), true, false); err != nil {
+	if err := runUninstall(t.Context(), &stdout, &stderr, strings.NewReader(""), true, false); err != nil {
 		t.Fatalf("uninstall: %v", err)
 	}
 	if fm.uninstallCalls == 0 {
@@ -107,7 +106,7 @@ func TestUninstallPurgesDataDir(t *testing.T) {
 	withFakeManager(t, fm)
 
 	var stdout, stderr bytes.Buffer
-	if err := runUninstall(context.Background(), &stdout, &stderr, strings.NewReader(""), true, true); err != nil {
+	if err := runUninstall(t.Context(), &stdout, &stderr, strings.NewReader(""), true, true); err != nil {
 		t.Fatalf("uninstall: %v", err)
 	}
 	if _, err := os.Stat(dataDir); !os.IsNotExist(err) {

@@ -23,7 +23,7 @@ import (
 
 func newTestServer(t *testing.T) (*Server, *httptest.Server) {
 	t.Helper()
-	ctx := context.Background()
+	ctx := t.Context()
 	store, err := duckdb.Open(ctx, ":memory:")
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = store.Close() })
@@ -59,7 +59,7 @@ func TestIntegrationHealthz(t *testing.T) {
 // structural: after the first call, the unexported sync.Once is already
 // "done", and any later Do invocation is a no-op.
 func TestStartBackgroundIdempotent(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
 	store, err := duckdb.Open(ctx, ":memory:")
@@ -85,7 +85,7 @@ func TestStartBackgroundIdempotent(t *testing.T) {
 	// Tear everything down so the test stays hermetic and the race
 	// detector sees a clean exit.
 	cancel()
-	stopCtx, stopCancel := context.WithTimeout(context.Background(), 2*time.Second)
+	stopCtx, stopCancel := context.WithTimeout(t.Context(), 2*time.Second)
 	defer stopCancel()
 	srv.StopBackground(stopCtx)
 }
@@ -180,7 +180,7 @@ func TestIntegrationFullSamplePipeline(t *testing.T) {
 func TestIntegrationSSEStream(t *testing.T) {
 	_, ts := newTestServer(t)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, ts.URL+"/v1/events/stream", nil)
@@ -511,7 +511,7 @@ func TestIntegrationWatchdogSignalsHTTP(t *testing.T) {
 	// deterministic.
 	now := time.Now().UTC().Truncate(time.Millisecond)
 	store := srv.store
-	ctx := context.Background()
+	ctx := t.Context()
 
 	row, err := store.InsertWatchdogSignal(ctx, duckdb.WatchdogSignal{
 		DetectedAt:     now,

@@ -1,7 +1,6 @@
 package duckdb
 
 import (
-	"context"
 	"testing"
 	"time"
 
@@ -9,7 +8,7 @@ import (
 )
 
 func TestModelAvailabilityRoundTrip(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	s := newTestStore(t)
 
 	// Empty cache returns an empty (non-nil) map.
@@ -46,7 +45,7 @@ func TestModelAvailabilityRoundTrip(t *testing.T) {
 }
 
 func TestModelAvailabilityPruneStale(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	s := newTestStore(t)
 
 	require.NoError(t, s.UpsertModelAvailability(ctx, "claude-haiku-4-5", true, ""))
@@ -71,7 +70,7 @@ func TestModelAvailabilityPruneStale(t *testing.T) {
 }
 
 func TestModelAvailabilityEmptyAlias(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	s := newTestStore(t)
 	err := s.UpsertModelAvailability(ctx, "", true, "")
 	require.Error(t, err)

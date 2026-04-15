@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"context"
 	"strings"
 	"testing"
 
@@ -13,7 +12,7 @@ func TestLoadOnboardState_PopulatesModels(t *testing.T) {
 	h.loadedPrefs = summarizer.Defaults()
 
 	fillDefaults(&h.opts)
-	state, err := loadOnboardState(context.Background(), h.opts)
+	state, err := loadOnboardState(t.Context(), h.opts)
 	if err != nil {
 		t.Fatalf("loadOnboardState: %v", err)
 	}

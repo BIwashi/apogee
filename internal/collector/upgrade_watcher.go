@@ -52,12 +52,12 @@ type upgradeWatcher struct {
 	// string at test time.
 	versionCmd func(ctx context.Context, path string) (string, error)
 
-	mu                 sync.RWMutex
-	baselineSize       int64
-	baselineMtime      time.Time
-	available          string
-	availableDetected  time.Time
-	lastCheckErr       string
+	mu                sync.RWMutex
+	baselineSize      int64
+	baselineMtime     time.Time
+	available         string
+	availableDetected time.Time
+	lastCheckErr      string
 }
 
 // newUpgradeWatcher constructs a watcher rooted at the currently-running

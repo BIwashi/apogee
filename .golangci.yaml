@@ -1,0 +1,147 @@
+version: "2"
+run:
+  modules-download-mode: readonly
+  issues-exit-code: 1
+  tests: true
+  allow-parallel-runners: true
+output:
+  formats:
+    text:
+      path: stdout
+      print-linter-name: true
+      print-issued-lines: true
+      colors: true
+  sort-order:
+    - file
+linters:
+  default: none
+  enable:
+    - bodyclose
+    - containedctx
+    - errcheck
+    - gosec
+    - govet
+    - ineffassign
+    - nolintlint
+    - revive
+    - staticcheck
+    - unused
+    - usetesting
+    - wastedassign
+    - whitespace
+  settings:
+    errcheck:
+      # check-type-assertions is off because the repo uses comma-ok
+      # form at runtime boundaries but deliberately uses the single-
+      # return form in tests where the type is pinned by the test
+      # fixture and a panic is the desired failure mode.
+      check-type-assertions: false
+      check-blank: false
+      exclude-functions:
+        - (io.Closer).Close
+        - (net/http.ResponseWriter).Write
+        - fmt.Fprintln
+        - fmt.Fprintf
+        - fmt.Fprint
+    gosec:
+      excludes:
+        # G115: integer overflow conversion — noisy on int↔int64 casts the
+        # collector does on DuckDB row counts. The casts are bounded by
+        # LIMIT and validated upstream.
+        - G115
+        # G306: WriteFile perms ≤ 0600 — apogee intentionally writes
+        # user-space config (.claude/settings.json, launchd plists,
+        # systemd unit files, lock pid files) with 0644 so other tools
+        # the user runs can read them.
+        - G306
+    nolintlint:
+      allow-unused: false
+      require-explanation: true
+      require-specific: true
+    revive:
+      rules:
+        - name: blank-imports
+        - name: context-as-argument
+        - name: context-keys-type
+        - name: dot-imports
+        - name: duplicated-imports
+          severity: error
+        - name: error-return
+        - name: error-strings
+        - name: error-naming
+        - name: exported
+          disabled: true
+        - name: if-return
+        - name: increment-decrement
+        - name: var-naming
+        - name: var-declaration
+        - name: package-comments
+          disabled: true
+        - name: range
+        - name: receiver-naming
+        - name: redefines-builtin-id
+        - name: superfluous-else
+        - name: unreachable-code
+        - name: unused-parameter
+          disabled: true
+        - name: unused-receiver
+          disabled: true
+    staticcheck:
+      checks:
+        - all
+        # ST1000: package comment is missing — apogee intentionally
+        # documents packages in docs/ rather than with doc.go stubs.
+        - "-ST1000"
+        # ST1003: naming conventions — clashes with acronym conventions
+        # (HITL, SSE, DB, etc.) used throughout apogee.
+        - "-ST1003"
+        # QF1008: omit embedded fields from selector expression — we do
+        # this deliberately for readability.
+        - "-QF1008"
+    usetesting:
+      context-background: true
+      context-todo: true
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      - path: (.+)\.go$
+        text: declaration of "ctx" shadows declaration at
+      - path: (.+)\.go$
+        text: declaration of "err" shadows declaration at
+      # Test helpers close bodies via t.Cleanup, which bodyclose does
+      # not recognise. Tests also hit variable URLs from httptest.Server
+      # (G107) and construct literal SQL with static fixtures (G201).
+      - path: _test\.go$
+        linters:
+          - bodyclose
+          - gosec
+      # dynamic SQL inside the store layer is assembled from static
+      # constants and a whitelisted column allowlist — gosec's G201 /
+      # G202 flag every fmt.Sprintf / string concat even when every
+      # variable is a package-private identifier under the store layer's
+      # control. The risk lives at the query-builder boundary, not at
+      # every concatenation point.
+      - path: internal/store/duckdb/.*\.go$
+        linters:
+          - gosec
+        text: "G20[12]"
+    paths:
+      - internal/webassets/dist
+      - third_party$
+      - builtin$
+      - examples$
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+  uniq-by-line: true
+formatters:
+  exclusions:
+    generated: lax
+    paths:
+      - internal/webassets/dist
+      - third_party$
