@@ -1,4 +1,4 @@
-<p align="right">English / <a href="README.ja.md">日本語</a></p>
+<p align="right">English / <a href="README_ja.md">日本語</a></p>
 
 <p align="center">
   <img src="assets/branding/apogee-banner.png" alt="apogee" width="600">
@@ -198,49 +198,182 @@ See [open pull requests](https://github.com/BIwashi/apogee/pulls) for what is ac
 
 ## Quickstart
 
-```sh
-# 1. Install (Homebrew tap, go install, or build from source).
-brew install BIwashi/tap/apogee
-# or
-go install github.com/BIwashi/apogee/cmd/apogee@latest
+The happy path is two commands. The rest of this section is what each command actually does, what you should see when it works, and how to recover when it does not.
 
-# 2. Walk the one-command interactive setup wizard.
+### 1. Install the binary
+
+```sh
+brew install BIwashi/tap/apogee
+```
+
+Alternative paths:
+
+| Source | Command | Notes |
+|---|---|---|
+| Homebrew tap | `brew install BIwashi/tap/apogee` | Recommended. Universal binary, full embedded dashboard, `brew upgrade apogee` for new releases. |
+| `go install` | `go install github.com/BIwashi/apogee/cmd/apogee@latest` | Go module proxy cannot ship the Next.js bundle, so the UI is a placeholder that tells you to run `make web-build`. The API is fully functional. Use this only when you know you want a CLI-only binary. |
+| Release tarball | Download from [Releases](https://github.com/BIwashi/apogee/releases) | darwin amd64 / arm64. Linux is deferred to v0.2.0. |
+| Build from source | `git clone ... && make build` | Produces `./bin/apogee` stamped with the commit and build date. |
+
+Verify:
+
+```sh
+$ apogee version
+apogee v0.1.6 (commit 7345124, built 2026-04-15T05:39:33Z, go1.25.0)
+```
+
+### 2. Run the onboarding wizard
+
+```sh
 apogee onboard
 ```
 
-`apogee onboard` installs the hooks into `~/.claude/settings.json`, installs
-apogee as a launchd / systemd user service, writes the summarizer language +
-optional system prompts into DuckDB, optionally wires an OTLP endpoint, starts
-the daemon, and opens the dashboard — all in one shell prompt. Every
-default is loaded from the current state on disk, so re-runs are safe. Pass
-`--yes` for the unattended / CI path and `--dry-run` to preview. See
-[`docs/onboard.md`](docs/onboard.md) for the full walkthrough.
+`apogee onboard` is a single interactive command that walks you through every piece of the install in one shell prompt. It is designed to be **re-runnable**: every prompt's default is loaded from the current state on disk (`~/.apogee/config.toml` + DuckDB preferences + `~/.claude/settings.json` + live daemon status), so running it again after a version bump or a tweak is always safe.
 
-If you prefer the explicit steps:
+The wizard covers five things:
 
-```sh
-# Start the collector and install hooks once for every project on this machine.
-apogee serve &
-apogee init
+1. **Claude Code hooks** — writes one entry per hook event into `~/.claude/settings.json` pointing at the `apogee hook --event X` subcommand of your current binary. User scope by default, so every project on the machine reports into the same collector. The `source_app` label is derived automatically at hook firing time from `$APOGEE_SOURCE_APP` → `git rev-parse --show-toplevel` → `$PWD`. No per-project configuration.
+2. **Background service (daemon)** — registers apogee as a `launchd` user agent (macOS) at `~/Library/LaunchAgents/dev.biwashi.apogee.plist` or a `systemd --user` unit (Linux) at `~/.config/systemd/user/apogee.service`. Logs go to `~/.apogee/logs/apogee.{out,err}.log`. The daemon auto-starts on login and auto-restarts on crash.
+3. **LLM summarizer** — asks for the output language (`en` / `ja`) and optional system prompts for the per-turn recap (Haiku), per-session rollup (Sonnet), and phase narrative (Sonnet). Everything persists into DuckDB under `user_preferences` and can be changed later from the Settings page in the dashboard.
+4. **OpenTelemetry export** (optional) — if you want traces forwarded to an external collector (Tempo, Honeycomb, Datadog, etc.), wire the OTLP endpoint and protocol here.
+5. **Open the dashboard** — starts the daemon and opens `http://127.0.0.1:4100/` in your default browser.
 
-# Open the dashboard.
-open http://localhost:4100
+Sample run (fresh machine, accepting every default):
+
+```
+APOGEE ONBOARD
+
+  This will:
+    1. Install hooks into ~/.claude/settings.json
+    2. Install apogee as a user-scope background service
+    3. Configure the LLM summarizer
+    4. Optionally wire an OTLP endpoint
+    5. Start the daemon and open the dashboard
+
+? Install Claude Code hooks at user scope?          › Yes
+? Install apogee as a background service?           › Yes
+? Start the daemon immediately after install?       › Yes
+? Summarizer output language                        › en
+? Recap system prompt (optional, leave empty)       › (empty)
+? Rollup system prompt (optional, leave empty)      › (empty)
+? Narrative system prompt (optional, leave empty)   › (empty)
+? Forward traces to an external OTLP endpoint?      › No
+? Open the dashboard after everything is wired?     › Yes
+
+? Apply these changes?                              › Yes
+
+Applying...
+  ✓ wrote ~/.apogee/config.toml
+  ✓ installed 12 hook events into ~/.claude/settings.json
+  ✓ installed launchd unit dev.biwashi.apogee
+  ✓ wrote summarizer preferences (language=en)
+  ✓ daemon started (pid 62341)
+  ✓ opened http://127.0.0.1:4100/ in your browser
+
+apogee is ready.
+  Run `apogee status` to check the daemon.
+  Run `apogee doctor` to verify the environment.
 ```
 
-That's it. `apogee init` defaults to **user scope** (`~/.claude/settings.json`), so every Claude Code session on this machine reports into the same collector. The `source_app` label is derived dynamically at hook firing time from:
+Flags for the non-interactive / scripting path:
 
-1. `$APOGEE_SOURCE_APP` — explicit override.
-2. `basename $(git rev-parse --show-toplevel)` — when the session is inside a git repository.
-3. `basename $PWD` — fallback.
+| Flag | Effect |
+|---|---|
+| `--yes` / `--non-interactive` | Skip every prompt, accept current-state defaults. Provisioning / CI. |
+| `--dry-run` | Print the plan and exit without writing anything. |
+| `--skip-hooks` | Do not touch `~/.claude/settings.json`. |
+| `--skip-daemon` | Do not install / start the daemon. |
+| `--skip-summarizer` | Do not write summarizer preferences. |
+| `--skip-telemetry` | Do not touch the `[telemetry]` block. |
 
-So starting `claude` in `~/work/newmo-backend` labels every event `source_app=newmo-backend`, and starting `claude` in `~/work/apogee` labels every event `source_app=apogee`, automatically, with no reconfiguration.
+The full walkthrough and per-flag reference live in [`docs/onboard.md`](docs/onboard.md).
 
-Pin a fixed label with `apogee init --source-app my-project` when you want to override the runtime derivation. Per-project installs are still available via `apogee init --scope project`.
+### 3. Start a Claude Code session
 
-> [!NOTE]
-> `go install` produces a binary whose embedded dashboard is a placeholder page: the API is fully functional, but the UI is a stub that instructs you to run `make web-build` locally or install a release binary. This is because the Next.js static export is not distributed through the Go module proxy. `brew install` and the release tarballs always carry the full dashboard.
+The daemon is now listening on `http://127.0.0.1:4100` and every Claude Code session on this machine reports into it. Start a session in any project:
 
-Once the collector is running, restart Claude Code in any project and every hook event begins streaming into the dashboard.
+```sh
+cd ~/work/my-project
+claude
+```
+
+Within a second or two the dashboard lights up:
+
+- **Live page** (`/`): a **Triage Rail** on the left lists every running turn sorted by attention state; a **Focus Card** on the right renders the selected turn's flame graph, current phase, current tool, and a headline from the per-turn recap the moment it lands. The event ticker above runs at a fixed height and does not push the page as new events arrive.
+- **Top ribbon**: the **LIVE** dot stays green because the SSE connection is hoisted into the app-level provider and survives every route navigation. Four selectors live here — source_app, session, time range, language (EN / JA) — plus a theme toggle (System / Light / Dark).
+- **Session detail** (`/session/?id=<id>`): opens the **Timeline** tab by default. The timeline renders LLM-generated phases (implement / review / debug / plan / test / commit / delegate / explore / other) as clickable cards. Hover a card for a 350 ms preview; click to open a side drawer with the full narrative, key steps, tool summary bar chart, and the list of turns inside the phase.
+- **Turn detail** (`/turn/?sess=<sess>&turn=<turn>`): swim lane + span tree + the three-panel recap + HITL queue + the operator intervention composer.
+- **Sessions / Agents / Insights / Events / Settings** pages in the sidebar.
+
+### 4. Verify the environment
+
+Any time the setup feels off, run:
+
+```sh
+$ apogee doctor
+
+apogee doctor
+
+  ✓ /Users/shota/.apogee writable
+  ✓ claude CLI on PATH (/Users/shota/.local/bin/claude)
+  ✓ default db path /Users/shota/.apogee/apogee.duckdb
+  ✓ no config file (defaults in use)
+  ✓ DuckDB file is unlocked
+  ✓ collector ok (http://127.0.0.1:4100/v1/healthz, 1 ms)
+  ✓ apogee hook installed for 12/12 events
+
+7 ok · 0 warnings · 0 errors
+```
+
+Pass `--json` when you want to feed the checks into a script or into `apogee menubar`.
+
+### 5. Daily operation
+
+```sh
+apogee status          # daemon + collector + recent activity at a glance
+apogee logs -f         # tail the daemon stdout + stderr
+apogee open            # open http://127.0.0.1:4100/ in the default browser
+apogee daemon restart  # after a version bump or a config tweak
+
+apogee daemon stop     # stop the service (does not uninstall)
+apogee uninstall       # remove daemon + hooks + optionally wipe ~/.apogee
+```
+
+On macOS, start the menu bar companion app for a live status icon with quick actions:
+
+```sh
+apogee menubar &
+```
+
+### Troubleshooting
+
+**`DuckDB file is locked` on start-up.**
+
+Another apogee process is holding the DB. Usually this is a stale `apogee serve` from before the daemon install. Kill it and restart:
+
+```sh
+pkill -f "apogee serve"
+lsof /Users/shota/.apogee/apogee.duckdb   # should print nothing
+apogee daemon restart
+```
+
+On the second start apogee writes `<db>.apogee.lock` + `<db>.apogee.pid` sidecars and prints a styled error box with the holder's PID, path, and a three-step fix — the raw DuckDB driver error never reaches the operator.
+
+**`LIVE` indicator is red.**
+
+The collector is unreachable. Run `apogee daemon status`. If the daemon is not running, `apogee daemon start`. If the daemon is running but the collector probe fails, `apogee logs -f` and check `apogee.err.log` for the cause.
+
+**Hooks are installed but nothing reaches the dashboard.**
+
+Run `apogee doctor` — check that the `apogee hook installed for 12/12 events` row is green. If Claude Code was running before you ran `apogee init` / `apogee onboard`, restart the Claude Code session so it picks up the new `~/.claude/settings.json`.
+
+**`go install` users see a placeholder dashboard.**
+
+That is expected. The Next.js static export cannot travel through the Go module proxy. Either run `make web-build` from a local checkout, or install via `brew` / the release tarballs which always carry the full dashboard.
+
+**The daemon keeps restarting.**
+
+`apogee logs -f` will show the exit reason. The most common cause is a DuckDB lock conflict (see above). The second most common is a stale plist pointing at a deleted binary after a `brew uninstall` — run `apogee daemon uninstall && apogee daemon install` to rewrite it.
 
 ---
 

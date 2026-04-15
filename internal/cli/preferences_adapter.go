@@ -85,6 +85,11 @@ func writeSummarizerPreferences(ctx context.Context, w preferencesWriter, prefs 
 			return err
 		}
 	}
+	if prefs.NarrativeSystemPrompt != "" {
+		if err := w.UpsertPreference(ctx, summarizer.PrefKeyNarrativeSystemPrompt, prefs.NarrativeSystemPrompt); err != nil {
+			return err
+		}
+	}
 	if prefs.RecapModelOverride != "" {
 		if err := w.UpsertPreference(ctx, summarizer.PrefKeyRecapModel, prefs.RecapModelOverride); err != nil {
 			return err
@@ -92,6 +97,11 @@ func writeSummarizerPreferences(ctx context.Context, w preferencesWriter, prefs 
 	}
 	if prefs.RollupModelOverride != "" {
 		if err := w.UpsertPreference(ctx, summarizer.PrefKeyRollupModel, prefs.RollupModelOverride); err != nil {
+			return err
+		}
+	}
+	if prefs.NarrativeModelOverride != "" {
+		if err := w.UpsertPreference(ctx, summarizer.PrefKeyNarrativeModel, prefs.NarrativeModelOverride); err != nil {
 			return err
 		}
 	}
