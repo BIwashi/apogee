@@ -178,6 +178,26 @@ export interface RollupResponse {
   model: string | null;
 }
 
+/**
+ * TodoItem mirrors one entry in Claude Code's TodoWrite tool payload.
+ * The collector reads the most recent TodoWrite span for a session and
+ * re-exposes its `todos` array so the dashboard can render the model's
+ * own self-declared next steps as upcoming nodes on the Mission view.
+ */
+export interface TodoItem {
+  content: string;
+  status: "pending" | "in_progress" | "completed" | string;
+  active_form?: string;
+}
+
+export interface SessionTodosResponse {
+  todos: TodoItem[];
+  /** ISO timestamp of the TodoWrite span that produced this checklist. */
+  captured_at: string | null;
+  /** Span id of the source TodoWrite call, for drawer linking. */
+  span_id: string | null;
+}
+
 export interface Turn {
   turn_id: string;
   trace_id: string;
