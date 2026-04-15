@@ -1,49 +1,54 @@
 //go:build darwin
 
-// Package main is the Apogee desktop shell — a Wails v2 entry point that
-// wraps the same collector + embedded Next.js dashboard that `apogee serve`
-// hosts, but renders it inside a native macOS window instead of a browser
-// tab. It shares the Go module with cmd/apogee so refactors land in one
-// place; only the process entry and the surrounding window chrome are new.
+// Package main is the Apogee desktop shell — a Wails v2 entry point
+// that wraps the same dashboard `apogee serve` hosts, rendered inside a
+// native macOS WKWebView window.
 //
-// A non-darwin stub lives in main_other.go so `go build ./...` on
-// linux/windows CI runners prints a clear "macOS only" error instead of
-// pulling the WKWebView bindings.
+// # Runtime modes
 //
-// Architecture:
+// The shell supports two modes, selected automatically at launch and
+// overridable via the APOGEE_DESKTOP_MODE environment variable:
 //
-//	DuckDB store ──▶ collector.New ──▶ Server.Router (chi.Router, http.Handler)
-//	                                      │
-//	                                      ▼
-//	                        Wails AssetServer.Handler
-//	                                      │
-//	                                      ▼
-//	                              WKWebView (native)
+//   - proxy (default when the daemon is reachable): the Wails window is
+//     a thin reverse-proxy wrapper around a running `apogee daemon` on
+//     localhost:4100. No DuckDB is opened in the desktop process, no
+//     collector is constructed, no worker goroutines are started. This
+//     is the only mode that works correctly alongside Claude Code hooks
+//     — operator interventions, summarizer recaps, HITL queue
+//     responses, etc. all flow through the single daemon the hooks were
+//     configured against at onboard time.
 //
-// No extra TCP listener is opened in the desktop process — the Wails
-// AssetServer dispatches WebView requests straight into the chi router, so
-// /v1/* API calls and the embedded SPA are served from the same in-process
-// handler the HTTP serve command uses.
+//   - embedded (escape hatch, APOGEE_DESKTOP_MODE=embedded): the desktop
+//     process owns its own collector, DuckDB, and worker pool. Useful
+//     for isolated sessions or for running without a daemon, but WILL
+//     conflict with a running daemon over the DuckDB lock and will NOT
+//     receive operator interventions from running Claude Code sessions
+//     (those still talk to whatever URL .claude/settings.json was
+//     configured with by `apogee onboard`, which is the daemon).
+//
+// # First-run bootstrap
+//
+// When auto mode detects no daemon, the shell shows a native Cocoa
+// confirmation dialog (via osascript) offering to run `apogee onboard
+// --yes` as a subprocess. If the user accepts, onboard installs and
+// starts the daemon, the shell waits for it to become reachable, writes
+// an ~/.apogee/installed-by-desktop marker so the cask uninstall path
+// knows we own the daemon, and then transitions to proxy mode. If the
+// user declines, the shell exits cleanly.
+//
+// # Non-darwin
+//
+// A stub entry point in main_other.go handles //go:build !darwin so
+// `go build ./...` on linux/windows CI runners stays green and any
+// attempt to actually run the binary there prints a clear "macOS only"
+// message.
 package main
 
 import (
-	"context"
 	"fmt"
 	"log/slog"
 	"os"
-	"path/filepath"
 	"strings"
-	"sync"
-	"time"
-
-	"github.com/wailsapp/wails/v2"
-	"github.com/wailsapp/wails/v2/pkg/options"
-	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
-	"github.com/wailsapp/wails/v2/pkg/options/mac"
-
-	"github.com/BIwashi/apogee/internal/collector"
-	"github.com/BIwashi/apogee/internal/store/duckdb"
-	"github.com/BIwashi/apogee/internal/version"
 )
 
 func main() {
@@ -57,135 +62,68 @@ func run() error {
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	slog.SetDefault(logger)
 
-	dbPath, err := resolveDBPath()
-	if err != nil {
-		return err
-	}
-	if dbPath != ":memory:" {
-		if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
-			return fmt.Errorf("ensure db dir: %w", err)
+	mode := resolveMode()
+	daemonAddr := resolveDaemonAddr()
+	logger.Info("apogee desktop starting", "mode", mode, "daemon_addr", daemonAddr, "version_tag", "desktop")
+
+	switch mode {
+	case modeProxy:
+		// User forced proxy mode. If the daemon is down, fail fast
+		// rather than silently falling back — forcing proxy means
+		// the caller has opinions about transport and we should
+		// honour them.
+		if !daemonReachable(daemonAddr) {
+			showErrorDialog("apogee-desktop was launched with APOGEE_DESKTOP_MODE=proxy but the daemon at " + daemonAddr + " is not reachable. Start the daemon with `apogee daemon start` and try again.")
+			return fmt.Errorf("proxy mode forced but daemon %s unreachable", daemonAddr)
 		}
+		return runProxy(logger, daemonAddr)
+
+	case modeEmbedded:
+		// User forced embedded mode. Skip the daemon probe and run
+		// the in-process collector. Known to conflict with a live
+		// daemon over DuckDB; documented in docs/desktop.md.
+		return runEmbedded(logger)
+
+	case modeAuto:
+		// Default path: probe the daemon, proxy if it answers,
+		// otherwise run the first-run bootstrap flow which ends in
+		// proxy mode as well.
+		if daemonReachable(daemonAddr) {
+			return runProxy(logger, daemonAddr)
+		}
+		return runBootstrap(logger, daemonAddr)
 	}
 
-	// Open the store and build the collector up front — this is the same
-	// wiring `apogee serve` uses, minus the HTTP listener. The Wails
-	// AssetServer will dispatch WebView requests straight into the router
-	// we get back from the Server, so we never bind a TCP port.
-	bootCtx := context.Background()
-	store, err := duckdb.Open(bootCtx, dbPath)
-	if err != nil {
-		return fmt.Errorf("open duckdb %q: %w", dbPath, err)
-	}
-
-	// The HTTPAddr field is surfaced verbatim by /v1/info → the Settings
-	// page. A blank string would render as an empty row in the UI, so
-	// label the in-process transport explicitly instead.
-	srv := collector.New(
-		collector.Config{HTTPAddr: "in-process (wails webview)", DBPath: dbPath},
-		store,
-		logger,
-	)
-
-	// Start the background workers synchronously before handing control
-	// to wails.Run. Wails invokes OnStartup on a goroutine it owns (see
-	// frontend/desktop/darwin/frontend.go in wails v2.12), so if we
-	// started workers there we would race against the deferred teardown
-	// fallback below whenever wails.Run returned an error before the
-	// OnStartup goroutine had had a chance to run. Doing it up front
-	// removes the race and means OnStartup can stay a plain "window is
-	// ready" log callback.
-	workerCtx, cancelWorkers := context.WithCancel(context.Background())
-	srv.StartBackground(workerCtx)
-
-	// A single teardown function covers every exit path: the normal
-	// OnShutdown hook, and the deferred fallback that fires if wails.Run
-	// returns an error before OnShutdown is reached. Wrapped in
-	// sync.Once so the two paths never race. Order is important —
-	// workers must stop before the store closes, otherwise any pending
-	// writes from the metrics sampler or summarizer would hit a closed
-	// DuckDB handle.
-	var teardownOnce sync.Once
-	teardown := func(reason string) {
-		teardownOnce.Do(func() {
-			logger.Info("apogee desktop shutting down", "reason", reason)
-			cancelWorkers()
-			// Bound the ctx-aware parts of StopBackground (currently
-			// just the OTel span processor flush) to 5 s so a wedged
-			// exporter cannot hold up window exit. summarizer.Stop()
-			// and interventions.Stop() do a sync.WaitGroup drain
-			// that does not honour this context — they block until
-			// their in-flight jobs return. In practice both are
-			// backed by subprocess calls that self-timeout, so we
-			// accept the worst-case wait rather than force-killing
-			// workers mid-write.
-			stopCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer cancel()
-			srv.StopBackground(stopCtx)
-			if err := store.Close(); err != nil {
-				logger.Warn("close duckdb store", "err", err)
-			}
-		})
-	}
-	defer teardown("fallback")
-
-	onStartup := func(_ context.Context) {
-		logger.Info("apogee desktop window ready", "version", version.Version, "db", dbPath)
-	}
-
-	onShutdown := func(_ context.Context) {
-		teardown("onShutdown")
-	}
-
-	return wails.Run(&options.App{
-		Title:             "Apogee",
-		Width:             1440,
-		Height:            900,
-		MinWidth:          1024,
-		MinHeight:         640,
-		BackgroundColour:  options.NewRGB(10, 12, 20),
-		HideWindowOnClose: false,
-		AssetServer: &assetserver.Options{
-			Handler: srv.Router(),
-		},
-		OnStartup:  onStartup,
-		OnShutdown: onShutdown,
-		Mac: &mac.Options{
-			TitleBar: &mac.TitleBar{
-				TitlebarAppearsTransparent: true,
-				HideTitle:                  false,
-				HideTitleBar:               false,
-				FullSizeContent:            true,
-				UseToolbar:                 false,
-				HideToolbarSeparator:       true,
-			},
-			Appearance:           mac.NSAppearanceNameDarkAqua,
-			WebviewIsTransparent: false,
-			WindowIsTranslucent:  false,
-			About: &mac.AboutInfo{
-				Title:   "Apogee",
-				Message: "Single-binary observability for multi-agent Claude Code sessions.\nVersion " + version.Version,
-			},
-		},
-	})
+	return fmt.Errorf("unknown mode %q", mode)
 }
 
-func resolveDBPath() (string, error) {
-	if v := strings.TrimSpace(os.Getenv("APOGEE_DB")); v != "" {
-		return expandHome(v)
+const (
+	modeAuto     = "auto"
+	modeProxy    = "proxy"
+	modeEmbedded = "embedded"
+)
+
+// resolveMode reads APOGEE_DESKTOP_MODE. Empty or unrecognised values
+// fall back to auto. The enum is deliberately tiny — any expansion here
+// should come with a docs update in docs/desktop.md.
+func resolveMode() string {
+	v := strings.ToLower(strings.TrimSpace(os.Getenv("APOGEE_DESKTOP_MODE")))
+	switch v {
+	case modeProxy, modeEmbedded, modeAuto:
+		return v
+	default:
+		return modeAuto
 	}
-	return expandHome("~/.apogee/apogee.duckdb")
 }
 
-func expandHome(p string) (string, error) {
-	if p == "" || p == ":memory:" {
-		return p, nil
+// resolveDaemonAddr returns the host:port that proxy mode forwards to
+// and that the daemon reachability probe hits. Defaults to the
+// apogee-standard 127.0.0.1:4100; APOGEE_DAEMON_ADDR lets advanced
+// users point at a different port (e.g. when running a second daemon
+// for testing). Must NOT include a scheme — only host:port.
+func resolveDaemonAddr() string {
+	if v := strings.TrimSpace(os.Getenv("APOGEE_DAEMON_ADDR")); v != "" {
+		return v
 	}
-	if p == "~" || strings.HasPrefix(p, "~/") {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return "", err
-		}
-		return filepath.Join(home, strings.TrimPrefix(p, "~")), nil
-	}
-	return p, nil
+	return "127.0.0.1:4100"
 }
