@@ -13,7 +13,7 @@ internal/...        Internal Go packages (collector, store, sse, otel)
 web/                Next.js 16 dashboard (App Router, Tailwind v4)
   app/              Routes and React components
   app/lib/          Typed API client, SWR helpers, design tokens
-  public/fonts/     Artemis Inter display font
+  public/fonts/     Space Grotesk display font (SIL OFL 1.1)
 semconv/            OpenTelemetry semantic conventions for claude_code.*
 docs/               Architecture and design-token specification
 .github/workflows/  CI (go vet/build/test, web typecheck/lint/build)
@@ -45,7 +45,7 @@ make build                     # build Go binary and Next.js bundle
 The visual identity is the product's competitive advantage and is documented in
 [`docs/design-tokens.md`](docs/design-tokens.md). Do not introduce alternate
 color scales, emoji, or component libraries. lucide-react is the only icon set.
-Artemis Inter is the only display font.
+Space Grotesk is the only display font; body text uses the native OS stack.
 
 ## Architecture
 

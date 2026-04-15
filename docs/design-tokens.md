@@ -1,10 +1,12 @@
 # apogee design tokens
 
-apogee inherits its visual identity from the NASA Artemis Graphic Standards
-Guide (September 2021), the same palette shared with the sibling project
-[aperion](https://github.com/BIwashi/aperion). This document is the canonical
-specification for the design system. The three sources that must stay aligned
-are:
+apogee's visual identity is a dark, space-tech geometric system that shares a
+color palette with the sibling project
+[aperion](https://github.com/BIwashi/aperion). The palette hues are inspired
+by NASA Artemis-program marketing materials but are generic hex values;
+apogee does not bundle any NASA trademark, font, or logo. This document is
+the canonical specification for the design system. The three sources that
+must stay aligned are:
 
 1. `web/app/globals.css` — CSS variables and utility classes
 2. `web/app/lib/design-tokens.ts` — typed TypeScript re-exports
@@ -62,27 +64,37 @@ linear-gradient(135deg, #0B3D91 0%, #27AAE1 50%, #FC3D21 100%)
 
 ## Typography
 
-### Display — Artemis Inter
+### Display — Space Grotesk
 
-- File: `web/public/fonts/Artemis_Inter.otf` (copied verbatim from aperion)
-- Weight: `700`
+- Files: `web/public/fonts/SpaceGrotesk-Medium.ttf` (weight 500) and
+  `web/public/fonts/SpaceGrotesk-Bold.ttf` (weight 700), both instanced
+  from the upstream variable font.
+- License: SIL Open Font License 1.1. A verbatim copy of the license ships
+  alongside the TTFs at `web/public/fonts/SpaceGrotesk-OFL.txt`. Space
+  Grotesk is by Florian Karsten (upstream:
+  https://github.com/floriankarsten/space-grotesk). The OFL allows
+  redistribution inside apogee as long as the license file travels with
+  the font binaries.
+- Weight: `700` for hero/section headers, `500` for the smaller ALL-CAPS
+  labels (10–12 px).
 - `text-transform: uppercase`
 - `letter-spacing: 0.12em` (bump to `0.16em`–`0.20em` for hero treatments)
 - CSS class: `.font-display`
-- Rule: keep display runs short — three words maximum per block, per NASA
-  guideline.
+- Rule: display font is for **headings only** — uppercase, one to three
+  words, at display sizes. Long headlines (recap blobs, prompt text) and
+  every label longer than a few words should use the body stack.
 
 ### Body — system stack
 
 ```css
-font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans",
+font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue",
   Helvetica, Arial, sans-serif;
 ```
 
 ### Monospace
 
 ```css
-font-family: ui-monospace, "SF Mono", Menlo, monospace;
+font-family: ui-monospace, "SF Mono", Menlo, Monaco, monospace;
 ```
 
 Use for event ids, session ids, timestamps, and any code-shaped value.
@@ -91,7 +103,7 @@ Use for event ids, session ids, timestamps, and any code-shaped value.
 
 | Level   | Size     | Weight        | Role               |
 | ------- | -------- | ------------- | ------------------ |
-| Display | 20–60 px | 700 (Artemis) | Hero, page title   |
+| Display | 20–60 px | 700 (Space Grotesk) | Hero, page title |
 | Heading | 14–16 px | 600           | Section headers    |
 | Body    | 13 px    | 400           | Default text       |
 | Caption | 11 px    | 400           | Labels, timestamps |
@@ -215,5 +227,6 @@ const color = sessionColor(session.id); // deterministic hex
    consistently — there is one `critical`, one `warning`, one `success`, one
    `info`, one `muted`.
 4. **No emoji.** Ever. lucide-react is the only icon library.
-5. **Artemis for authority.** Display font is reserved for titles, brand
-   marks, and short section headers.
+5. **Space Grotesk for authority.** Display font is reserved for titles,
+   brand marks, and short section headers — one to three words, uppercase,
+   at display sizes. Everything else is body stack.
