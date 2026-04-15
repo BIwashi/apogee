@@ -86,6 +86,17 @@ func run() error {
 		logger,
 	)
 
+	// Start the background workers synchronously before handing control
+	// to wails.Run. Wails invokes OnStartup on a goroutine it owns (see
+	// frontend/desktop/darwin/frontend.go in wails v2.12), so if we
+	// started workers there we would race against the deferred teardown
+	// fallback below whenever wails.Run returned an error before the
+	// OnStartup goroutine had had a chance to run. Doing it up front
+	// removes the race and means OnStartup can stay a plain "window is
+	// ready" log callback.
+	workerCtx, cancelWorkers := context.WithCancel(context.Background())
+	srv.StartBackground(workerCtx)
+
 	// A single teardown function covers every exit path: the normal
 	// OnShutdown hook, and the deferred fallback that fires if wails.Run
 	// returns an error before OnShutdown is reached. Wrapped in
@@ -93,16 +104,11 @@ func run() error {
 	// workers must stop before the store closes, otherwise any pending
 	// writes from the metrics sampler or summarizer would hit a closed
 	// DuckDB handle.
-	var (
-		teardownOnce  sync.Once
-		cancelWorkers context.CancelFunc
-	)
+	var teardownOnce sync.Once
 	teardown := func(reason string) {
 		teardownOnce.Do(func() {
 			logger.Info("apogee desktop shutting down", "reason", reason)
-			if cancelWorkers != nil {
-				cancelWorkers()
-			}
+			cancelWorkers()
 			// Bound the ctx-aware parts of StopBackground (currently
 			// just the OTel span processor flush) to 5 s so a wedged
 			// exporter cannot hold up window exit. summarizer.Stop()
@@ -122,14 +128,8 @@ func run() error {
 	}
 	defer teardown("fallback")
 
-	// The workers (metrics sampler, summarizer, HITL ticker, intervention
-	// sweeper) are scoped to the window's lifetime via OnStartup /
-	// OnShutdown so they exit cleanly when the user closes the window.
-	onStartup := func(ctx context.Context) {
-		workerCtx, cancel := context.WithCancel(ctx)
-		cancelWorkers = cancel
-		srv.StartBackground(workerCtx)
-		logger.Info("apogee desktop started", "version", version.Version, "db", dbPath)
+	onStartup := func(_ context.Context) {
+		logger.Info("apogee desktop window ready", "version", version.Version, "db", dbPath)
 	}
 
 	onShutdown := func(_ context.Context) {

@@ -179,9 +179,10 @@ func (s *Server) Router() chi.Router { return s.router }
 // The tradeoff is that only the first ctx matters. A later call with a
 // shorter-lived ctx cannot shrink the worker lifetime. In practice this
 // is fine because only one caller in a given process owns the worker
-// lifetime (`Run()` for `apogee serve`, the desktop shell's OnStartup
-// hook for the Wails window). Callers that want to replace the ctx
-// should construct a new Server instead.
+// lifetime: `Run()` for `apogee serve`, and the `run()` function in the
+// Wails desktop shell (which calls StartBackground synchronously before
+// wails.Run). Callers that want to replace the ctx should construct a
+// new Server instead.
 func (s *Server) StartBackground(ctx context.Context) {
 	s.startBackground.Do(func() {
 		if s.metrics != nil {
