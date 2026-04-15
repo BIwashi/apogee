@@ -5,6 +5,12 @@ All notable changes to apogee will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.1.18](https://github.com/BIwashi/apogee/compare/v0.1.17...v0.1.18) - 2026-04-15
+- docs(contributing): English-only PRs + no session framing in bodies by @BIwashi in https://github.com/BIwashi/apogee/pull/74
+- chore: ignore CLAUDE.md so dev-only meta stays local by @BIwashi in https://github.com/BIwashi/apogee/pull/77
+- Review pass 1: JSON body cap + design-token cleanup by @BIwashi in https://github.com/BIwashi/apogee/pull/76
+- fix(ui): sidebar nav + live scroll + desktop titlebar overlap by @BIwashi in https://github.com/BIwashi/apogee/pull/78
+
 ## [v0.1.17](https://github.com/BIwashi/apogee/compare/v0.1.16...v0.1.17) - 2026-04-15
 - feat(agents): default to nested tree view on /agents by @BIwashi in https://github.com/BIwashi/apogee/pull/71
 - chore: untrack CLAUDE.md — dev-only guidance stays local by @BIwashi in https://github.com/BIwashi/apogee/pull/73
