@@ -16,6 +16,7 @@ import FilterChips, {
 import HITLPanel from "../components/HITLPanel";
 import OperatorQueueSection from "../components/OperatorQueueSection";
 import RawLogsPanel from "../components/RawLogsPanel";
+import LiveKeySteps from "../components/LiveKeySteps";
 import RecapPanels from "../components/RecapPanels";
 import SectionHeader from "../components/SectionHeader";
 import SpanTree from "../components/SpanTree";
@@ -450,11 +451,21 @@ export default function TurnDetailPage() {
       <section className="grid gap-3 md:grid-cols-[1fr_320px]">
         <div className="flex flex-col gap-3">
           <SectionHeader title="Recap" subtitle="Populated by the Haiku summariser." />
-          <RecapPanels
-            recap={recap}
-            onRegenerate={onRegenerate}
-            regenerating={regenerating}
-          />
+          {/* While the turn is running and the Haiku recap has not
+              yet landed, show a live key-steps panel derived from
+              the streaming tool spans so the operator can see "what
+              is the agent doing right now" without waiting for
+              turn close. Once the recap arrives we swap in the
+              full RecapPanels instead. */}
+          {String(liveTurn.status) === "running" && !recap ? (
+            <LiveKeySteps spans={spans} status={String(liveTurn.status)} />
+          ) : (
+            <RecapPanels
+              recap={recap}
+              onRegenerate={onRegenerate}
+              regenerating={regenerating}
+            />
+          )}
         </div>
         <div className="flex flex-col gap-3">
           <SectionHeader title="Human in the loop" subtitle="Pending HITL requests for this turn." />
