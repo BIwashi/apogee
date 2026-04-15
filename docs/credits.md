@@ -4,14 +4,25 @@ apogee is built on top of the work of many others. This file lists third-party
 assets, fonts, libraries, and inspirations that ship with the binary or are
 required at runtime.
 
-## Display font
+## Display fonts
 
-**Space Grotesk** by Florian Karsten is used as apogee's display font. It is
-licensed under the SIL Open Font License 1.1. A copy of the license ships with
-the font file under `web/public/fonts/SpaceGrotesk-OFL.txt`.
+apogee ships two display faces and pairs them by role.
+
+**Space Grotesk** by Florian Karsten handles the everyday display workload —
+every small ALL-CAPS label, section header, caption, and button — because it
+stays legible at 10–14 px where the other display face does not. It is
+licensed under the SIL Open Font License 1.1. A copy of the license ships
+with the font file under `web/public/fonts/SpaceGrotesk-OFL.txt`.
 
 - Upstream: https://github.com/floriankarsten/space-grotesk
 - License: SIL Open Font License 1.1
+
+**Artemis Inter** is reserved as a brand accent for the APOGEE wordmark
+(sidebar + top ribbon) and a few hero-sized page h1s (Live, Events,
+Styleguide). The heavier face reads as brand impact at large sizes and is
+never used below ~16 px.
+
+- File: `web/public/fonts/Artemis_Inter.otf`
 
 ## Body font
 
@@ -61,9 +72,7 @@ is bundled.
 
 ## NASA brand marks
 
-apogee does not bundle any NASA trademark, font, or logo. Earlier development
-snapshots used NASA's Artemis Inter display font; that has been removed in
-favour of the SIL OFL-licensed Space Grotesk. The Artemis-program-inspired
+apogee does not bundle any NASA trademark or logo. The Artemis-program-inspired
 color palette (deep space blue, Artemis red, Earth blue) consists of generic
 hex values used under their ordinary design-system meaning and does not claim
 affiliation with NASA.

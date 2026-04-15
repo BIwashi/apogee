@@ -79,7 +79,7 @@ export default function TopRibbon() {
         {/* Wordmark */}
         <Link
           href="/"
-          className="font-display text-[13px] tracking-[0.2em] text-[var(--artemis-white)]"
+          className="font-display-accent text-[13px] tracking-[0.2em] text-[var(--artemis-white)]"
           title="apogee — clear selection"
         >
           APOGEE

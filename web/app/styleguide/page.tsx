@@ -18,7 +18,7 @@ export default function StyleguidePage() {
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-10">
       <header className="pt-6">
-        <h1 className="font-display text-5xl leading-none tracking-[0.16em] text-[var(--artemis-white)] md:text-6xl">
+        <h1 className="font-display-accent text-5xl leading-none tracking-[0.16em] text-[var(--artemis-white)] md:text-6xl">
           APOGEE
         </h1>
         <div className="accent-gradient-bar mt-4 h-[3px] w-40 rounded-full" />

@@ -49,6 +49,7 @@ const shared = {
   },
   typography: {
     display: `"Space Grotesk", -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Helvetica, Arial, sans-serif`,
+    displayAccent: `"Artemis Inter", "Space Grotesk", ui-sans-serif, system-ui, sans-serif`,
     body: `-apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Helvetica, Arial, sans-serif`,
     mono: `ui-monospace, "SF Mono", Menlo, Monaco, monospace`,
   },

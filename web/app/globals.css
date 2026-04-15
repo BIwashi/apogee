@@ -36,6 +36,13 @@
   font-style: normal;
   font-display: swap;
 }
+@font-face {
+  font-family: "Artemis Inter";
+  src: url("/fonts/Artemis_Inter.otf") format("opentype");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
 
 /* ── Shared tokens (unchanged between themes) ───────────── */
 :root {
@@ -46,9 +53,17 @@
   --artemis-blue: #0B3D91;
   --artemis-black: #000000;
 
-  /* Typography */
+  /* Typography
+   * --font-display is the workhorse for every ALL-CAPS section header,
+   * caption, and label. Using Artemis Inter for all of those proved
+   * hard to read at small sizes, so Space Grotesk carries the general
+   * display load while --font-display-accent keeps Artemis Inter for
+   * the brand wordmark and a couple of hero-sized accents where its
+   * tighter, heavier character actually helps. */
   --font-display: "Space Grotesk", -apple-system, BlinkMacSystemFont,
     "Segoe UI", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --font-display-accent: "Artemis Inter", "Space Grotesk", ui-sans-serif,
+    system-ui, sans-serif;
   --font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue",
     Helvetica, Arial, sans-serif;
   --font-mono: ui-monospace, "SF Mono", Menlo, Monaco, monospace;
@@ -295,6 +310,18 @@ body {
 .font-display {
   font-family: var(--font-display);
   letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-weight: 700;
+}
+
+/* ── Brand accent (Artemis Inter) ──────────
+ * Use sparingly — the wordmark and hero-sized accents only. Artemis
+ * Inter is a heavier, tighter face that reads great at 16 px+ but
+ * gets muddy on small ALL-CAPS labels; pair it with .font-display
+ * (Space Grotesk) for the general workload. */
+.font-display-accent {
+  font-family: var(--font-display-accent);
+  letter-spacing: 0.14em;
   text-transform: uppercase;
   font-weight: 700;
 }

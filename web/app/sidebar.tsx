@@ -135,11 +135,11 @@ export default function Sidebar({ children }: { children: React.ReactNode }) {
           }`}
         >
           {!collapsed ? (
-            <h1 className="font-display text-base tracking-[0.2em] text-[var(--artemis-white)]">
+            <h1 className="font-display-accent text-base tracking-[0.2em] text-[var(--artemis-white)]">
               APOGEE
             </h1>
           ) : (
-            <span className="font-display text-sm text-[var(--artemis-white)]">A</span>
+            <span className="font-display-accent text-sm text-[var(--artemis-white)]">A</span>
           )}
           <button
             onClick={() => setUserCollapsed(!collapsed)}

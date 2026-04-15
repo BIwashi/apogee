@@ -125,25 +125,46 @@ apogee は PR #33 までダーク専用でした。2 つめのパレットは
 
 ## タイポグラフィ
 
-### ディスプレイ — Space Grotesk
+### ディスプレイ — Space Grotesk（汎用）+ Artemis Inter（ブランドアクセント）
+
+apogee は 2 つの uppercase ディスプレイフォントを組み合わせて使います。
+Space Grotesk はセクション見出し、キャプション、ラベル、ボタンなど日常的
+な表示を担当します（10–14 px でも読みやすいため）。Artemis Inter は
+もっと重く引き締まった書体なので、ブランド色を出したい場面専用に残して
+います。
+
+#### Space Grotesk — 通常のディスプレイ
 
 - ファイル: `web/public/fonts/SpaceGrotesk-Medium.ttf`（ウェイト 500）と
   `web/public/fonts/SpaceGrotesk-Bold.ttf`（ウェイト 700）。どちらも上流の
   variable font から instancing したもの。
-- ライセンス: SIL Open Font License 1.1。同じディレクトリの
-  `web/public/fonts/SpaceGrotesk-OFL.txt` にライセンス本文を同梱しています。
-  Space Grotesk の作者は Florian Karsten
-  （上流: https://github.com/floriankarsten/space-grotesk）。OFL により、
-  ライセンスファイルをフォントバイナリと一緒に配布する限り apogee 内への
-  再配布が認められています。
-- ウェイト: ヒーロー／セクション見出しには `700`、10–12 px の ALL-CAPS
-  ラベルには `500` を使用。
+- ライセンス: SIL Open Font License 1.1。
+  `web/public/fonts/SpaceGrotesk-OFL.txt` にライセンス本文を同梱。
+  作者は Florian Karsten（上流:
+  https://github.com/floriankarsten/space-grotesk）。
+- CSS クラス: `.font-display` → `--font-display` を参照。
+- 用途: セクション見出し、キャプション、ボタン、facet タイトル、ドロワー
+  ヘッダー、KPI ラベルなど。ブランドアクセントを明示的に使わない限り、
+  デフォルトはこちら。
+
+#### Artemis Inter — ブランドアクセント
+
+- ファイル: `web/public/fonts/Artemis_Inter.otf`
+- ウェイト: `700`
+- CSS クラス: `.font-display-accent` → `--font-display-accent` を参照
+  （フォントが読めない場合は Space Grotesk にフォールバック）。
+- 用途: **APOGEE ワードマーク**（サイドバー先頭、TopRibbon ホームリンク）と、
+  数箇所のヒーロー h1（Live、Events、Styleguide）。3xl / 4xl / 5xl の
+  サイズでは引き締まった字形がブランドトーンとして効きますが、キャプション
+  サイズでは潰れるので小さなテキストには使わないこと。
+- ルール: ディスプレイ文字列は短く保つこと。1 ブロックあたり 1〜3 語まで。
+
+#### 共通の挙動
+
 - `text-transform: uppercase`
-- `letter-spacing: 0.12em`（ヒーロー系は `0.16em`–`0.20em` まで拡大）
-- CSS クラス: `.font-display`
-- ルール: ディスプレイフォントは**見出し専用** — uppercase、1〜3 語、
-  大きめのディスプレイサイズで使用。長い見出し（recap 本文、プロンプト）や
-  数語を超えるラベルは body スタックを使うこと。
+- `letter-spacing`: Space Grotesk は `0.12em`、Artemis は `0.14em`
+  （ヒーロー系は `0.16em`–`0.20em` まで拡大）
+- どちらも `font-weight: 700`
 
 ### 本文 — システムフォントスタック
 
@@ -164,7 +185,7 @@ font-family: ui-monospace, "SF Mono", Menlo, monospace;
 
 | レベル   | サイズ     | ウェイト      | 用途               |
 | ------- | -------- | ------------- | ------------------ |
-| Display | 20–60 px | 700 (Space Grotesk) | ヒーロー、ページタイトル |
+| Display | 20–60 px | 700 (Space Grotesk / ブランドは Artemis) | ヒーロー、ページタイトル |
 | Heading | 14–16 px | 600           | セクションヘッダー |
 | Body    | 13 px    | 400           | 既定テキスト       |
 | Caption | 11 px    | 400           | ラベル、タイムスタンプ |
