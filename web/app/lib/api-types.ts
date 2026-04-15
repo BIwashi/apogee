@@ -808,6 +808,12 @@ export interface ApogeeInfo {
   otel_endpoint: string;
   collector_addr: string;
   uptime_seconds: number;
+  // Set when the upgrade-watcher has noticed a newer apogee binary on
+  // disk (typical trigger: `brew upgrade apogee`). The dashboard turns
+  // these into an UpgradeBanner with a one-click restart.
+  update_available?: boolean;
+  available_version?: string;
+  available_version_detected_at?: string;
 }
 
 /**

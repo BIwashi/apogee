@@ -44,6 +44,7 @@ type Server struct {
 	hitl            *hitl.Service
 	interventions   *interventions.Service
 	watchdog        *watchdog.Worker
+	upgradeWatcher  *upgradeWatcher
 	telemetry       *telemetry.Provider
 	startedAt       time.Time
 	startBackground sync.Once // guards StartBackground against double-start
@@ -129,18 +130,19 @@ func New(cfg Config, store *duckdb.Store, logger *slog.Logger) *Server {
 	}
 
 	s := &Server{
-		cfg:           cfg,
-		store:         store,
-		reconstructor: rec,
-		hub:           hub,
-		logger:        logger,
-		metrics:       metrics.New(store, metrics.DefaultInterval, logger),
-		summarizer:    summarizerSvc,
-		hitl:          hitlSvc,
-		interventions: interventionSvc,
-		watchdog:      watchdog.NewWorker(store, hub, logger),
-		telemetry:     telProv,
-		startedAt:     time.Now(),
+		cfg:            cfg,
+		store:          store,
+		reconstructor:  rec,
+		hub:            hub,
+		logger:         logger,
+		metrics:        metrics.New(store, metrics.DefaultInterval, logger),
+		summarizer:     summarizerSvc,
+		hitl:           hitlSvc,
+		interventions:  interventionSvc,
+		watchdog:       watchdog.NewWorker(store, hub, logger),
+		upgradeWatcher: newUpgradeWatcher(version.Version, logger),
+		telemetry:      telProv,
+		startedAt:      time.Now(),
 	}
 	s.router = s.buildRouter()
 	return s
@@ -200,6 +202,9 @@ func (s *Server) StartBackground(ctx context.Context) {
 		}
 		if s.interventions != nil {
 			s.interventions.Start(ctx)
+		}
+		if s.upgradeWatcher != nil {
+			s.upgradeWatcher.Start(ctx)
 		}
 	})
 }
@@ -295,6 +300,7 @@ func (s *Server) buildRouter() chi.Router {
 
 	r.Get("/v1/healthz", s.healthz)
 	r.Get("/v1/info", s.getInfo)
+	r.Post("/v1/daemon/restart", s.postDaemonRestart)
 	r.Get("/v1/preferences", s.listPreferences)
 	r.Patch("/v1/preferences", s.patchPreferences)
 	r.Delete("/v1/preferences", s.deletePreferences)
@@ -1048,6 +1054,15 @@ func (s *Server) getInfo(w http.ResponseWriter, _ *http.Request) {
 	if s.telemetry != nil {
 		body["otel_enabled"] = s.telemetry.Enabled
 		body["otel_endpoint"] = s.telemetry.Cfg.Endpoint
+	}
+	if available, detected := s.upgradeWatcher.Snapshot(); available != "" {
+		body["update_available"] = true
+		body["available_version"] = available
+		if !detected.IsZero() {
+			body["available_version_detected_at"] = detected.Format(time.RFC3339)
+		}
+	} else {
+		body["update_available"] = false
 	}
 	writeJSON(w, http.StatusOK, body)
 }
