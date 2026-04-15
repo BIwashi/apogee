@@ -77,21 +77,6 @@ func run() error {
 		return fmt.Errorf("open duckdb %q: %w", dbPath, err)
 	}
 
-	// Guard the store close so the OnShutdown hook and the deferred
-	// fallback below can both call it without risking a double-free.
-	// The fallback handles the case where wails.Run() returns an error
-	// before OnShutdown fires (e.g. WebView init failure) — without it
-	// the DuckDB sidecar lock would leak on early-return paths.
-	var closeStoreOnce sync.Once
-	closeStore := func() {
-		closeStoreOnce.Do(func() {
-			if err := store.Close(); err != nil {
-				logger.Warn("close duckdb store", "err", err)
-			}
-		})
-	}
-	defer closeStore()
-
 	// The HTTPAddr field is surfaced verbatim by /v1/info → the Settings
 	// page. A blank string would render as an empty row in the UI, so
 	// label the in-process transport explicitly instead.
@@ -101,11 +86,45 @@ func run() error {
 		logger,
 	)
 
+	// A single teardown function covers every exit path: the normal
+	// OnShutdown hook, and the deferred fallback that fires if wails.Run
+	// returns an error before OnShutdown is reached. Wrapped in
+	// sync.Once so the two paths never race. Order is important —
+	// workers must stop before the store closes, otherwise any pending
+	// writes from the metrics sampler or summarizer would hit a closed
+	// DuckDB handle.
+	var (
+		teardownOnce  sync.Once
+		cancelWorkers context.CancelFunc
+	)
+	teardown := func(reason string) {
+		teardownOnce.Do(func() {
+			logger.Info("apogee desktop shutting down", "reason", reason)
+			if cancelWorkers != nil {
+				cancelWorkers()
+			}
+			// Bound the ctx-aware parts of StopBackground (currently
+			// just the OTel span processor flush) to 5 s so a wedged
+			// exporter cannot hold up window exit. summarizer.Stop()
+			// and interventions.Stop() do a sync.WaitGroup drain
+			// that does not honour this context — they block until
+			// their in-flight jobs return. In practice both are
+			// backed by subprocess calls that self-timeout, so we
+			// accept the worst-case wait rather than force-killing
+			// workers mid-write.
+			stopCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			srv.StopBackground(stopCtx)
+			if err := store.Close(); err != nil {
+				logger.Warn("close duckdb store", "err", err)
+			}
+		})
+	}
+	defer teardown("fallback")
+
 	// The workers (metrics sampler, summarizer, HITL ticker, intervention
 	// sweeper) are scoped to the window's lifetime via OnStartup /
 	// OnShutdown so they exit cleanly when the user closes the window.
-	var cancelWorkers context.CancelFunc
-
 	onStartup := func(ctx context.Context) {
 		workerCtx, cancel := context.WithCancel(ctx)
 		cancelWorkers = cancel
@@ -114,22 +133,7 @@ func run() error {
 	}
 
 	onShutdown := func(_ context.Context) {
-		logger.Info("apogee desktop shutting down")
-		if cancelWorkers != nil {
-			cancelWorkers()
-		}
-		// Bound the ctx-aware parts of StopBackground (currently just
-		// the OTel span processor flush) to 5 s so a wedged exporter
-		// cannot hold up window exit. Note that summarizer.Stop() and
-		// interventions.Stop() do a sync.WaitGroup drain that does not
-		// honour this context — they block until their in-flight jobs
-		// return. In practice both are backed by subprocess calls that
-		// self-timeout, so we accept the worst-case wait rather than
-		// force-killing workers mid-write.
-		stopCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		srv.StopBackground(stopCtx)
-		closeStore()
+		teardown("onShutdown")
 	}
 
 	return wails.Run(&options.App{

@@ -159,15 +159,29 @@ func (s *Server) Router() chi.Router { return s.router }
 // sampler, summarizer, HITL ticker, intervention sweeper) without binding
 // an HTTP listener. It is used by embedding hosts like the Wails desktop
 // shell that own their own transport and only need the router plus the
-// side-effect goroutines. All workers are scoped to ctx — cancel ctx to
-// stop them. StartBackground is non-blocking.
+// side-effect goroutines. StartBackground is non-blocking.
 //
-// StartBackground is idempotent: only the first call on a given Server
-// instance actually starts the workers. Subsequent calls are no-ops, so
-// callers that wire the method into both `Run()` and a desktop shell
-// harness cannot accidentally double-start the metrics sampler (which
-// would cause duplicate rows in metric_points) or spin up a second HITL
-// ticker.
+// # Lifetime
+//
+// The ctx passed to the *first* call scopes every ctx-driven worker
+// (today: the metrics sampler and the HITL ticker). Cancel that ctx to
+// stop them.
+//
+// # Idempotency and the "first ctx wins" rule
+//
+// StartBackground is guarded by a sync.Once so the second and later
+// calls are no-ops. This protects callers that wire the method into
+// both `Run()` and a second harness (for example, the Wails desktop
+// shell) from accidentally double-starting the metrics sampler — a
+// duplicate sampler would write duplicate rows into metric_points — or
+// spinning up a second HITL ticker.
+//
+// The tradeoff is that only the first ctx matters. A later call with a
+// shorter-lived ctx cannot shrink the worker lifetime. In practice this
+// is fine because only one caller in a given process owns the worker
+// lifetime (`Run()` for `apogee serve`, the desktop shell's OnStartup
+// hook for the Wails window). Callers that want to replace the ctx
+// should construct a new Server instead.
 func (s *Server) StartBackground(ctx context.Context) {
 	s.startBackground.Do(func() {
 		if s.metrics != nil {
