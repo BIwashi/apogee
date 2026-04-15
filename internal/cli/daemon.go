@@ -246,6 +246,10 @@ func daemonBox(m daemon.Manager, s daemon.Status) string {
 		unitPath = "—"
 	}
 
+	logBase := "apogee"
+	if s.Label == daemon.MenubarLabel || (m != nil && m.Label() == daemon.MenubarLabel) {
+		logBase = "menubar"
+	}
 	entries := [][2]string{
 		{"Status", statusBadge(state)},
 		{"Installed", boolBadge(s.Installed)},
@@ -256,7 +260,7 @@ func daemonBox(m daemon.Manager, s daemon.Status) string {
 		{"Uptime", uptime},
 		{"Last exit", fmt.Sprintf("%d", s.LastExitCode)},
 		{"Unit path", unitPath},
-		{"Logs", "~/.apogee/logs/apogee.{out,err}.log"},
+		{"Logs", "~/.apogee/logs/" + logBase + ".{out,err}.log"},
 	}
 	body := keyValueLines(entries)
 	if s.Installed {

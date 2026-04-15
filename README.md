@@ -341,10 +341,11 @@ apogee daemon stop     # stop the service (does not uninstall)
 apogee uninstall       # remove daemon + hooks + optionally wipe ~/.apogee
 ```
 
-On macOS, start the menu bar companion app for a live status icon with quick actions:
+On macOS, start the menu bar companion app for a live status icon with quick actions. `apogee onboard` registers it as a launchd login item (`dev.biwashi.apogee.menubar`) so it starts automatically at every login; you can also drive the install path directly:
 
 ```sh
-apogee menubar &
+apogee menubar install   # register as a macOS login item (run once)
+apogee menubar &         # or run it manually in the foreground
 ```
 
 ### Troubleshooting

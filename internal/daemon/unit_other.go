@@ -12,7 +12,7 @@ import (
 // compile, so the CLI subcommands are always present; they just
 // fail fast when invoked.
 func New() (Manager, error) {
-	return &unsupportedManager{goos: runtime.GOOS}, nil
+	return &unsupportedManager{goos: runtime.GOOS, label: DefaultLabel}, nil
 }
 
 // NewWithRunner exists so test code (which may build for all
@@ -22,8 +22,20 @@ func NewWithRunner(_ commandRunner) (Manager, error) {
 	return New()
 }
 
+// NewManagerWithLabel returns a stub manager pinned to the given
+// label. Every mutating method still returns ErrNotSupported — the
+// label is cosmetic so `menubar status` can render a friendly box
+// even on unsupported platforms.
+func NewManagerWithLabel(label string) (Manager, error) {
+	if label == "" {
+		label = DefaultLabel
+	}
+	return &unsupportedManager{goos: runtime.GOOS, label: label}, nil
+}
+
 type unsupportedManager struct {
-	goos string
+	goos  string
+	label string
 }
 
 func (m *unsupportedManager) Install(ctx context.Context, cfg Config) error {
@@ -42,10 +54,15 @@ func (m *unsupportedManager) Restart(ctx context.Context) error {
 	return wrapUnsupported(m.goos)
 }
 func (m *unsupportedManager) Status(ctx context.Context) (Status, error) {
-	return Status{Label: DefaultLabel}, wrapUnsupported(m.goos)
+	return Status{Label: m.label}, wrapUnsupported(m.goos)
 }
 func (m *unsupportedManager) UnitPath() string { return "" }
-func (m *unsupportedManager) Label() string    { return DefaultLabel }
+func (m *unsupportedManager) Label() string {
+	if m.label == "" {
+		return DefaultLabel
+	}
+	return m.label
+}
 
 func wrapUnsupported(goos string) error {
 	return &unsupportedError{goos: goos}

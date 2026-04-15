@@ -65,15 +65,56 @@ If you expected a healthy dot and you see `offline` instead:
 See [`daemon.md`](daemon.md#debugging-a-stuck-daemon) for the broader
 troubleshooting flow.
 
-## How to keep it always running
+## Install as a login item
 
-PR #22's onboarding wizard will offer to register the menu bar as a second
-launchd unit (`dev.biwashi.apogee.menubar`). Until then, add it to your
-shell profile as a background process or to your login items manually:
+The onboard wizard registers the menu bar as a **second** launchd unit so it
+starts at every login without the user having to touch a shell:
 
-    System Settings → General → Login Items → Open at Login → +
-    Add the apogee binary with arguments `menubar`.
+    apogee menubar install     # macOS only
+    apogee menubar status      # inspect the unit
+    apogee menubar uninstall   # remove the login item
+
+The unit is independent from the collector daemon unit — installing or
+uninstalling the menubar does not touch `dev.biwashi.apogee`, and vice
+versa. The install subcommand writes the plist atomically at
+`~/Library/LaunchAgents/dev.biwashi.apogee.menubar.plist`, then asks
+launchd to bootstrap it.
+
+| Key | Value | Why |
+| --- | --- | --- |
+| `Label` | `dev.biwashi.apogee.menubar` | Distinct from the collector daemon label so the two can be installed / uninstalled / inspected independently. |
+| `ProgramArguments` | `[ <absolute apogee>, "menubar" ]` | The binary resolves itself via `os.Executable()` at install time, so upgrading apogee just means re-running `menubar install`. |
+| `RunAtLoad` | `true` | Start automatically the moment the unit is loaded (every login). |
+| `KeepAlive` | `false` | The menubar is interactive — if the user picks **Quit menubar** from the dropdown, launchd does not resurrect it until the next login. |
+| `LSUIElement` | `true` | Cocoa menu-bar-only app: no Dock icon, no main window. |
+| `LimitLoadToSessionType` | `Aqua` | Only load in a real GUI login session. SSH and headless sessions see no plist, so the menubar never spins up without a user in front of it. |
+| `StandardOutPath` / `StandardErrorPath` | `~/.apogee/logs/menubar.{out,err}.log` | Separate log files from the collector daemon so `apogee logs` and diagnostics stay focused. |
+
+Idempotent: a second `menubar install` is a no-op when the plist content
+matches. A conflicting plist without `--force` returns `menubar already
+installed (pass --force to overwrite)`.
+
+`apogee onboard` offers the same install path as a prompt in the wizard's
+menubar group, defaulted to **Install** on a fresh mac and **Re-install**
+when the plist already exists. Non-darwin platforms hide the group
+entirely. If the collector daemon install succeeds but the menubar install
+fails, the wizard logs a warning and continues — the menubar is a
+convenience, not a load-bearing surface, so a partial success is better
+than rolling back the daemon.
 
 Either way, the menu bar app still needs the **daemon** (or a foreground
 `apogee serve`) to be running — there is no point in the menu bar existing
 without a collector to poll.
+
+## Manual login-item registration (legacy)
+
+Before `apogee menubar install` existed, the only way to run the menubar at
+login was to add it to macOS login items by hand:
+
+    System Settings → General → Login Items → Open at Login → +
+    Add the apogee binary with arguments `menubar`.
+
+This path still works and is a reasonable fallback if the launchd unit is
+misbehaving. If you take it, remember to **uninstall** the launchd unit via
+`apogee menubar uninstall` first, otherwise two menubar processes will
+fight over the single menu-bar slot.

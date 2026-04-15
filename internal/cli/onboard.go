@@ -37,6 +37,7 @@ type onboardOptions struct {
 	SkipHooks      bool
 	SkipSummarizer bool
 	SkipTelemetry  bool
+	SkipMenubar    bool
 	DryRun         bool
 	NoOpenBrowser  bool
 
@@ -44,6 +45,13 @@ type onboardOptions struct {
 	// fake Manager without touching the package-level managerFactory
 	// used by `apogee daemon`. Defaults to managerFactory when nil.
 	ManagerFactory func() (daemon.Manager, error)
+
+	// MenubarManagerFactory is the second-manager seam for the
+	// menubar-login-item install path. Defaults to the package-level
+	// menubarManagerFactory (which in turn wraps
+	// daemon.NewManagerWithLabel(daemon.MenubarLabel)). Tests pass a
+	// fake that records Install/Uninstall calls on the menubar label.
+	MenubarManagerFactory func() (daemon.Manager, error)
 
 	// LoadPrefs and WritePrefs are injectable seams so the tests can
 	// capture summarizer-preference reads and writes without opening a
@@ -73,12 +81,15 @@ type onboardOptions struct {
 // fresh machine with none of the pieces installed still returns a
 // valid state, it just has every bool set to "absent".
 type onboardState struct {
-	ConfigPath     string
-	HomeDir        string
-	HooksInstalled bool
-	HooksPath      string
-	DaemonStatus   daemon.Status
-	DaemonOK       bool
+	ConfigPath      string
+	HomeDir         string
+	HooksInstalled  bool
+	HooksPath       string
+	DaemonStatus    daemon.Status
+	DaemonOK        bool
+	MenubarStatus   daemon.Status
+	MenubarOK       bool
+	MenubarPlatform bool
 	Prefs          summarizer.Preferences
 	Defaults       summarizer.Config // canonical defaults for placeholder hints
 	// Models is the merged catalog + availability view the wizard
@@ -112,6 +123,11 @@ type onboardPlan struct {
 	Addr         string
 	DBPath       string
 	StartDaemon  bool
+
+	// Menubar — macOS-only login item (second launchd unit).
+	// "install" | "reinstall" | "skip".  On non-darwin the onboard
+	// wizard hides the group and forces "skip".
+	MenubarAction string
 
 	// Summarizer
 	SkipSummarizer         bool
@@ -181,6 +197,7 @@ the provisioning / CI path.`,
 	cmd.Flags().BoolVar(&opts.SkipHooks, "skip-hooks", false, "Do not install hooks into .claude/settings.json")
 	cmd.Flags().BoolVar(&opts.SkipSummarizer, "skip-summarizer", false, "Do not write summarizer preferences")
 	cmd.Flags().BoolVar(&opts.SkipTelemetry, "skip-telemetry", false, "Do not configure OTLP export")
+	cmd.Flags().BoolVar(&opts.SkipMenubar, "skip-menubar", false, "Do not register the macOS menubar as a login item")
 	cmd.Flags().BoolVar(&opts.DryRun, "dry-run", false, "Show the plan without writing anything")
 	return cmd
 }
@@ -261,6 +278,9 @@ func fillDefaults(opts *onboardOptions) {
 	}
 	if opts.ManagerFactory == nil {
 		opts.ManagerFactory = managerFactory
+	}
+	if opts.MenubarManagerFactory == nil {
+		opts.MenubarManagerFactory = menubarManagerFactory
 	}
 	if opts.LoadPrefs == nil {
 		opts.LoadPrefs = loadSummarizerPreferencesFromDB
@@ -350,6 +370,24 @@ func loadOnboardState(ctx context.Context, opts onboardOptions) (onboardState, e
 			if s, serr := m.Status(ctx); serr == nil || errors.Is(serr, daemon.ErrNotSupported) {
 				state.DaemonStatus = s
 				state.DaemonOK = true
+			}
+		}
+	}
+
+	// Menubar — second launchd unit on darwin only. We probe the
+	// menubar manager the same way we probe the collector daemon so
+	// the wizard can default the action to "reinstall" when the
+	// plist already exists and to "install" on a fresh machine.
+	// Non-darwin always leaves MenubarPlatform=false which hides
+	// the menubar group in the form and forces action=skip in the
+	// plan defaults.
+	state.MenubarPlatform = isMenubarPlatform()
+	if state.MenubarPlatform && opts.MenubarManagerFactory != nil {
+		mm, err := opts.MenubarManagerFactory()
+		if err == nil && mm != nil {
+			if s, serr := mm.Status(ctx); serr == nil || errors.Is(serr, daemon.ErrNotSupported) {
+				state.MenubarStatus = s
+				state.MenubarOK = true
 			}
 		}
 	}
@@ -465,6 +503,20 @@ func toPlanDefaults(opts onboardOptions, state onboardState) onboardPlan {
 	// already running.
 	plan.StartDaemon = plan.DaemonAction != "skip" && !state.DaemonStatus.Running
 
+	// Menubar — macOS-only login item. Default to install on a
+	// fresh mac, reinstall when the plist already exists, and skip
+	// on non-darwin (the group is hidden in the form too).
+	switch {
+	case opts.SkipMenubar:
+		plan.MenubarAction = "skip"
+	case !state.MenubarPlatform:
+		plan.MenubarAction = "skip"
+	case state.MenubarStatus.Installed:
+		plan.MenubarAction = "reinstall"
+	default:
+		plan.MenubarAction = "install"
+	}
+
 	// Summarizer — language defaults to the persisted value or "en".
 	if state.Prefs.Language != "" {
 		plan.SummarizerLanguage = state.Prefs.Language
@@ -520,6 +572,17 @@ func promptOnboardPlan(plan *onboardPlan, state onboardState, opts onboardOption
 		}
 	}
 
+	menubarChoices := []huh.Option[string]{
+		huh.NewOption("Install", "install"),
+		huh.NewOption("Skip", "skip"),
+	}
+	if state.MenubarStatus.Installed {
+		menubarChoices = []huh.Option[string]{
+			huh.NewOption("Re-install", "reinstall"),
+			huh.NewOption("Skip (already installed)", "skip"),
+		}
+	}
+
 	protoChoices := []huh.Option[string]{
 		huh.NewOption("grpc", "grpc"),
 		huh.NewOption("http/protobuf", "http"),
@@ -555,6 +618,13 @@ func promptOnboardPlan(plan *onboardPlan, state onboardState, opts onboardOption
 				Title("Start the daemon immediately after install?").
 				Value(&plan.StartDaemon),
 		).WithHideFunc(func() bool { return opts.SkipDaemon }),
+		huh.NewGroup(
+			huh.NewNote().Title("Menubar").Description("macOS menu bar companion (dev.biwashi.apogee.menubar). Registered as a launchd login item so it starts at every login, independent from the collector daemon."),
+			huh.NewSelect[string]().
+				Title("Install menubar app as a login item?").
+				Options(menubarChoices...).
+				Value(&plan.MenubarAction),
+		).WithHideFunc(func() bool { return opts.SkipMenubar || !state.MenubarPlatform }),
 		huh.NewGroup(
 			huh.NewNote().Title("Summarizer").Description("Three LLM tiers: per-turn recap, per-session rollup, phase narrative. Language + optional system prompts (2048 chars max)."),
 			huh.NewSelect[string]().
@@ -635,6 +705,7 @@ func renderOnboardPlan(out io.Writer, plan onboardPlan, opts onboardOptions) {
 	rows = append(rows, [2]string{"DB", expandedDB})
 	rows = append(rows, [2]string{"Hooks", formatHooksPlan(plan, hooksTarget)})
 	rows = append(rows, [2]string{"Daemon", formatDaemonPlan(plan)})
+	rows = append(rows, [2]string{"Menubar", formatMenubarPlan(plan, opts)})
 	rows = append(rows, [2]string{"Summarizer", formatSummarizerPlan(plan)})
 	rows = append(rows, [2]string{"OTel", formatTelemetryPlan(plan)})
 	rows = append(rows, [2]string{"Open", formatOpenPlan(plan)})
@@ -680,6 +751,23 @@ func formatDaemonPlan(plan onboardPlan) string {
 		s += " · start"
 	}
 	return s
+}
+
+// formatMenubarPlan renders the Menubar: row in the plan box. On
+// non-darwin / --skip-menubar we render "skip" with a platform hint
+// so the row stays informative instead of disappearing.
+func formatMenubarPlan(plan onboardPlan, opts onboardOptions) string {
+	if !isMenubarPlatform() {
+		return "skip (macOS only)"
+	}
+	if opts.SkipMenubar || plan.MenubarAction == "skip" {
+		return "skip"
+	}
+	verb := "install"
+	if plan.MenubarAction == "reinstall" {
+		verb = "re-install"
+	}
+	return verb + " " + daemon.MenubarLabel + " (macOS login item)"
 }
 
 func formatSummarizerPlan(plan onboardPlan) string {
@@ -783,6 +871,42 @@ func applyOnboardPlan(ctx context.Context, plan onboardPlan, opts onboardOptions
 		}
 	} else {
 		fmt.Fprintln(out, formatStatusLine("info", "daemon: skipped"))
+	}
+
+	// 3b. Menubar login item (macOS only). Partial-success
+	// semantics: if the menubar install fails we log the failure
+	// and continue — we do NOT roll back the daemon install that
+	// just succeeded. The collector is the load-bearing surface;
+	// the menubar is a convenience.
+	if !opts.SkipMenubar && plan.MenubarAction != "skip" {
+		if !isMenubarPlatform() {
+			fmt.Fprintln(out, formatStatusLine("info", "menubar: skipped (macOS only)"))
+		} else if opts.MenubarManagerFactory != nil {
+			mm, err := opts.MenubarManagerFactory()
+			if err != nil {
+				fmt.Fprintln(out, formatStatusLine("warn", "menubar: "+err.Error()))
+			} else {
+				mcfg, merr := resolveMenubarConfig()
+				if merr != nil {
+					fmt.Fprintln(out, formatStatusLine("warn", "menubar config: "+merr.Error()))
+				} else {
+					mcfg.Force = plan.MenubarAction == "reinstall"
+					if err := mm.Install(ctx, mcfg); err != nil {
+						if errors.Is(err, daemon.ErrAlreadyInstalled) && plan.MenubarAction != "reinstall" {
+							fmt.Fprintln(out, formatStatusLine("info", "menubar: already installed (pass reinstall to overwrite)"))
+						} else if errors.Is(err, daemon.ErrNotSupported) {
+							fmt.Fprintln(out, formatStatusLine("info", "menubar: platform not supported"))
+						} else {
+							fmt.Fprintln(out, formatStatusLine("warn", "menubar install: "+err.Error()))
+						}
+					} else {
+						fmt.Fprintln(out, formatStatusLine("ok", "installed "+mm.Label()+" unit at "+mm.UnitPath()))
+					}
+				}
+			}
+		}
+	} else if opts.SkipMenubar || plan.MenubarAction == "skip" {
+		fmt.Fprintln(out, formatStatusLine("info", "menubar: skipped"))
 	}
 
 	// 4. Summarizer preferences

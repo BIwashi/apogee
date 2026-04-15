@@ -25,6 +25,45 @@ func New() (Manager, error) {
 	return NewWithRunner(execRunner{})
 }
 
+// NewManagerWithLabel returns a Manager pinned to the given label.
+// On Linux the menubar is not supported, so callers that pass
+// MenubarLabel receive a stub manager whose Install/Uninstall/Start/
+// Stop/Restart/Status all return ErrNotSupported. Other labels fall
+// back to the systemd-user manager the same way New() does.
+func NewManagerWithLabel(label string) (Manager, error) {
+	if label == MenubarLabel {
+		return &unsupportedMenubarManager{}, nil
+	}
+	m, err := NewWithRunner(execRunner{})
+	if err != nil {
+		return nil, err
+	}
+	if sm, ok := m.(*systemdManager); ok && label != "" {
+		sm.label = label
+	}
+	return m, nil
+}
+
+// unsupportedMenubarManager is the stub used on Linux for
+// MenubarLabel. Every mutating method returns ErrNotSupported;
+// Status returns a zero Status with the label filled in so the CLI
+// `menubar status` subcommand can still render a friendly "not
+// installed" box.
+type unsupportedMenubarManager struct{}
+
+func (unsupportedMenubarManager) Install(context.Context, Config) error {
+	return ErrNotSupported
+}
+func (unsupportedMenubarManager) Uninstall(context.Context) error { return ErrNotSupported }
+func (unsupportedMenubarManager) Start(context.Context) error     { return ErrNotSupported }
+func (unsupportedMenubarManager) Stop(context.Context) error      { return ErrNotSupported }
+func (unsupportedMenubarManager) Restart(context.Context) error   { return ErrNotSupported }
+func (unsupportedMenubarManager) Status(context.Context) (Status, error) {
+	return Status{Label: MenubarLabel}, nil
+}
+func (unsupportedMenubarManager) UnitPath() string { return "" }
+func (unsupportedMenubarManager) Label() string    { return MenubarLabel }
+
 // NewWithRunner returns a Linux Manager backed by the supplied
 // commandRunner. Tests inject a fake.
 func NewWithRunner(r commandRunner) (Manager, error) {
