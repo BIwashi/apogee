@@ -67,33 +67,23 @@ setup) still reach a working state in one click:
 
 On **Cancel**, the shell exits cleanly without touching anything.
 
-### Embedded mode (escape hatch)
+### Configuration
 
-Setting `APOGEE_DESKTOP_MODE=embedded` forces the legacy path: open
-DuckDB, construct a `collector.Server`, start background workers
-in-process. Known caveats:
+One environment variable, for the rare case where the daemon does not
+live on the default port:
 
-- **Will not coexist with a running daemon** — DuckDB is single-writer
-  and both processes will fight over `~/.apogee/apogee.duckdb`.
-- **Will not receive operator interventions from running Claude Code
-  sessions** — hooks still post to whatever URL
-  `.claude/settings.json` was configured with at `apogee onboard`
-  time, which is the daemon, not the embedded collector.
+| Env var | Default | Behaviour |
+|---|---|---|
+| `APOGEE_DAEMON_ADDR` | `127.0.0.1:4100` | `host:port` the reverse proxy forwards to and the reachability probe hits. Must not include a scheme. |
 
-Useful for the narrow case of running a fully isolated, read-only
-session against a custom DB file:
-
-```sh
-APOGEE_DESKTOP_MODE=embedded APOGEE_DB=:memory: open -a Apogee
-```
-
-### Mode selection flags
-
-| Env var | Values | Default | Behaviour |
-|---|---|---|---|
-| `APOGEE_DESKTOP_MODE` | `auto`, `proxy`, `embedded` | `auto` | Forces the runtime mode. `auto` = proxy if daemon reachable, otherwise bootstrap + proxy. |
-| `APOGEE_DAEMON_ADDR` | `host:port` | `127.0.0.1:4100` | Destination the proxy reverse-proxies to, and the reachability probe target. Do not include a scheme. |
-| `APOGEE_DB` | path or `:memory:` | `~/.apogee/apogee.duckdb` | Only honoured in embedded mode. |
+The desktop shell intentionally has **no mode flag and no DuckDB
+path**. It never opens a database, never constructs a collector, and
+never starts a worker goroutine — everything the UI shows comes from
+the running daemon at `APOGEE_DAEMON_ADDR`. That singular runtime
+model is what lets the .app coexist cleanly with `apogee serve` /
+`apogee daemon` and with running Claude Code hooks, and it is also
+what keeps the shipped binary around 10 MB instead of 60 MB (no
+DuckDB static lib linked in).
 
 ## Installing from Homebrew
 
@@ -155,15 +145,16 @@ separately with `brew uninstall BIwashi/tap/apogee`.
 ## Running from source
 
 ```sh
-# Build the embedded web bundle + desktop binary with the Wails
-# production build tag wired in (-tags production is mandatory for
-# Wails v2 and is baked into the Makefile target already).
+# Build the desktop binary with the Wails production build tag
+# wired in (-tags production is mandatory for Wails v2 and is baked
+# into the Makefile target already). The target does NOT depend on
+# `make build-web` because the desktop shell never imports
+# internal/webassets — it only proxies to the daemon.
 make desktop-build
 
 # Build and launch. With a running daemon this immediately enters
 # proxy mode against 127.0.0.1:4100; without, it runs the first-run
-# bootstrap flow. APOGEE_DESKTOP_MODE / APOGEE_DAEMON_ADDR override
-# the defaults — see the Runtime modes table above.
+# bootstrap flow. APOGEE_DAEMON_ADDR overrides the default port.
 make desktop-run
 ```
 
@@ -234,18 +225,18 @@ you the WKWebView chrome on top.
   `httputil.NewSingleHostReverseProxy(target)` with
   `FlushInterval: -1` so SSE streams (`/v1/events/stream`,
   `/v1/interventions/stream`) are not buffered.
-- **Embedded handler** (escape hatch): `runEmbedded()` calls
-  `collector.New` → `StartBackground` → `wails.Run` with
-  `srv.Router()` as the `AssetServer.Handler`.
-  `collector.StartBackground` is idempotent via `sync.Once` so the
-  embedded mode cannot double-start the metrics sampler, but see the
-  "Embedded mode" note above for why it is usually the wrong mode.
 - **Bootstrap**: `runBootstrap()` in `desktop/bootstrap.go` handles
   the first-run flow. All native dialogs are spawned via `osascript`
   (no cgo / AppKit bindings), so the bootstrap module builds and
   tests without touching the Cocoa runtime. When the subprocess
   finishes the shell calls `runProxy()` — there is no separate
   "post-setup mode", it is the same proxy mode as a warm start.
+- **No in-process collector**: the desktop shell does not import
+  `internal/collector`, `internal/store/duckdb`, or
+  `internal/webassets`. The release binary clocks in at ~10 MB
+  instead of the ~60 MB it would be with the DuckDB static lib
+  linked in, and there is exactly one place in the process tree
+  that owns the DuckDB file (the daemon).
 - **UniformTypeIdentifiers framework link**:
   `desktop/cgo_darwin.go` carries a single `#cgo darwin LDFLAGS:
   -framework UniformTypeIdentifiers` directive. Without it, Wails'
@@ -281,16 +272,20 @@ you the WKWebView chrome on top.
 - **Custom menus are default-only.** Only Wails' built-in EditMenu +
   WindowMenu are present. The desktop shell does not yet share code
   with `apogee menubar`.
-- **Embedded mode is a footgun.** See the Embedded mode section.
+- **Requires the daemon.** The desktop shell cannot show a dashboard
+  without a reachable daemon. First-run users get the bootstrap flow
+  that installs one for them; users who go out of their way to
+  uninstall the daemon while keeping the cask will see the dashboard
+  go blank until they reinstall it.
 
 ## Why Wails and not Electron/Tauri?
 
-- **Go-native.** The apogee module is Go; Wails lets us keep the
-  whole collector in-process when we need to (embedded mode) without
-  IPC or a subprocess shim.
-- **WKWebView, not Chromium.** The `.app` bundle stays under ~50 MB
+- **Go-native.** The apogee module is Go; Wails lets us ship the
+  desktop shell as a ~10 MB reverse-proxy WKWebView wrapper that
+  links against nothing heavier than the standard library +
+  `wails/v2`.
+- **WKWebView, not Chromium.** The `.app` bundle stays under ~8 MB
   compressed and reuses the system WebView, compared to ~150 MB for
   an Electron app with a bundled Chromium.
 - **Zero new build languages.** Tauri would pull in a Rust toolchain;
-  Electron would pull in a full Node runtime. Wails is pure Go plus
-  the existing Next.js bundle.
+  Electron would pull in a full Node runtime. Wails is pure Go.

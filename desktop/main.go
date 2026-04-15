@@ -1,47 +1,42 @@
 //go:build darwin
 
 // Package main is the Apogee desktop shell — a Wails v2 entry point
-// that wraps the same dashboard `apogee serve` hosts, rendered inside a
-// native macOS WKWebView window.
+// that renders the apogee dashboard inside a native macOS WKWebView
+// window, as a thin reverse-proxy wrapper around a running
+// `apogee daemon`.
 //
-// # Runtime modes
+// # How it works
 //
-// The shell supports two modes, selected automatically at launch and
-// overridable via the APOGEE_DESKTOP_MODE environment variable:
+// On launch the shell probes the daemon at 127.0.0.1:4100 (override
+// with APOGEE_DAEMON_ADDR). There are exactly two outcomes:
 //
-//   - proxy (default when the daemon is reachable): the Wails window is
-//     a thin reverse-proxy wrapper around a running `apogee daemon` on
-//     localhost:4100. No DuckDB is opened in the desktop process, no
-//     collector is constructed, no worker goroutines are started. This
-//     is the only mode that works correctly alongside Claude Code hooks
-//     — operator interventions, summarizer recaps, HITL queue
-//     responses, etc. all flow through the single daemon the hooks were
-//     configured against at onboard time.
+//   - Daemon reachable: the Wails AssetServer is wired to an
+//     `httputil.ReverseProxy` pointing at the daemon, and the
+//     window becomes a view of the daemon's collector. Nothing is
+//     opened in the desktop process — no DuckDB, no collector, no
+//     workers.
 //
-//   - embedded (escape hatch, APOGEE_DESKTOP_MODE=embedded): the desktop
-//     process owns its own collector, DuckDB, and worker pool. Useful
-//     for isolated sessions or for running without a daemon, but WILL
-//     conflict with a running daemon over the DuckDB lock and will NOT
-//     receive operator interventions from running Claude Code sessions
-//     (those still talk to whatever URL .claude/settings.json was
-//     configured with by `apogee onboard`, which is the daemon).
+//   - Daemon unreachable: the shell runs the first-run bootstrap
+//     flow (see desktop/bootstrap.go). A native Cocoa dialog asks
+//     whether to set up apogee now, and on confirmation spawns
+//     `apogee onboard --yes` as a subprocess. After the daemon
+//     becomes reachable, the shell transitions into the exact same
+//     reverse-proxy path above.
 //
-// # First-run bootstrap
-//
-// When auto mode detects no daemon, the shell shows a native Cocoa
-// confirmation dialog (via osascript) offering to run `apogee onboard
-// --yes` as a subprocess. If the user accepts, onboard installs and
-// starts the daemon, the shell waits for it to become reachable, writes
-// an ~/.apogee/installed-by-desktop marker so the cask uninstall path
-// knows we own the daemon, and then transitions to proxy mode. If the
-// user declines, the shell exits cleanly.
+// The desktop shell never opens DuckDB or constructs a collector
+// itself. That dual-owner topology caused v0.1.12's silent crash
+// against running daemons (DuckDB is single-writer) and broke
+// operator-intervention delivery (Claude Code hooks post to the
+// daemon, not to the desktop's in-process collector), so the
+// proxy-only model is the only model that stays consistent with the
+// rest of the apogee stack.
 //
 // # Non-darwin
 //
 // A stub entry point in main_other.go handles //go:build !darwin so
 // `go build ./...` on linux/windows CI runners stays green and any
-// attempt to actually run the binary there prints a clear "macOS only"
-// message.
+// attempt to actually run the binary there prints a clear "macOS
+// only" message.
 package main
 
 import (
@@ -62,65 +57,21 @@ func run() error {
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	slog.SetDefault(logger)
 
-	mode := resolveMode()
 	daemonAddr := resolveDaemonAddr()
-	logger.Info("apogee desktop starting", "mode", mode, "daemon_addr", daemonAddr, "version_tag", "desktop")
+	logger.Info("apogee desktop starting", "daemon_addr", daemonAddr)
 
-	switch mode {
-	case modeProxy:
-		// User forced proxy mode. If the daemon is down, fail fast
-		// rather than silently falling back — forcing proxy means
-		// the caller has opinions about transport and we should
-		// honour them.
-		if !daemonReachable(daemonAddr) {
-			showErrorDialog("apogee-desktop was launched with APOGEE_DESKTOP_MODE=proxy but the daemon at " + daemonAddr + " is not reachable. Start the daemon with `apogee daemon start` and try again.")
-			return fmt.Errorf("proxy mode forced but daemon %s unreachable", daemonAddr)
-		}
+	if daemonReachable(daemonAddr) {
 		return runProxy(logger, daemonAddr)
-
-	case modeEmbedded:
-		// User forced embedded mode. Skip the daemon probe and run
-		// the in-process collector. Known to conflict with a live
-		// daemon over DuckDB; documented in docs/desktop.md.
-		return runEmbedded(logger)
-
-	case modeAuto:
-		// Default path: probe the daemon, proxy if it answers,
-		// otherwise run the first-run bootstrap flow which ends in
-		// proxy mode as well.
-		if daemonReachable(daemonAddr) {
-			return runProxy(logger, daemonAddr)
-		}
-		return runBootstrap(logger, daemonAddr)
 	}
-
-	return fmt.Errorf("unknown mode %q", mode)
+	return runBootstrap(logger, daemonAddr)
 }
 
-const (
-	modeAuto     = "auto"
-	modeProxy    = "proxy"
-	modeEmbedded = "embedded"
-)
-
-// resolveMode reads APOGEE_DESKTOP_MODE. Empty or unrecognised values
-// fall back to auto. The enum is deliberately tiny — any expansion here
-// should come with a docs update in docs/desktop.md.
-func resolveMode() string {
-	v := strings.ToLower(strings.TrimSpace(os.Getenv("APOGEE_DESKTOP_MODE")))
-	switch v {
-	case modeProxy, modeEmbedded, modeAuto:
-		return v
-	default:
-		return modeAuto
-	}
-}
-
-// resolveDaemonAddr returns the host:port that proxy mode forwards to
-// and that the daemon reachability probe hits. Defaults to the
-// apogee-standard 127.0.0.1:4100; APOGEE_DAEMON_ADDR lets advanced
-// users point at a different port (e.g. when running a second daemon
-// for testing). Must NOT include a scheme — only host:port.
+// resolveDaemonAddr returns the host:port that the reverse proxy
+// forwards to and that the daemon reachability probe hits. Defaults
+// to the apogee-standard 127.0.0.1:4100; APOGEE_DAEMON_ADDR lets
+// advanced users point at a different port (e.g. when running a
+// second daemon for testing). Must NOT include a scheme — only
+// host:port.
 func resolveDaemonAddr() string {
 	if v := strings.TrimSpace(os.Getenv("APOGEE_DAEMON_ADDR")); v != "" {
 		return v

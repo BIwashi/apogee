@@ -125,8 +125,15 @@ clean:
 DESKTOP_BIN ?= $(BIN_DIR)/apogee-desktop
 
 .PHONY: desktop-build
-desktop-build: build-web
+desktop-build:
 	@mkdir -p $(BIN_DIR)
+	# The desktop shell is proxy-only: it talks to a running apogee
+	# daemon over HTTP and never imports internal/collector or
+	# internal/webassets. That keeps the .app tiny (~10 MB instead of
+	# ~60 MB when we also carried DuckDB's static lib) and removes
+	# the need for a prior `make build-web` step — nothing in
+	# ./desktop reads from internal/webassets/dist.
+	#
 	# -tags production is mandatory for Wails v2: without it the
 	# runtime refuses to bring up the WKWebView and returns
 	# "Wails applications will not build without the correct build tags."
