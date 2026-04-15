@@ -24,6 +24,22 @@ func New() (Manager, error) {
 // NewWithRunner returns a launchd Manager backed by the supplied
 // commandRunner. Tests inject a fake to avoid calling launchctl.
 func NewWithRunner(r commandRunner) (Manager, error) {
+	return newManagerWithLabelRunner(DefaultLabel, r)
+}
+
+// NewManagerWithLabel returns a launchd Manager pinned to the given
+// label. Used by the `apogee menubar install` path to supervise a
+// second launchd unit under MenubarLabel while reusing every Install
+// / Uninstall / Start / Stop / Status / Restart codepath already
+// exercised by the main daemon.
+func NewManagerWithLabel(label string) (Manager, error) {
+	return newManagerWithLabelRunner(label, execRunner{})
+}
+
+func newManagerWithLabelRunner(label string, r commandRunner) (Manager, error) {
+	if label == "" {
+		label = DefaultLabel
+	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return nil, fmt.Errorf("daemon: resolve home: %w", err)
@@ -31,7 +47,7 @@ func NewWithRunner(r commandRunner) (Manager, error) {
 	return &launchdManager{
 		runner:   r,
 		homeDir:  home,
-		label:    DefaultLabel,
+		label:    label,
 		uid:      os.Getuid(),
 		plistDir: filepath.Join(home, "Library", "LaunchAgents"),
 	}, nil
@@ -229,7 +245,8 @@ var (
 
 // renderPlist writes the launchd plist body for the given Config.
 // The XML is static apart from the ProgramArguments, environment,
-// paths, and KeepAlive / RunAtLoad flags.
+// paths, and KeepAlive / RunAtLoad / LSUIElement /
+// LimitLoadToSessionType flags.
 func renderPlist(label string, cfg Config) ([]byte, error) {
 	if label == "" {
 		label = DefaultLabel
@@ -251,16 +268,23 @@ func renderPlist(label string, cfg Config) ([]byte, error) {
 			env["HOME"] = home
 		}
 	}
+	base := cfg.LogFileBase
+	if base == "" {
+		base = "apogee"
+	}
+	logDir := emptyDefault(cfg.LogDir, filepath.Join(env["HOME"], ".apogee", "logs"))
 	data := plistData{
-		Label:            label,
-		ProgramArguments: program,
-		WorkingDir:       cfg.WorkingDir,
-		EnvKeys:          sortedEnvKeys(env),
-		EnvValues:        env,
-		RunAtLoad:        cfg.RunAtLoad,
-		KeepAlive:        cfg.KeepAlive,
-		StdoutPath:       filepath.Join(emptyDefault(cfg.LogDir, filepath.Join(env["HOME"], ".apogee", "logs")), "apogee.out.log"),
-		StderrPath:       filepath.Join(emptyDefault(cfg.LogDir, filepath.Join(env["HOME"], ".apogee", "logs")), "apogee.err.log"),
+		Label:                  label,
+		ProgramArguments:       program,
+		WorkingDir:             cfg.WorkingDir,
+		EnvKeys:                sortedEnvKeys(env),
+		EnvValues:              env,
+		RunAtLoad:              cfg.RunAtLoad,
+		KeepAlive:              cfg.KeepAlive,
+		StdoutPath:             filepath.Join(logDir, base+".out.log"),
+		StderrPath:             filepath.Join(logDir, base+".err.log"),
+		LSUIElement:            cfg.LSUIElement,
+		LimitLoadToSessionType: cfg.LimitLoadToSessionType,
 	}
 	var buf bytes.Buffer
 	if err := plistTmpl.Execute(&buf, data); err != nil {
@@ -293,15 +317,17 @@ func sortedEnvKeys(m map[string]string) []string {
 }
 
 type plistData struct {
-	Label            string
-	ProgramArguments []string
-	WorkingDir       string
-	EnvKeys          []string
-	EnvValues        map[string]string
-	RunAtLoad        bool
-	KeepAlive        bool
-	StdoutPath       string
-	StderrPath       string
+	Label                  string
+	ProgramArguments       []string
+	WorkingDir             string
+	EnvKeys                []string
+	EnvValues              map[string]string
+	RunAtLoad              bool
+	KeepAlive              bool
+	StdoutPath             string
+	StderrPath             string
+	LSUIElement            bool
+	LimitLoadToSessionType string
 }
 
 // plistTmpl is the launchd plist template. Indentation uses tabs
@@ -343,8 +369,16 @@ var plistTmpl = template.Must(template.New("plist").Funcs(template.FuncMap{
 	<string>{{xml .StdoutPath}}</string>
 	<key>StandardErrorPath</key>
 	<string>{{xml .StderrPath}}</string>
+{{- if .LSUIElement}}
+	<key>LSUIElement</key>
+	<true/>
+{{- end}}
+{{- if .LimitLoadToSessionType}}
+	<key>LimitLoadToSessionType</key>
+	<string>{{xml .LimitLoadToSessionType}}</string>
+{{- end}}
 	<key>ProcessType</key>
-	<string>Background</string>
+	<string>{{if .LSUIElement}}Interactive{{else}}Background{{end}}</string>
 </dict>
 </plist>
 `))

@@ -141,7 +141,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `internal/watchdog/watchdog_test.go`,
   `internal/store/duckdb/watchdog_signals_test.go`, and the collector
   integration test in `internal/collector/server_test.go`.
-
+- **PR #39 — menubar as a macOS login item + onboard integration.**
+  `apogee menubar` gains three sibling subcommands — `install`,
+  `uninstall`, `status` — that register the menu bar companion as a
+  **second** launchd unit under `dev.biwashi.apogee.menubar`, written
+  to `~/Library/LaunchAgents/dev.biwashi.apogee.menubar.plist`. The
+  unit is independent from the collector daemon unit
+  (`dev.biwashi.apogee`) and uses a menubar-specific plist shape:
+  `LSUIElement=true` (menu-bar-only Cocoa app, no Dock icon),
+  `LimitLoadToSessionType=Aqua` (only load under a real GUI login),
+  `RunAtLoad=true`, `KeepAlive=false` (interactive — "Quit menubar"
+  stays quit until next login), `ProcessType=Interactive`, and
+  separate log files at `~/.apogee/logs/menubar.{out,err}.log`. The
+  `internal/daemon` package exposes a new `NewManagerWithLabel(label
+  string)` constructor and a `daemon.MenubarConfig()` helper so every
+  `Install / Uninstall / Start / Stop / Restart / Status` code path
+  is reused with the second label. The `apogee onboard` wizard gains
+  a `Menubar` group that prompts "Install menubar app as a login
+  item?", defaulted to **Install** on a fresh mac and **Re-install**
+  when the plist already exists. Non-darwin platforms hide the group
+  entirely and the subcommands print a styled warn line
+  ("macOS only — apogee menubar is not supported on linux") and exit
+  0 so the subcommand tree is discoverable from `--help` everywhere.
+  The wizard applies the menubar install **after** the main daemon
+  install with partial-success semantics: if the menubar fails but
+  the daemon succeeded, the failure is logged and the wizard
+  continues — the collector is load-bearing, the menubar is a
+  convenience, and rolling back a successful daemon install to undo
+  a cosmetic failure would be user-hostile. Adds a
+  `dev.biwashi.apogee.menubar` plist template test (LSUIElement,
+  LimitLoadToSessionType, KeepAlive=false, menubar log basenames)
+  and a cobra-wiring test for the install / uninstall / status
+  command tree with a fake manager.
 - **PR #35 — static model catalog + probe + dropdowns.** The
   summarizer's three model aliases (recap / rollup / narrative) are now
   chosen from a curated static catalog

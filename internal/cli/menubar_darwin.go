@@ -54,6 +54,10 @@ Or register it as a login item via the onboarding wizard.`,
 	}
 	cmd.Flags().StringVar(&addr, "addr", "127.0.0.1:4100", "Collector address to poll")
 	cmd.Flags().IntVar(&refreshSecond, "refresh", 5, "Refresh interval in seconds")
+	out := styledWriter(stdout)
+	cmd.AddCommand(newMenubarInstallCmd(out, stderr))
+	cmd.AddCommand(newMenubarUninstallCmd(out, stderr))
+	cmd.AddCommand(newMenubarStatusCmd(out, stderr))
 	return cmd
 }
 

@@ -22,6 +22,13 @@ import (
 // the systemd unit. Callers can override it via Config.Label.
 const DefaultLabel = "dev.biwashi.apogee"
 
+// MenubarLabel is the stable identifier used for the second launchd
+// unit that supervises `apogee menubar` as a macOS login item. The
+// collector daemon lives under DefaultLabel; the menubar lives under
+// this label so the two units can be installed, started, and
+// uninstalled independently.
+const MenubarLabel = "dev.biwashi.apogee.menubar"
+
 // DefaultAddr is the listen address baked into the unit file unless
 // the caller overrides it.
 const DefaultAddr = "127.0.0.1:4100"
@@ -109,6 +116,28 @@ type Config struct {
 	// differs. Without Force, a mismatched existing unit causes
 	// Install to return ErrAlreadyInstalled.
 	Force bool
+
+	// LogFileBase is the basename stem for StandardOutPath /
+	// StandardErrorPath. The renderer writes
+	// "<LogDir>/<LogFileBase>.out.log" and "<LogDir>/<LogFileBase>.err.log".
+	// Defaults to "apogee" when empty. Set to "menubar" for the
+	// secondary menubar unit so its logs do not clobber the
+	// collector daemon's.
+	LogFileBase string
+
+	// LSUIElement, when true, marks the launchd plist with
+	// LSUIElement=true so the process runs as a menu-bar-only app
+	// (no Dock icon, no main window). Only meaningful on darwin.
+	// Linux ignores this field.
+	LSUIElement bool
+
+	// LimitLoadToSessionType restricts launchd to loading the unit
+	// only under the given session type. The menubar unit sets this
+	// to "Aqua" so the plist is ignored in SSH / background-only
+	// sessions where no GUI is available. Empty means the unit
+	// loads in every session type (the default for the collector
+	// daemon).
+	LimitLoadToSessionType string
 }
 
 // Status is the runtime report from the OS supervisor.
