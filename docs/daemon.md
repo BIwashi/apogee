@@ -133,3 +133,50 @@ run_at_load   = true
 ```
 
 Every value has a default, so the block is purely additive.
+
+## FAQ
+
+### Does apogee start automatically on login?
+
+Yes, once you have run `apogee daemon install`. On macOS the plist sets
+`RunAtLoad=true` and `KeepAlive=true`, so launchd brings the collector up
+at every login and restarts it on any crash. On Linux the systemd user
+unit sets `Restart=on-failure`, and `systemctl --user enable apogee.service`
+(which `apogee daemon install` runs for you) arranges for it to start on
+next login. On a headless Linux box you probably also want
+`loginctl enable-linger $USER` so the user bus stays alive across
+logouts.
+
+If you only want the collector to run while you are actively working on
+something, skip `apogee daemon install` entirely and launch
+`apogee serve` in a terminal or from `make dev`.
+
+### How do I uninstall?
+
+```sh
+apogee uninstall
+```
+
+This runs the full teardown in order:
+
+1. Stops the daemon (`apogee daemon stop`).
+2. Removes the unit file (`apogee daemon uninstall`).
+3. Strips every `apogee hook` entry out of `~/.claude/settings.json`,
+   including legacy `python3 send_event.py` rows from v0.1.x installs.
+4. Prompts before touching anything under `~/.apogee/`.
+
+Add `--purge` to wipe `~/.apogee/` (database + logs + config) without
+prompting:
+
+```sh
+apogee uninstall --purge
+```
+
+Add `--yes` to skip the "are you sure" prompt on `--purge` for scripted
+use:
+
+```sh
+apogee uninstall --purge --yes
+```
+
+See [`cli.md`](cli.md) for the full flag reference.
