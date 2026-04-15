@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import CountPills from "./components/CountPills";
@@ -105,6 +105,8 @@ export default function LivePage() {
   const [events, setEvents] = useState<ApogeeEvent[]>([]);
   const [initialTurns, setInitialTurns] = useState<Turn[] | null>(null);
 
+  const { subscribe: subscribeAll } = useEventStream<ApogeeEvent>();
+
   const onEvent = useCallback((event: ApogeeEvent) => {
     setEvents((prev) => {
       const next = [event, ...prev];
@@ -133,10 +135,7 @@ export default function LivePage() {
     }
   }, []);
 
-  useEventStream<ApogeeEvent>("/v1/events/stream", {
-    historyLimit: TICKER_HISTORY,
-    onEvent,
-  });
+  useEffect(() => subscribeAll(onEvent), [subscribeAll, onEvent]);
 
   const turns = useMemo(() => {
     const base = initialTurns ?? activeTurnsData?.turns ?? [];
@@ -204,6 +203,11 @@ export default function LivePage() {
   }
 
   const focusedSessionId = focusedTurn?.session_id ?? "";
+  const focusedFilter = useMemo(
+    () => (focusedSessionId ? { sessionId: focusedSessionId } : undefined),
+    [focusedSessionId],
+  );
+  const { subscribe: subscribeFocused } = useEventStream<ApogeeEvent>(focusedFilter);
   const onFocusedSSE = useCallback(
     (event: ApogeeEvent) => {
       switch (event.type) {
@@ -225,14 +229,10 @@ export default function LivePage() {
     },
     [focusedTurnId, mutateActive],
   );
-  useEventStream<ApogeeEvent>(
-    focusedSessionId ? `/v1/events/stream?session_id=${focusedSessionId}` : "",
-    {
-      historyLimit: 32,
-      enabled: !!focusedSessionId,
-      onEvent: onFocusedSSE,
-    },
-  );
+  useEffect(() => {
+    if (!focusedSessionId) return;
+    return subscribeFocused(onFocusedSSE);
+  }, [subscribeFocused, onFocusedSSE, focusedSessionId]);
 
   const focusedSpans: Span[] = useMemo(() => {
     const base = spansQuery.data?.spans ?? [];

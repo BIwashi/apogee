@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import type {
   AnyApogeeEvent,
@@ -48,19 +48,22 @@ export default function InterventionTimeline({
     { refreshInterval: 10_000 },
   );
 
-  useEventStream<AnyApogeeEvent>(
-    sessionId ? `/v1/events/stream?session_id=${sessionId}` : "",
-    {
-      enabled: !!sessionId,
-      onEvent: (event) => {
-        if (!isInterventionEvent(event)) return;
-        if (event.data?.intervention?.session_id !== sessionId) return;
-        if (TERMINAL_STATUSES.has(event.data.intervention.status)) {
-          void listQuery.mutate();
-        }
-      },
-    },
+  const timelineFilter = useMemo(
+    () => (sessionId ? { sessionId } : undefined),
+    [sessionId],
   );
+  const { subscribe: subscribeTimeline } = useEventStream(timelineFilter);
+  useEffect(() => {
+    if (!sessionId) return;
+    return subscribeTimeline((event) => {
+      const anyEvent = event as AnyApogeeEvent;
+      if (!isInterventionEvent(anyEvent)) return;
+      if (anyEvent.data?.intervention?.session_id !== sessionId) return;
+      if (TERMINAL_STATUSES.has(anyEvent.data.intervention.status)) {
+        void listQuery.mutate();
+      }
+    });
+  }, [subscribeTimeline, sessionId, listQuery]);
 
   const interventions: Intervention[] = useMemo(() => {
     const raw = listQuery.data?.interventions ?? [];

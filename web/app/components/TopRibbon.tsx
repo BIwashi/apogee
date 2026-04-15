@@ -6,7 +6,6 @@ import { ChevronsUpDown, Clock, Layers, RefreshCw } from "lucide-react";
 
 import type { FilterOptions } from "../lib/api-types";
 import { useRefresh } from "../lib/refresh";
-import { useEventStream } from "../lib/sse";
 import { useApi } from "../lib/swr";
 import {
   DEFAULT_TIME_RANGE_VALUE,
@@ -56,8 +55,6 @@ export default function TopRibbon() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  const { status } = useEventStream("/v1/events/stream", { historyLimit: 1 });
-
   return (
     <div className="sticky top-0 z-40 border-b border-[var(--border)] bg-[var(--bg-surface)]">
       <div className="flex items-center gap-3 px-4 py-2">
@@ -106,7 +103,7 @@ export default function TopRibbon() {
           >
             <RefreshCw size={13} strokeWidth={1.5} />
           </button>
-          <LiveIndicator status={status} />
+          <LiveIndicator />
         </div>
       </div>
       {/* Accent gradient beat — 1px line that brands the ribbon. */}
