@@ -418,6 +418,11 @@ short, human-readable chunks that describe the big-picture work being done.
 A phase can cover one turn or several consecutive turns. Every turn must
 belong to exactly one phase.
 
+On top of that, predict the next 0-3 phases the agent is most likely to
+work on next. The prediction lets the dashboard show a "next stops"
+horizon for the mission. Leave the forecast array empty if you are not
+confident — the UI treats missing forecasts as "no prediction".
+
 Respond with a single JSON object matching this TypeScript type exactly — no
 prose, no markdown, no backticks:
 
@@ -439,6 +444,11 @@ type NarrativeResponse = {
     first_turn_index: number;  // 0-based, into the turn list I gave you
     last_turn_index: number;   // inclusive
   }>;
+  forecast?: Array<{
+    kind: /* same enum as above */;
+    headline: string;          // future-tense one sentence, max 140 chars
+    rationale?: string;        // why you expect this next, max 200 chars
+  }>;
 };
 
 Rules:
@@ -453,6 +463,11 @@ Rules:
   implement=writing code, review=reading/approving, debug=hunting bugs,
   plan=planning before writing, test=running tests, commit=git operations,
   delegate=spawning subagents, explore=read-only exploration, other=anything else.
+- Forecast headlines use future tense ("Run the full test suite").
+- Forecast rationale is one short phrase — why this likely comes next
+  (e.g. "after touching the worker tests") — not a paragraph.
+- Do not invent forecasts. An empty forecast array is better than
+  speculative filler.
 
 Output ONLY the JSON object.
 `
@@ -462,6 +477,11 @@ const narrativeInstructionBlockJA = `
 フェーズは、進行中の作業を大局的に記述する短い人間向けの塊です。1 つの
 フェーズは 1 ターンでも複数の連続したターンでも構いません。すべての
 ターンは必ずちょうど 1 つのフェーズに属する必要があります。
+
+さらに、次にエージェントが取り組みそうなフェーズを 0〜3 件だけ予測して
+ください。この予測はダッシュボードで「次の目的地」ホライズンとして
+表示されます。確信が持てない場合は forecast を空配列にしてください —
+予測なしでも OK ですが、当てずっぽうの埋め草は禁止です。
 
 以下の TypeScript 型に正確に一致する単一の JSON オブジェクトで応答して
 ください — プローズ、マークダウン、バッククォートは禁止です:
@@ -484,6 +504,11 @@ type NarrativeResponse = {
     first_turn_index: number;  // 0-based、私が渡したターンリストへのインデックス
     last_turn_index: number;   // 両端含む
   }>;
+  forecast?: Array<{
+    kind: /* phases と同じ enum */;
+    headline: string;          // 未来形の一文、最大 140 文字
+    rationale?: string;        // なぜ次にこれが来ると予測したか、最大 200 文字
+  }>;
 };
 
 ルール:
@@ -501,8 +526,12 @@ type NarrativeResponse = {
   implement=コードを書く、review=読む/承認する、debug=バグ調査、
   plan=書く前の計画、test=テスト実行、commit=git 操作、
   delegate=サブエージェント起動、explore=読み取り専用の探索、other=その他。
-- すべてのテキストフィールド (headline, narrative, key_steps) は日本語で
-  記述してください。
+- forecast の headline は未来形で書いてください (例「テストスイートを流す」)。
+- forecast の rationale は一言だけ — なぜ次にそれが来ると予測したか
+  (例「worker のテストに触れた直後だから」)。長文は禁止。
+- 予測は最大 3 件まで。不確かなら空配列にしてください。
+- すべてのテキストフィールド (headline, narrative, key_steps, forecast.headline,
+  forecast.rationale) は日本語で記述してください。
 
 JSON オブジェクトのみを出力してください。
 `

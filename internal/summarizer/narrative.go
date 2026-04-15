@@ -349,6 +349,14 @@ func (w *NarrativeWorker) process(ctx context.Context, job narrativeJob) {
 			"raw", truncate(output, 1024))
 		return
 	}
+	// Forecast is optional and best-effort — a failure here must not
+	// block the historical phases from persisting, so we log and move
+	// on with an empty forecast.
+	forecast, fErr := ParseNarrativeForecast(output)
+	if fErr != nil {
+		w.logger.Debug("narrative: forecast parse error (ignored)",
+			"session_id", job.SessionID, "err", fErr)
+	}
 
 	// Convert the parsed phases (which carry turn indices into the
 	// ordered list) into PhaseBlock rows with real turn ids, timestamps,
@@ -389,8 +397,17 @@ func (w *NarrativeWorker) process(ctx context.Context, job narrativeJob) {
 	}
 
 	// Merge into the rollup blob. We preserve every existing field and
-	// only replace phases + narrative_generated_at + narrative_model.
+	// only replace phases + forecast + narrative_generated_at +
+	// narrative_model.
 	rollup.Phases = phases
+	rollup.Forecast = make([]ForecastPhase, 0, len(forecast))
+	for _, f := range forecast {
+		rollup.Forecast = append(rollup.Forecast, ForecastPhase{
+			Kind:      f.Kind,
+			Headline:  f.Headline,
+			Rationale: f.Rationale,
+		})
+	}
 	rollup.NarrativeGeneratedAt = now
 	rollup.NarrativeModel = model
 
@@ -419,6 +436,7 @@ func (w *NarrativeWorker) process(ctx context.Context, job narrativeJob) {
 	w.logger.Info("narrative: written",
 		"session_id", job.SessionID,
 		"phase_count", len(phases),
+		"forecast_count", len(rollup.Forecast),
 		"turn_count", len(narrativeTurns))
 
 	if w.hub != nil {
@@ -460,8 +478,65 @@ type ParsedPhase struct {
 	LastTurnIndex  int      `json:"last_turn_index"`
 }
 
+// ParsedForecastPhase is the intermediate shape for one predicted
+// upcoming phase. The narrative worker persists these verbatim onto
+// the rollup's Forecast field so the dashboard can render dimmed
+// "next stops" planets beyond the realised phase chain.
+type ParsedForecastPhase struct {
+	Kind      string `json:"kind"`
+	Headline  string `json:"headline"`
+	Rationale string `json:"rationale,omitempty"`
+}
+
 type narrativeResponse struct {
-	Phases []ParsedPhase `json:"phases"`
+	Phases   []ParsedPhase         `json:"phases"`
+	Forecast []ParsedForecastPhase `json:"forecast,omitempty"`
+}
+
+// ParseNarrativeForecast extracts the optional forecast[] field from a
+// tier-3 response body. It reuses the same JSON extraction trick as
+// ParseNarrativeResponse so the caller can run both parsers on the
+// same raw output. A response without a forecast field returns an
+// empty slice and a nil error — the forecast is optional by design
+// and the UI treats missing forecasts as "no prediction". Invalid
+// entries are filtered silently: a single bad entry must not block
+// the narrative phases from persisting.
+func ParseNarrativeForecast(raw string) ([]ParsedForecastPhase, error) {
+	cleaned := strings.TrimSpace(raw)
+	cleaned = stripCodeFences(cleaned)
+	cleaned = extractJSONObject(cleaned)
+	if cleaned == "" {
+		return nil, nil
+	}
+	var resp narrativeResponse
+	if err := json.Unmarshal([]byte(cleaned), &resp); err != nil {
+		return nil, nil
+	}
+	if len(resp.Forecast) == 0 {
+		return nil, nil
+	}
+	out := make([]ParsedForecastPhase, 0, len(resp.Forecast))
+	for _, f := range resp.Forecast {
+		f.Headline = strings.TrimSpace(f.Headline)
+		if f.Headline == "" {
+			continue
+		}
+		if len(f.Headline) > 140 {
+			f.Headline = f.Headline[:140]
+		}
+		f.Rationale = strings.TrimSpace(f.Rationale)
+		if len(f.Rationale) > 200 {
+			f.Rationale = f.Rationale[:200]
+		}
+		if f.Kind == "" || !validPhaseKinds[f.Kind] {
+			f.Kind = PhaseKindOther
+		}
+		out = append(out, f)
+		if len(out) >= 3 {
+			break
+		}
+	}
+	return out, nil
 }
 
 // ParseNarrativeResponse tolerates the same LLM output quirks the recap

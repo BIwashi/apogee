@@ -158,6 +158,76 @@ func TestParseNarrativeResponse_InvalidJSON(t *testing.T) {
 	})
 }
 
+// TestParseNarrativeForecast covers the optional forecast[] field the
+// narrative prompt now asks for alongside phases[]. The parser is
+// deliberately tolerant: a missing or empty forecast yields an empty
+// slice and a nil error, and a single malformed entry is dropped
+// silently rather than failing the whole tier-3 run.
+func TestParseNarrativeForecast(t *testing.T) {
+	t.Run("happy-path", func(t *testing.T) {
+		raw := `{
+		  "phases": [
+		    {"headline":"x","key_steps":["a","b"],"kind":"implement","first_turn_index":0,"last_turn_index":0}
+		  ],
+		  "forecast": [
+		    {"kind":"test","headline":"Run the full test suite","rationale":"after touching the worker tests"},
+		    {"kind":"commit","headline":"Push the fix","rationale":"close the loop"}
+		  ]
+		}`
+		forecast, err := ParseNarrativeForecast(raw)
+		require.NoError(t, err)
+		require.Len(t, forecast, 2)
+		require.Equal(t, "test", forecast[0].Kind)
+		require.Equal(t, "Run the full test suite", forecast[0].Headline)
+		require.Equal(t, "after touching the worker tests", forecast[0].Rationale)
+		require.Equal(t, "commit", forecast[1].Kind)
+	})
+	t.Run("empty-when-missing", func(t *testing.T) {
+		raw := `{"phases":[{"headline":"x","key_steps":["a","b"],"kind":"implement","first_turn_index":0,"last_turn_index":0}]}`
+		forecast, err := ParseNarrativeForecast(raw)
+		require.NoError(t, err)
+		require.Empty(t, forecast)
+	})
+	t.Run("drops-empty-headline", func(t *testing.T) {
+		raw := `{
+		  "phases":[],
+		  "forecast":[
+		    {"kind":"test","headline":""},
+		    {"kind":"commit","headline":"Push the fix"}
+		  ]
+		}`
+		forecast, err := ParseNarrativeForecast(raw)
+		require.NoError(t, err)
+		require.Len(t, forecast, 1)
+		require.Equal(t, "Push the fix", forecast[0].Headline)
+	})
+	t.Run("unknown-kind-falls-back-to-other", func(t *testing.T) {
+		raw := `{"phases":[],"forecast":[{"kind":"vibes","headline":"Ship it"}]}`
+		forecast, err := ParseNarrativeForecast(raw)
+		require.NoError(t, err)
+		require.Len(t, forecast, 1)
+		require.Equal(t, PhaseKindOther, forecast[0].Kind)
+	})
+	t.Run("caps-at-three", func(t *testing.T) {
+		raw := `{"phases":[],"forecast":[
+		  {"kind":"test","headline":"one"},
+		  {"kind":"test","headline":"two"},
+		  {"kind":"test","headline":"three"},
+		  {"kind":"test","headline":"four"},
+		  {"kind":"test","headline":"five"}
+		]}`
+		forecast, err := ParseNarrativeForecast(raw)
+		require.NoError(t, err)
+		require.Len(t, forecast, 3)
+	})
+	t.Run("handles-fenced-json", func(t *testing.T) {
+		raw := "```json\n{\"phases\":[],\"forecast\":[{\"kind\":\"test\",\"headline\":\"one\"}]}\n```"
+		forecast, err := ParseNarrativeForecast(raw)
+		require.NoError(t, err)
+		require.Len(t, forecast, 1)
+	})
+}
+
 func TestNarrativeWorker_SkipsShortSessions(t *testing.T) {
 	ctx := context.Background()
 	store, err := duckdb.Open(ctx, ":memory:")
