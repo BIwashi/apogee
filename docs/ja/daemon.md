@@ -89,6 +89,37 @@ tail -n 200 ~/.apogee/logs/apogee.err.log
 - **DuckDB のロックファイル。** ハードキルすると `.duckdb.wal` のロックがディスクに残り、再 open を邪魔します。`.wal` を削除して再起動します。
 - **壊れた plist / unit ファイル。** install の途中でクラッシュすると不完全なユニットが残ります。`apogee daemon install --force` で上書きします。
 
+## DuckDB ロック
+
+すべてのコレクターは DuckDB ファイルを開く前に、隣に置いたサイドカーファイルへ排他ロックを取得します。これにより「同じファイルを 2 つのコレクターが開く」という地雷を踏み抜き、生の DuckDB driver エラーを実用的なスタイル付きエラーボックスに変換します。ロックは 2 つのファイルからなります:
+
+| ファイル | 目的 |
+| --- | --- |
+| `<db>.apogee.lock` | サイドカーロックファイル。コレクターはプロセスの生存期間中、このファイルに対して `flock(LOCK_EX|LOCK_NB)` を保持します。`internal/store/duckdb/lock.go` のプローブも同じファイルを `LOCK_NB` で開き、`EWOULDBLOCK` / `EAGAIN` を「ロック保持中」と扱います。 |
+| `<db>.apogee.pid` | 保持者の PID を 10 進テキストで書き込んだサイドカー pid ファイル。ロック獲得時に書き込まれ、リリース時に削除されます。`lsof` が無い環境での保持者 PID フォールバックに使われます。 |
+
+プローブが衝突を検出すると、2 つ目のコレクターは以下のスタイル付きボックスを表示して exit 1 で終了します（保持者の PID は `lsof -nP <db>` で取得し、なければ pid ファイルにフォールバック）:
+
+```
+╭──────────────────────────────────────────────────────────╮
+│ Another apogee process is already using the DuckDB file. │
+│                                                          │
+│ Path:    /Users/me/.apogee/apogee.duckdb                 │
+│ Holder:  apogee (pid 12345)                              │
+│                                                          │
+│ To fix:                                                  │
+│   1. apogee daemon stop                                  │
+│   2. or: kill 12345                                      │
+│   3. or: apogee serve --db <alt path>                    │
+╰──────────────────────────────────────────────────────────╯
+```
+
+`apogee doctor` は同じプローブを `db_lock` チェックで公開しています。ロックが空なら OK、実行中の daemon が保持していれば（PID 一致）OK、それ以外は error です。
+
+サイドカーファイルは正常リリース時に削除されます。コレクターが kill -9（あるいはホストクラッシュ）された場合、`<db>.apogee.lock` がディスクに残りますが、プロセス終了時にカーネルが flock を解放するため、次回起動は手動クリーンアップなしで成功します。pid ファイルは古いまま残る場合があるので、無視して再実行してください。
+
+`:memory:` センチネルではロックプリフライトはスキップされます。
+
 ## daemon なしで走らせる
 
 ローカル開発では通常 daemon は不要です。

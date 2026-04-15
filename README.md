@@ -49,8 +49,9 @@ Running multi-agent Claude Code workflows means losing sight of what each agent 
 | Operator interventions | Push text into a live Claude Code session; next `PreToolUse` or `UserPromptSubmit` hook delivers it as `{"decision":"block","reason":...}` or additional context |
 | OpenTelemetry | OTLP gRPC/HTTP export, full claude_code.* semconv registry |
 | Hooks entry point | `apogee hook --event X` — the binary itself is the hook, zero Python dependency |
-| Background service | `apogee daemon {install,start,stop,restart,status}` — launchd (macOS) / systemd `--user` (Linux) |
+| Background service | `apogee daemon {install,uninstall,start,stop,restart,status}` — launchd (macOS) / systemd `--user` (Linux), styled lipgloss output |
 | macOS menu bar | `apogee menubar` — native status item polling the local collector |
+| Doctor | `apogee doctor` — 7 environment checks (home, claude CLI, db path, config, DB lock, collector, hook install) with `--json` for scripts |
 | CLI | `serve`, `init`, `hook`, `daemon`, `status`, `logs`, `open`, `uninstall`, `menubar`, `doctor`, `version` — one binary, no Node or Python runtime |
 
 <p align="center">
@@ -331,16 +332,72 @@ Once you have apogee installed, register it as a launchd (macOS) or systemd user
 ```sh
 apogee daemon install
 apogee daemon start
-apogee status
+apogee daemon status
+```
+
+`apogee daemon install` prints a styled success box (NO_COLOR=1 sample shown — colors are bold by default in a TTY):
+
+```
+╭───────────────────────────────────────────────────────────────────────╮
+│ ✓ daemon installed                                                    │
+│                                                                       │
+│ Label:      dev.biwashi.apogee                                        │
+│ Unit path:  /Users/me/Library/LaunchAgents/dev.biwashi.apogee.plist   │
+│ Collector:  http://127.0.0.1:4100                                     │
+│ Logs:       /Users/me/.apogee/logs/apogee.{out,err}.log               │
+│                                                                       │
+│ The daemon will start automatically on next login. To start it now:   │
+│   apogee daemon start                                                 │
+╰───────────────────────────────────────────────────────────────────────╯
+```
+
+`apogee daemon status` renders a Daemon box (info border) and a Collector box (success border when reachable, error border when unreachable):
+
+```
+Daemon: dev.biwashi.apogee
+╭─────────────────────────────────────────────────────────────────────────╮
+│ Status:      running                                                    │
+│ Installed:   yes                                                        │
+│ Loaded:      yes                                                        │
+│ Running:     yes                                                        │
+│ PID:         12345                                                      │
+│ Started at:  2026-04-15 13:01:20                                        │
+│ Uptime:      1h 12m 4s                                                  │
+│ Last exit:   0                                                          │
+│ Unit path:   /Users/me/Library/LaunchAgents/dev.biwashi.apogee.plist    │
+│ Logs:        ~/.apogee/logs/apogee.{out,err}.log                        │
+╰─────────────────────────────────────────────────────────────────────────╯
+
+Collector: http://127.0.0.1:4100
+╭───────────────────────────────────────────────╮
+│ Endpoint:  http://127.0.0.1:4100              │
+│ Health:    ok                                 │
+│ Detail:    ok (HTTP 200, 3 ms)                │
+│ Latency:   3ms                                │
+╰───────────────────────────────────────────────╯
 ```
 
 Stop, restart, and tail logs the same way:
 
 ```sh
-apogee daemon stop
-apogee daemon restart
-apogee logs -f
-apogee open       # opens http://127.0.0.1:4100 in your browser
+apogee daemon stop      # ✓ daemon stopped (dev.biwashi.apogee)
+apogee daemon restart   # ✓ daemon restarted (dev.biwashi.apogee)
+apogee logs -f          # tail ~/.apogee/logs/apogee.{out,err}.log
+apogee open             # opens http://127.0.0.1:4100 in your browser
+```
+
+`apogee logs -f` tails both `apogee.out.log` and `apogee.err.log` from `~/.apogee/logs/`, seeded with the last 50 lines:
+
+```
+==> /Users/me/.apogee/logs/apogee.out.log <==
+{"time":"2026-04-15T13:01:38+09:00","level":"INFO","msg":"collector listening","addr":"127.0.0.1:4100"}
+{"time":"2026-04-15T13:01:38+09:00","level":"INFO","msg":"summarizer: starting","recap_model":"claude-haiku-4-5"}
+```
+
+`apogee open` is a thin wrapper over `open` (macOS) / `xdg-open` (Linux) that prints the URL when the system helper is unavailable:
+
+```
+Opening http://127.0.0.1:4100/
 ```
 
 To remove apogee entirely:
@@ -350,7 +407,17 @@ apogee uninstall            # stops daemon, removes hooks, prompts before deleti
 apogee uninstall --purge    # also wipes ~/.apogee
 ```
 
-The unit file lives at `~/Library/LaunchAgents/dev.biwashi.apogee.plist` on macOS and `~/.config/systemd/user/apogee.service` on Linux. See [`docs/daemon.md`](docs/daemon.md) for the full operator cheatsheet.
+`apogee daemon uninstall` (used by `apogee uninstall` internally) renders an info box:
+
+```
+╭─────────────────────────────╮
+│ daemon uninstalled          │
+│                             │
+│ Label:  dev.biwashi.apogee  │
+╰─────────────────────────────╯
+```
+
+The unit file lives at `~/Library/LaunchAgents/dev.biwashi.apogee.plist` on macOS and `~/.config/systemd/user/apogee.service` on Linux. See [`docs/daemon.md`](docs/daemon.md) for the full operator cheatsheet and [`docs/doctor.md`](docs/doctor.md) for the doctor checks reference.
 
 To regenerate the screenshots committed under `assets/screenshots/`:
 
@@ -359,6 +426,59 @@ bash scripts/capture-screenshots.sh
 ```
 
 The script boots the collector against an in-memory DB, posts a fixture batch, and drives Chromium via playwright.
+
+---
+
+## Troubleshooting
+
+### DuckDB lock conflict
+
+Apogee writes a sidecar lock file (`<db>.apogee.lock`) and a sidecar pid file (`<db>.apogee.pid`) next to its DuckDB store. If you accidentally start a second collector pointed at the same DB, the second invocation exits 1 with a styled error box instead of the raw driver error:
+
+```
+╭──────────────────────────────────────────────────────────╮
+│ Another apogee process is already using the DuckDB file. │
+│                                                          │
+│ Path:    /Users/me/.apogee/apogee.duckdb                 │
+│ Holder:  apogee (pid 12345)                              │
+│                                                          │
+│ To fix:                                                  │
+│   1. apogee daemon stop                                  │
+│   2. or: kill 12345                                      │
+│   3. or: apogee serve --db <alt path>                    │
+╰──────────────────────────────────────────────────────────╯
+```
+
+Run `apogee daemon stop` (or `kill <pid>` for an unmanaged collector), then re-run the command. The holder PID is detected via `lsof -nP <db>` when available, with a fallback to the pid file.
+
+### Daemon won't start
+
+- `apogee daemon status` prints the install + load state and the collector reachability box.
+- `apogee logs -f` tails `~/.apogee/logs/apogee.{out,err}.log` from the daemon's stdout/stderr.
+- On launchd: check `launchctl print gui/$(id -u)/dev.biwashi.apogee` for the supervisor's view.
+- On systemd: `journalctl --user -u apogee.service -f` for the unit's logs.
+
+### Hook not firing
+
+Run `apogee doctor` — the `hook_install` check reads `~/.claude/settings.json` and verifies every event in `internal/cli/init.go::HookEvents` points at the apogee binary:
+
+```
+apogee doctor
+
+  ✓ /Users/me/.apogee writable
+  ✓ claude CLI on PATH (/Users/me/.local/bin/claude)
+  ✓ default db path /Users/me/.apogee/apogee.duckdb
+  ✓ no config file (defaults in use) (/Users/me/.apogee/config.toml)
+  ✓ DuckDB file is unlocked
+  ⚠ collector not running (http://127.0.0.1:4100/v1/healthz)
+  ✓ apogee hook installed for 12/12 events
+
+5 ok · 1 warning · 0 errors
+```
+
+`apogee doctor --json` emits the same checks as a JSON array suitable for CI / scripts / `apogee menubar`.
+
+If `hook_install` reports `partial` or `missing`, run `apogee init --force` to rewrite the entries.
 
 ---
 

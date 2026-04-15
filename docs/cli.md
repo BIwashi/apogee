@@ -173,10 +173,39 @@ apogee daemon stop
 apogee daemon uninstall
 ```
 
+`apogee daemon status` prints two lipgloss boxes (Daemon + Collector),
+captured here with `NO_COLOR=1`:
+
+```
+Daemon: dev.biwashi.apogee
+╭─────────────────────────────────────────────────────────────────────────╮
+│ Status:      running                                                    │
+│ Installed:   yes                                                        │
+│ Loaded:      yes                                                        │
+│ Running:     yes                                                        │
+│ PID:         12345                                                      │
+│ Started at:  2026-04-15 13:01:20                                        │
+│ Uptime:      1h 12m 4s                                                  │
+│ Last exit:   0                                                          │
+│ Unit path:   /Users/me/Library/LaunchAgents/dev.biwashi.apogee.plist    │
+│ Logs:        ~/.apogee/logs/apogee.{out,err}.log                        │
+╰─────────────────────────────────────────────────────────────────────────╯
+
+Collector: http://127.0.0.1:4100
+╭───────────────────────────────────────────────╮
+│ Endpoint:  http://127.0.0.1:4100              │
+│ Health:    ok                                 │
+│ Detail:    ok (HTTP 200, 3 ms)                │
+│ Latency:   3ms                                │
+╰───────────────────────────────────────────────╯
+```
+
 ### Notes
 
 - The unit file lives at `~/Library/LaunchAgents/dev.biwashi.apogee.plist`
   on macOS and `~/.config/systemd/user/apogee.service` on Linux.
+- The Collector box border turns red when the `/v1/healthz` probe fails;
+  the Daemon box border turns yellow when not installed.
 - See [`daemon.md`](daemon.md) for supervisor primitives, debugging, and
   configuration.
 
@@ -196,10 +225,31 @@ for shell prompts and CI checks.
 
 ### Example
 
-```sh
+```
 $ apogee status
-daemon:    running (pid 42317)
-collector: ok (http://127.0.0.1:4100)
+APOGEE STATUS
+
+Daemon:    running (pid 42317, uptime 1h 12m 4s)
+╭─────────────────────────────────────────────────────────────────────────╮
+│ Status:      running                                                    │
+│ Installed:   yes                                                        │
+│ Loaded:      yes                                                        │
+│ Running:     yes                                                        │
+│ PID:         42317                                                      │
+│ Started at:  2026-04-15 13:01:20                                        │
+│ Uptime:      1h 12m 4s                                                  │
+│ Last exit:   0                                                          │
+│ Unit path:   /Users/me/Library/LaunchAgents/dev.biwashi.apogee.plist    │
+│ Logs:        ~/.apogee/logs/apogee.{out,err}.log                        │
+╰─────────────────────────────────────────────────────────────────────────╯
+
+Collector: http://127.0.0.1:4100 (ok (HTTP 200, 3 ms))
+╭───────────────────────────────────────────────╮
+│ Endpoint:  http://127.0.0.1:4100              │
+│ Health:    ok                                 │
+│ Detail:    ok (HTTP 200, 3 ms)                │
+│ Latency:   3ms                                │
+╰───────────────────────────────────────────────╯
 ```
 
 ### Notes
@@ -315,25 +365,101 @@ apogee menubar &
 
 ## apogee doctor
 
-Health-check the local install. Verifies that the apogee binary resolves,
-the config file parses, the database file is writable, `claude` is on PATH,
-and a sample hook POST succeeds against the configured collector.
+Health-check the local install. Runs seven checks and prints a styled
+glyph + message line for each, plus a summary footer.
+
+### Checks
+
+| Name | Description |
+| --- | --- |
+| `home` | `~/.apogee` exists and is writable |
+| `claude_cli` | `claude` is on PATH (used by the summarizer) |
+| `db_path` | Default DuckDB path is writable |
+| `config` | `~/.apogee/config.toml` exists (informational) |
+| `db_lock` | DuckDB sidecar lock is free, OR held by the installed daemon |
+| `collector` | `GET /v1/healthz` on `127.0.0.1:4100` returns 200 (500 ms timeout) |
+| `hook_install` | Every event in `internal/cli/init.go::HookEvents` is wired to the apogee binary in `~/.claude/settings.json` |
 
 ### Flags
 
 | Flag | Default | Description |
 | --- | --- | --- |
-| `--server-url` | `http://localhost:4100/v1/events` | Collector endpoint to probe |
+| `--json` | `false` | Emit the checks as a JSON array (suitable for CI / scripts / `apogee menubar`) |
 
 ### Example
 
-```sh
-apogee doctor
+```
+$ apogee doctor
+
+  ✓ /Users/me/.apogee writable
+  ✓ claude CLI on PATH (/Users/me/.local/bin/claude)
+  ✓ default db path /Users/me/.apogee/apogee.duckdb
+  ✓ no config file (defaults in use) (/Users/me/.apogee/config.toml)
+  ✓ DuckDB file is unlocked
+  ⚠ collector not running (http://127.0.0.1:4100/v1/healthz)
+  ✓ apogee hook installed for 12/12 events
+
+5 ok · 1 warning · 0 errors
+```
+
+```
+$ apogee doctor --json
+[
+  {"name": "home",         "severity": "ok",   "message": "/Users/me/.apogee writable"},
+  {"name": "claude_cli",   "severity": "ok",   "message": "claude CLI on PATH", "detail": "/Users/me/.local/bin/claude"},
+  {"name": "db_path",      "severity": "ok",   "message": "default db path /Users/me/.apogee/apogee.duckdb"},
+  {"name": "config",       "severity": "info", "message": "no config file (defaults in use)", "detail": "/Users/me/.apogee/config.toml"},
+  {"name": "db_lock",      "severity": "ok",   "message": "DuckDB file is unlocked"},
+  {"name": "collector",    "severity": "warn", "message": "collector not running", "detail": "http://127.0.0.1:4100/v1/healthz"},
+  {"name": "hook_install", "severity": "ok",   "message": "apogee hook installed for 12/12 events"}
+]
 ```
 
 ### Notes
 
 - `doctor` never modifies anything. It only reports.
+- The glyphs are Unicode `✓` / `⚠` / `✗` (U+2713, U+26A0, U+2717). The
+  output degrades cleanly when `NO_COLOR=1` is set or stdout is not a TTY.
+- See [`doctor.md`](doctor.md) for the full check semantics.
+
+---
+
+## Common errors
+
+### DuckDB lock conflict
+
+When a second apogee process tries to open the same DuckDB file the second
+invocation exits 1 with a styled error box instead of the raw driver error:
+
+```
+╭──────────────────────────────────────────────────────────╮
+│ Another apogee process is already using the DuckDB file. │
+│                                                          │
+│ Path:    /Users/me/.apogee/apogee.duckdb                 │
+│ Holder:  apogee (pid 12345)                              │
+│                                                          │
+│ To fix:                                                  │
+│   1. apogee daemon stop                                  │
+│   2. or: kill 12345                                      │
+│   3. or: apogee serve --db <alt path>                    │
+╰──────────────────────────────────────────────────────────╯
+```
+
+The holder PID is detected via `lsof -nP <db>` when available, with a
+fallback to the sidecar pid file. See [`daemon.md`](daemon.md) for the
+sidecar files (`<db>.apogee.lock`, `<db>.apogee.pid`).
+
+### Daemon won't start
+
+- Run `apogee daemon status` to see the install + load + running state.
+- Run `apogee logs -f` to tail the daemon's stdout / stderr.
+- On launchd: `launchctl print gui/$(id -u)/dev.biwashi.apogee`.
+- On systemd: `journalctl --user -u apogee.service -f`.
+
+### Hook not firing
+
+Run `apogee doctor` and look at the `hook_install` row. If it reports
+`partial` or `missing`, run `apogee init --force` to rewrite the entries.
 
 ---
 

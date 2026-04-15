@@ -106,6 +106,49 @@ Common pitfalls:
 - **Stale plist / service file.** A mid-install crash can leave a
   partial unit file. Re-run `apogee daemon install --force`.
 
+## DuckDB lock
+
+Every collector instance acquires an exclusive lock on a sidecar file
+next to the DuckDB store before opening the database. The pre-flight
+catches the "two collectors pointed at the same file" footgun and
+turns the raw DuckDB driver error into an actionable, styled error
+box. The lock lives in two files:
+
+| File | Purpose |
+| --- | --- |
+| `<db>.apogee.lock` | Sidecar lock file. The collector holds an exclusive `flock(LOCK_EX|LOCK_NB)` on this file for the lifetime of the process. The probe in `internal/store/duckdb/lock.go` opens the same file with `LOCK_NB` and treats `EWOULDBLOCK` / `EAGAIN` as "lock held". |
+| `<db>.apogee.pid` | Sidecar pid file containing the lock holder's PID as decimal text. Written when the lock is acquired and removed on release. Used as a fallback for the holder PID when `lsof` is not installed. |
+
+When the pre-flight detects a conflict, the second collector exits 1
+with this styled box (the holder PID is detected via `lsof -nP <db>`
+when available, with the sidecar pid file as a fallback):
+
+```
+╭──────────────────────────────────────────────────────────╮
+│ Another apogee process is already using the DuckDB file. │
+│                                                          │
+│ Path:    /Users/me/.apogee/apogee.duckdb                 │
+│ Holder:  apogee (pid 12345)                              │
+│                                                          │
+│ To fix:                                                  │
+│   1. apogee daemon stop                                  │
+│   2. or: kill 12345                                      │
+│   3. or: apogee serve --db <alt path>                    │
+╰──────────────────────────────────────────────────────────╯
+```
+
+`apogee doctor` exposes the same probe via the `db_lock` check —
+which is OK when nothing holds the lock, OK when the running daemon
+holds it (PID matches), and an error otherwise.
+
+The sidecar files are removed when the lock is released cleanly. If
+the collector is killed -9 (or the host crashes), `<db>.apogee.lock`
+remains on disk but the kernel releases the underlying flock when the
+process dies, so the next start succeeds without manual cleanup. The
+pid file may be stale; ignore it and re-run.
+
+The lock pre-flight is skipped for the `:memory:` sentinel.
+
 ## Running without the daemon
 
 For local development you usually don't want the daemon at all:

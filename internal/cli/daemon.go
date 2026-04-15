@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -27,12 +28,13 @@ systemctl --user. Every subcommand is safe to run even when the
 unit is not installed — it returns a friendly error instead of a
 crash.`,
 	}
-	cmd.AddCommand(newDaemonInstallCmd(stdout, stderr))
-	cmd.AddCommand(newDaemonUninstallCmd(stdout, stderr))
-	cmd.AddCommand(newDaemonStartCmd(stdout, stderr))
-	cmd.AddCommand(newDaemonStopCmd(stdout, stderr))
-	cmd.AddCommand(newDaemonRestartCmd(stdout, stderr))
-	cmd.AddCommand(newDaemonStatusCmd(stdout, stderr))
+	out := styledWriter(stdout)
+	cmd.AddCommand(newDaemonInstallCmd(out, stderr))
+	cmd.AddCommand(newDaemonUninstallCmd(out, stderr))
+	cmd.AddCommand(newDaemonStartCmd(out, stderr))
+	cmd.AddCommand(newDaemonStopCmd(out, stderr))
+	cmd.AddCommand(newDaemonRestartCmd(out, stderr))
+	cmd.AddCommand(newDaemonStatusCmd(out, stderr))
 	return cmd
 }
 
@@ -89,7 +91,11 @@ func newDaemonUninstallCmd(stdout, stderr io.Writer) *cobra.Command {
 			if err := m.Uninstall(cmd.Context()); err != nil {
 				return err
 			}
-			fmt.Fprintf(stdout, "%s daemon uninstalled (%s)\n", checkGlyph, m.Label())
+			body := keyValueLines([][2]string{
+				{"Label", m.Label()},
+			})
+			inner := styleHeading.Render("daemon uninstalled") + "\n\n" + body
+			fmt.Fprintln(stdout, boxInfo.Render(inner))
 			return nil
 		},
 	}
@@ -110,7 +116,7 @@ func newDaemonStartCmd(stdout, stderr io.Writer) *cobra.Command {
 				}
 				return err
 			}
-			fmt.Fprintf(stdout, "%s daemon started (%s)\n", checkGlyph, m.Label())
+			fmt.Fprintln(stdout, formatStatusLine("ok", fmt.Sprintf("daemon started (%s)", m.Label())))
 			return nil
 		},
 	}
@@ -131,7 +137,7 @@ func newDaemonStopCmd(stdout, stderr io.Writer) *cobra.Command {
 				}
 				return err
 			}
-			fmt.Fprintf(stdout, "%s daemon stopped (%s)\n", checkGlyph, m.Label())
+			fmt.Fprintln(stdout, formatStatusLine("ok", fmt.Sprintf("daemon stopped (%s)", m.Label())))
 			return nil
 		},
 	}
@@ -152,7 +158,7 @@ func newDaemonRestartCmd(stdout, stderr io.Writer) *cobra.Command {
 				}
 				return err
 			}
-			fmt.Fprintf(stdout, "%s daemon restarted (%s)\n", checkGlyph, m.Label())
+			fmt.Fprintln(stdout, formatStatusLine("ok", fmt.Sprintf("daemon restarted (%s)", m.Label())))
 			return nil
 		},
 	}
@@ -172,18 +178,7 @@ func newDaemonStatusCmd(stdout, stderr io.Writer) *cobra.Command {
 			if serr != nil && !errors.Is(serr, daemon.ErrNotSupported) {
 				return serr
 			}
-			fmt.Fprint(stdout, daemon.FormatStatus(s))
-			if s.Installed {
-				fmt.Fprintf(stdout, "  Logs:         ~/.apogee/logs/apogee.{out,err}.log\n")
-			} else {
-				fmt.Fprintf(stdout, "\n%s not installed — run `apogee daemon install` to register the service.\n", crossGlyph)
-				return nil
-			}
-
-			h := probeCollector(addr)
-			fmt.Fprintln(stdout)
-			fmt.Fprintf(stdout, "Collector: http://%s\n", addr)
-			fmt.Fprintf(stdout, "  Health:       %s\n", formatCollectorLine(h))
+			renderDaemonStatusBox(stdout, m, s, addr)
 			return nil
 		},
 	}
@@ -191,18 +186,129 @@ func newDaemonStatusCmd(stdout, stderr io.Writer) *cobra.Command {
 	return cmd
 }
 
+// renderDaemonStatusBox writes the styled two-section daemon-status
+// page (Daemon box + Collector box) to out, plus the trailing "not
+// installed" hint when applicable. Used by both `apogee daemon
+// status` and the `apogee status` umbrella command.
+func renderDaemonStatusBox(out io.Writer, m daemon.Manager, s daemon.Status, addr string) {
+	fmt.Fprintln(out, renderHeading(fmt.Sprintf("Daemon: %s", labelOf(s, m))))
+	fmt.Fprintln(out, daemonBox(m, s))
+	if !s.Installed {
+		fmt.Fprintln(out, styleMuted.Render("not installed — run `apogee daemon install` to register the service."))
+		return
+	}
+	fmt.Fprintln(out)
+	h := probeCollector(addr)
+	fmt.Fprintln(out, renderHeading(fmt.Sprintf("Collector: http://%s", addr)))
+	fmt.Fprintln(out, collectorBox(addr, h))
+}
+
+// labelOf returns the manager's label or the status label, whichever
+// is non-empty, falling back to daemon.DefaultLabel.
+func labelOf(s daemon.Status, m daemon.Manager) string {
+	if s.Label != "" {
+		return s.Label
+	}
+	if m != nil && m.Label() != "" {
+		return m.Label()
+	}
+	return daemon.DefaultLabel
+}
+
+// daemonBox renders the Daemon section (info border for installed,
+// muted box otherwise) using keyValueLines.
+func daemonBox(m daemon.Manager, s daemon.Status) string {
+	state := "not installed"
+	switch {
+	case s.Running:
+		state = "running"
+	case s.Installed:
+		state = "stopped"
+	}
+
+	startedAt := "—"
+	uptime := "—"
+	if !s.StartedAt.IsZero() {
+		startedAt = s.StartedAt.Format("2006-01-02 15:04:05")
+		uptime = s.Uptime().Round(time.Second).String()
+	}
+
+	pid := "—"
+	if s.PID > 0 {
+		pid = fmt.Sprintf("%d", s.PID)
+	}
+
+	unitPath := s.UnitPath
+	if unitPath == "" && m != nil {
+		unitPath = m.UnitPath()
+	}
+	if unitPath == "" {
+		unitPath = "—"
+	}
+
+	entries := [][2]string{
+		{"Status", statusBadge(state)},
+		{"Installed", boolBadge(s.Installed)},
+		{"Loaded", boolBadge(s.Loaded)},
+		{"Running", boolBadge(s.Running)},
+		{"PID", pid},
+		{"Started at", startedAt},
+		{"Uptime", uptime},
+		{"Last exit", fmt.Sprintf("%d", s.LastExitCode)},
+		{"Unit path", unitPath},
+		{"Logs", "~/.apogee/logs/apogee.{out,err}.log"},
+	}
+	body := keyValueLines(entries)
+	if s.Installed {
+		return boxInfo.Render(body)
+	}
+	return boxWarn.Render(body)
+}
+
+// boolBadge renders a boolean as styled "yes" / "no".
+func boolBadge(b bool) string {
+	if b {
+		return styleSuccess.Render("yes")
+	}
+	return styleMuted.Render("no")
+}
+
+// collectorBox renders the Collector section. Border is success when
+// the probe is OK, error otherwise.
+func collectorBox(addr string, h collectorHealth) string {
+	state := "ok"
+	box := boxSuccess
+	if h.Err != nil || !h.OK {
+		state = "unreachable"
+		box = boxError
+	}
+	healthLine := formatCollectorLine(h)
+	latency := "—"
+	if h.Latency > 0 {
+		latency = h.Latency.Round(time.Millisecond).String()
+	}
+	body := keyValueLines([][2]string{
+		{"Endpoint", "http://" + addr},
+		{"Health", statusBadge(state)},
+		{"Detail", healthLine},
+		{"Latency", latency},
+	})
+	return box.Render(body)
+}
+
 // printInstallSummary writes the styled success block for `daemon
 // install`. The glyph is a Unicode check mark (U+2713), not an
 // emoji, so it satisfies the no-emoji design system rule.
 func printInstallSummary(out io.Writer, m daemon.Manager, cfg daemon.Config) {
-	fmt.Fprintf(out, "%s daemon installed\n", checkGlyph)
-	fmt.Fprintf(out, "  Label:        %s\n", m.Label())
-	fmt.Fprintf(out, "  Unit path:    %s\n", m.UnitPath())
-	fmt.Fprintf(out, "  Collector:    http://%s\n", trimAddr(cfg.Args))
-	fmt.Fprintf(out, "  Logs:         %s/apogee.{out,err}.log\n", cfg.LogDir)
-	fmt.Fprintln(out)
-	fmt.Fprintln(out, "The daemon will start automatically on next login. To start it now:")
-	fmt.Fprintln(out, "  apogee daemon start")
+	body := keyValueLines([][2]string{
+		{"Label", m.Label()},
+		{"Unit path", m.UnitPath()},
+		{"Collector", "http://" + trimAddr(cfg.Args)},
+		{"Logs", cfg.LogDir + "/apogee.{out,err}.log"},
+	})
+	hint := "The daemon will start automatically on next login. To start it now:\n  apogee daemon start"
+	inner := styleSuccess.Render(glyphCheck+" daemon installed") + "\n\n" + body + "\n\n" + styleMuted.Render(hint)
+	fmt.Fprintln(out, boxSuccess.Render(inner))
 }
 
 func trimAddr(args []string) string {
