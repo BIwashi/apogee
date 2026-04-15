@@ -8,6 +8,7 @@ import {
   BarChart3,
   Layers,
   List,
+  Orbit,
   ScrollText,
   Send,
   Sparkles,
@@ -16,6 +17,7 @@ import {
 import Breadcrumb from "../components/Breadcrumb";
 import Card from "../components/Card";
 import KpiStrip from "../components/KpiStrip";
+import MissionMap from "../components/MissionMap";
 import PhaseTimeline from "../components/PhaseTimeline";
 import RawLogsPanel from "../components/RawLogsPanel";
 import RollupPanel from "../components/RollupPanel";
@@ -51,9 +53,17 @@ import { useSelection } from "../lib/url-state";
  * of data is fetched client-side exactly like the old dynamic route.
  */
 
-type TabKey = "timeline" | "overview" | "turns" | "trace" | "logs" | "metrics";
+type TabKey =
+  | "mission"
+  | "timeline"
+  | "overview"
+  | "turns"
+  | "trace"
+  | "logs"
+  | "metrics";
 
 const TABS: TabItem<TabKey>[] = [
+  { key: "mission", label: "Mission", icon: Orbit },
   { key: "timeline", label: "Timeline", icon: Sparkles },
   { key: "overview", label: "Overview", icon: Layers },
   { key: "turns", label: "Turns", icon: List },
@@ -84,7 +94,7 @@ export default function SessionDetailPage() {
   }, [id, setSelection]);
 
   const rawTab = searchParams.get("tab") as TabKey | null;
-  const active: TabKey = rawTab && TABS.some((t) => t.key === rawTab) ? rawTab : "timeline";
+  const active: TabKey = rawTab && TABS.some((t) => t.key === rawTab) ? rawTab : "mission";
 
   const setActive = useCallback(
     (key: TabKey) => {
@@ -194,6 +204,7 @@ export default function SessionDetailPage() {
 
       <Tabs items={TABS} active={active} onSelect={setActive} />
 
+      {active === "mission" && <MissionMap sessionId={id} turns={turns} />}
       {active === "timeline" && <PhaseTimeline sessionId={id} turns={turns} />}
       {active === "overview" && (
         <OverviewTab
