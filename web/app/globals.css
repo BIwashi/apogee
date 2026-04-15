@@ -7,8 +7,15 @@
  * ───────────────────────────────────────────────────────────── */
 
 @font-face {
-  font-family: "Artemis Inter";
-  src: url("/fonts/Artemis_Inter.otf") format("opentype");
+  font-family: "Space Grotesk";
+  src: url("/fonts/SpaceGrotesk-Medium.ttf") format("truetype");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Space Grotesk";
+  src: url("/fonts/SpaceGrotesk-Bold.ttf") format("truetype");
   font-weight: 700;
   font-style: normal;
   font-display: swap;
@@ -48,10 +55,11 @@
   );
 
   /* ── Typography ──────────────────────────── */
-  --font-display: "Artemis Inter", ui-sans-serif, system-ui, sans-serif;
-  --font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans",
+  --font-display: "Space Grotesk", -apple-system, BlinkMacSystemFont,
+    "Segoe UI", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue",
     Helvetica, Arial, sans-serif;
-  --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Monaco, monospace;
 
   /* ── Legacy compat (aperion parity) ──────── */
   --background: var(--bg-deepspace);
@@ -71,7 +79,7 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* ── Artemis display headings ──────────────── */
+/* ── Display headings (Space Grotesk) ─────── */
 .font-display {
   font-family: var(--font-display);
   letter-spacing: 0.12em;

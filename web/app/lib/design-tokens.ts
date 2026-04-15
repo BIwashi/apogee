@@ -47,10 +47,24 @@ export const accentGradient =
   "linear-gradient(135deg, #0B3D91 0%, #27AAE1 50%, #FC3D21 100%)";
 
 // ── Typography ──────────────────────────────────────────────
+//
+// Display font is Space Grotesk (SIL Open Font License 1.1) by Florian
+// Karsten. See `docs/credits.md` and `web/public/fonts/SpaceGrotesk-OFL.txt`.
+// Body and mono keep the operating system's native UI stack so nothing
+// else needs to be bundled.
+export const TYPOGRAPHY = {
+  display: `"Space Grotesk", -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Helvetica, Arial, sans-serif`,
+  body: `-apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Helvetica, Arial, sans-serif`,
+  mono: `ui-monospace, "SF Mono", Menlo, Monaco, monospace`,
+} as const;
+
+// Back-compat alias for existing consumers. Prefer `TYPOGRAPHY` going
+// forward; the lowercase export carries extra metadata fields used by
+// one-off inline-style call sites (charts, SVG).
 export const typography = {
-  display: '"Artemis Inter", ui-sans-serif, system-ui, sans-serif',
-  body: '-apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif',
-  mono: 'ui-monospace, "SF Mono", Menlo, monospace',
+  display: TYPOGRAPHY.display,
+  body: TYPOGRAPHY.body,
+  mono: TYPOGRAPHY.mono,
   displayLetterSpacing: "0.12em",
   displayWeight: 700,
 } as const;

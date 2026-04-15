@@ -62,7 +62,7 @@ apogee is designed, not decorated. The visual identity is a first-class feature 
 - **No emoji** anywhere in the UI chrome, the README, or commit messages.
 - **lucide-react only.** No alternate icon sets.
 - **CSS variables only.** Tailwind utility classes that resolve to `var(--…)` tokens defined in `web/app/globals.css`. Do not introduce hard-coded hex values.
-- **Artemis Inter for display**, system stack for body, SF Mono for code.
+- **Space Grotesk for display** (SIL OFL 1.1), system stack for body, SF Mono for code.
 - See [`docs/design-tokens.md`](docs/design-tokens.md) for the full spec.
 
 ## How to add a new hook event type

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **PR #25 — Space Grotesk replaces Artemis Inter.** apogee no longer bundles NASA's Artemis Inter display font (a brand asset of the Artemis program that cannot be redistributed in an open-source project). Display font is now [Space Grotesk](https://github.com/floriankarsten/space-grotesk) by Florian Karsten, SIL Open Font License 1.1, shipped under `web/public/fonts/SpaceGrotesk-{Bold,Medium}.ttf` with a copy of the OFL alongside. Body text continues to use the operating system's native UI stack. Every raster under `assets/branding/` and the Next.js icons have been regenerated with Space Grotesk. A new `docs/credits.md` enumerates the full third-party asset and license list and a Credits section is added to the README.
+
 ### Added
 
 - **PR #23 — macOS menu bar app.** New `apogee menubar` subcommand backed by `caseymrm/menuet`. Polls the collector every 5s and renders daemon status, session counts, and quick actions (open dashboard, open logs, restart daemon, quit) in a native macOS status item. Build-tagged so non-darwin builds compile cleanly with a stub that prints a clear "macOS only" message.

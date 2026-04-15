@@ -121,7 +121,7 @@ export default function FocusCard({
           </span>
         </div>
 
-        <h2 className="font-display text-xl leading-snug tracking-[0.02em] text-white md:text-2xl">
+        <h2 className="text-xl font-semibold leading-snug text-white md:text-2xl">
           {headline}
         </h2>
 

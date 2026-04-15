@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 
 /**
- * SectionHeader — Artemis-Inter uppercase title used above cards, grids, and
+ * SectionHeader — Space-Grotesk uppercase title used above cards, grids, and
  * tables. The small accent bar on the left locks the header to the brand
  * gradient without needing a hero-sized type treatment.
  */
