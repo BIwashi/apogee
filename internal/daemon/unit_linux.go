@@ -272,7 +272,7 @@ func renderServiceFile(cfg Config) ([]byte, error) {
 	if logDir == "" {
 		logDir = "%h/.apogee/logs"
 	}
-	env := cfg.Environment
+	env := applyDefaultEnv(cfg.Environment)
 	envKeys := sortedKeys(env)
 
 	data := serviceData{

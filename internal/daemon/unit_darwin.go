@@ -259,15 +259,7 @@ func renderPlist(label string, cfg Config) ([]byte, error) {
 		cfg.BinaryPath = exe
 	}
 	program := append([]string{cfg.BinaryPath}, cfg.Args...)
-	env := cfg.Environment
-	if env == nil {
-		env = map[string]string{}
-	}
-	if _, ok := env["HOME"]; !ok {
-		if home, err := os.UserHomeDir(); err == nil {
-			env["HOME"] = home
-		}
-	}
+	env := applyDefaultEnv(cfg.Environment)
 	base := cfg.LogFileBase
 	if base == "" {
 		base = "apogee"
