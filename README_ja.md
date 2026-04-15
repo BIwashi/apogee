@@ -66,6 +66,7 @@ apogee は、マルチエージェントの [Claude Code](https://docs.claude.co
 | フックエントリポイント | `apogee hook --event X` — バイナリそのものが hook です。Python 依存は一切ありません。 |
 | バックグラウンドサービス | `apogee daemon {install,uninstall,start,stop,restart,status}` — launchd（macOS）/ systemd `--user`（Linux）。lipgloss のスタイリングで色分けされた出力。 |
 | macOS メニューバー | `apogee menubar` — ローカルコレクターをポーリングするネイティブのステータスアイテム。 |
+| macOS デスクトップアプリ | `Apogee.app` — ブラウザタブの代わりにネイティブ WKWebView ウィンドウでダッシュボードを描画します。`brew install --cask BIwashi/tap/apogee-desktop` でインストール可能。proxy ファースト: ウィンドウは走っている daemon への薄い reverse proxy なので、operator intervention / HITL 応答 / recap 更新は Claude Code hook が既に指している同じ collector を経由します。初回起動で daemon が居ないときはネイティブダイアログから `apogee onboard --yes` を自動で実行します。詳細は [`docs/desktop_ja.md`](docs/desktop_ja.md)。 |
 | Doctor | `apogee doctor` — 7 つの環境チェック（home / claude CLI / db path / config / DB lock / collector / hook install）。`--json` で機械可読出力。 |
 | CLI | `serve`, `init`, `hook`, `daemon`, `status`, `logs`, `open`, `uninstall`, `menubar`, `doctor`, `version`。単一バイナリ、Node / Python ランタイムなし。 |
 | デザイン | ライト / ダーク両テーマを搭載。`prefers-color-scheme` を自動検出し、トップリボンのトグルで切り替えできます。詳細は [`docs/design-tokens_ja.md`](docs/design-tokens_ja.md) を参照。 |
@@ -200,7 +201,7 @@ brew install BIwashi/tap/apogee
 | 配布元 | コマンド | 備考 |
 |---|---|---|
 | Homebrew tap | `brew install BIwashi/tap/apogee` | 推奨。ユニバーサルバイナリで埋め込みダッシュボードも含まれます。アップデートは `brew upgrade apogee`。 |
-| Homebrew cask (desktop) | `brew install --cask BIwashi/tap/apogee-desktop` | 任意。ネイティブ macOS ウィンドウ (WKWebView) で同じ collector + ダッシュボードを走らせるシェル。`Apogee.app` が `/Applications` に入り、`apogee-desktop` ランチャーも `$PATH` に symlink されます。未署名で、Cask の `postflight` が `com.apple.quarantine` を剥がすので初回起動も Gatekeeper に止められません。詳細は [`docs/desktop_ja.md`](docs/desktop_ja.md)。 |
+| Homebrew cask (desktop) | `brew install --cask BIwashi/tap/apogee-desktop` | 任意。ネイティブ macOS ウィンドウ (WKWebView) で **走っている daemon に proxy する** シェル — operator intervention / HITL 応答 / recap 更新は Claude Code hook が既に設定済みの同じ collector を経由します。`Apogee.app` が `/Applications` に、`apogee-desktop` ランチャーが `$PATH` に symlink されます。`BIwashi/tap/apogee` 公式 formula に依存しているので CLI も自動でインストール。daemon 未設定の状態で初回起動すると、ネイティブダイアログが出て `apogee onboard --yes` を代わりに実行します。未署名ですが Cask の `postflight` が `com.apple.quarantine` を剥がします。詳細は [`docs/desktop_ja.md`](docs/desktop_ja.md)。 |
 | `go install` | `go install github.com/BIwashi/apogee/cmd/apogee@latest` | Go モジュールプロキシは Next.js バンドルを配布できないので、UI は `make web-build` を促すプレースホルダーになります。API は完全に動作します。CLI だけ欲しい場合に使ってください。 |
 | リリース tarball | [Releases](https://github.com/BIwashi/apogee/releases) からダウンロード | darwin amd64 / arm64 対応。Linux は v0.2.0 で対応予定。 |
 | ソースビルド | `git clone ... && make build` | `./bin/apogee` にコミットハッシュとビルド時刻入りのバイナリが出ます。 |
