@@ -1,17 +1,18 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import Link from "next/link";
 import { Search } from "lucide-react";
 
 import AttentionDot from "../components/AttentionDot";
 import Card from "../components/Card";
 import SectionHeader from "../components/SectionHeader";
+import SessionLabel from "../components/SessionLabel";
 import type {
   FilterOptions,
   SessionSearchHit,
   SessionSearchResponse,
 } from "../lib/api-types";
+import { drawerLinkProps, useDrawerState } from "../lib/drawer";
 import { useApi } from "../lib/swr";
 import { timeAgo } from "../lib/time";
 import { useSelection } from "../lib/url-state";
@@ -23,14 +24,9 @@ import { useSelection } from "../lib/url-state";
  * navigates into the tabbed session detail.
  */
 
-function shortId(id: string, len = 12): string {
-  if (!id) return "—";
-  if (id.length <= len) return id;
-  return id.slice(0, len);
-}
-
 export default function SessionsPage() {
   const { setSelection } = useSelection();
+  const { open } = useDrawerState();
   const [query, setQuery] = useState("");
   const [env, setEnv] = useState<string | null>(null);
 
@@ -121,52 +117,71 @@ export default function SessionsPage() {
                 </tr>
               </thead>
               <tbody>
-                {sessions.map((hit) => (
-                  <tr
-                    key={hit.session_id}
-                    className="group cursor-pointer border-b border-[var(--border)] transition-colors hover:bg-[var(--bg-raised)]"
-                    onClick={() => {
+                {sessions.map((hit) => {
+                  const rowProps = drawerLinkProps(
+                    `/session/?id=${hit.session_id}&tab=overview`,
+                    () => {
                       setSelection({
                         sess: hit.session_id,
                         env: hit.source_app || null,
                       });
-                    }}
-                  >
-                    <td className="px-3 py-2">
-                      <AttentionDot state={hit.attention_state} />
-                    </td>
-                    <td className="px-3 py-2 font-mono text-[11px] text-[var(--artemis-white)]">
-                      <Link
-                        href={`/session/?id=${hit.session_id}&tab=overview`}
-                        className="hover:text-[var(--accent)]"
+                      open({ kind: "session", id: hit.session_id });
+                    },
+                  );
+                  return (
+                    <tr
+                      key={hit.session_id}
+                      onClick={(e) =>
+                        rowProps.onClick(
+                          e as unknown as React.MouseEvent<HTMLElement>,
+                        )
+                      }
+                      className="group cursor-pointer border-b border-[var(--border)] transition-colors hover:bg-[var(--bg-raised)]"
+                    >
+                      <td className="px-3 py-2">
+                        <AttentionDot state={hit.attention_state} />
+                      </td>
+                      <td
+                        className="px-3 py-2"
+                        onClick={(e) => e.stopPropagation()}
                       >
-                        {shortId(hit.session_id)}
-                      </Link>
-                    </td>
-                    <td className="px-3 py-2 text-[var(--artemis-white)]">
-                      {hit.source_app || "—"}
-                    </td>
-                    <td className="px-3 py-2 text-[11px] text-[var(--text-muted)]">
-                      <span className="line-clamp-1">
-                        {hit.latest_headline || hit.latest_prompt_snippet || "—"}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2 font-mono text-[11px] text-[var(--text-muted)]">
-                      {timeAgo(hit.last_seen_at)}
-                    </td>
-                    <td className="px-3 py-2 text-right font-mono tabular-nums text-[var(--artemis-white)]">
-                      {hit.turn_count}
-                    </td>
-                    <td className="px-3 py-2 text-right">
-                      <Link
-                        href={`/session/?id=${hit.session_id}&tab=overview`}
-                        className="font-mono text-[11px] text-[var(--accent)] hover:underline"
-                      >
-                        detail →
-                      </Link>
-                    </td>
-                  </tr>
-                ))}
+                        <SessionLabel
+                          sessionID={hit.session_id}
+                          sourceApp={hit.source_app || null}
+                          headline={
+                            hit.latest_headline ||
+                            hit.latest_prompt_snippet ||
+                            null
+                          }
+                          size="md"
+                        />
+                      </td>
+                      <td className="px-3 py-2 text-[var(--artemis-white)]">
+                        {hit.source_app || "—"}
+                      </td>
+                      <td className="px-3 py-2 text-[11px] text-[var(--text-muted)]">
+                        <span className="line-clamp-1">
+                          {hit.latest_headline || hit.latest_prompt_snippet || "—"}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2 font-mono text-[11px] text-[var(--text-muted)]">
+                        {timeAgo(hit.last_seen_at)}
+                      </td>
+                      <td className="px-3 py-2 text-right font-mono tabular-nums text-[var(--artemis-white)]">
+                        {hit.turn_count}
+                      </td>
+                      <td className="px-3 py-2 text-right">
+                        <a
+                          href={`/session/?id=${hit.session_id}&tab=overview`}
+                          className="font-mono text-[11px] text-[var(--accent)] hover:underline"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          detail →
+                        </a>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           )}

@@ -738,6 +738,35 @@ export interface AgentsResponse {
 }
 
 /**
+ * AgentDetail mirrors the body of GET /v1/agents/:id/detail (PR #36). Used
+ * by the cross-cutting AgentDrawer to render the agent's full identity, the
+ * last 20 turns it participated in, a tool histogram, and its parent +
+ * direct children.
+ */
+export interface AgentToolCount {
+  name: string;
+  count: number;
+}
+
+export interface AgentDetailResponse {
+  agent: Agent;
+  parent: Agent | null;
+  children: Agent[];
+  turns: Turn[];
+  tool_counts: AgentToolCount[];
+}
+
+/**
+ * SpanDetailResponse mirrors GET /v1/spans/:trace_id/:span_id/detail
+ * (PR #36). Used by the cross-cutting SpanDrawer.
+ */
+export interface SpanDetailResponse {
+  span: Span;
+  parent: Span | null;
+  children: Span[];
+}
+
+/**
  * InsightsOverview — aggregate counters returned by
  * GET /v1/insights/overview. All numeric fields are whole-window totals
  * (last 24h for rate-based stats). Populates the /insights page.

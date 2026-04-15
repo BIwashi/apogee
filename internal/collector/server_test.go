@@ -342,3 +342,124 @@ func TestIntegrationSessionTurns(t *testing.T) {
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&out))
 	require.Len(t, out.Turns, 1)
 }
+
+// TestIntegrationAgentDetail covers the new GET /v1/agents/:id/detail
+// endpoint introduced by PR #36 to feed the cross-cutting AgentDrawer. The
+// test leans on the bundled hook samples which carry one subagent
+// (`sub-1`) so the helpers exercise the parent / children / turns / tools
+// branches.
+func TestIntegrationAgentDetail(t *testing.T) {
+	_, ts := newTestServer(t)
+	samples := loadSamples(t)
+	for _, ev := range samples {
+		body, _ := json.Marshal(ev)
+		resp, err := http.Post(ts.URL+"/v1/events", "application/json", bytes.NewBuffer(body))
+		require.NoError(t, err)
+		resp.Body.Close()
+	}
+
+	// Discover an agent id from the recent agents list.
+	resp, err := http.Get(ts.URL + "/v1/agents/recent")
+	require.NoError(t, err)
+	var agentList struct {
+		Agents []map[string]any `json:"agents"`
+	}
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&agentList))
+	resp.Body.Close()
+	require.NotEmpty(t, agentList.Agents)
+	agentID, _ := agentList.Agents[0]["agent_id"].(string)
+	require.NotEmpty(t, agentID)
+
+	// Detail endpoint returns the bundle.
+	resp, err = http.Get(ts.URL + "/v1/agents/" + agentID + "/detail")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	var detail struct {
+		Agent      map[string]any   `json:"agent"`
+		Parent     map[string]any   `json:"parent"`
+		Children   []map[string]any `json:"children"`
+		Turns      []map[string]any `json:"turns"`
+		ToolCounts []map[string]any `json:"tool_counts"`
+	}
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&detail))
+	require.NotNil(t, detail.Agent)
+	require.NotNil(t, detail.Children)
+	require.NotNil(t, detail.Turns)
+	require.NotNil(t, detail.ToolCounts)
+
+	// Unknown agent → 404.
+	resp, err = http.Get(ts.URL + "/v1/agents/does-not-exist/detail")
+	require.NoError(t, err)
+	require.Equal(t, http.StatusNotFound, resp.StatusCode)
+	resp.Body.Close()
+}
+
+// TestIntegrationSpanDetail covers the new GET /v1/spans/:trace_id/:span_id
+// /detail endpoint that powers the cross-cutting SpanDrawer (PR #36).
+func TestIntegrationSpanDetail(t *testing.T) {
+	_, ts := newTestServer(t)
+	samples := loadSamples(t)
+	for _, ev := range samples {
+		body, _ := json.Marshal(ev)
+		resp, err := http.Post(ts.URL+"/v1/events", "application/json", bytes.NewBuffer(body))
+		require.NoError(t, err)
+		resp.Body.Close()
+	}
+
+	// Use the spans listing for the alpha turn to grab a (trace_id, span_id)
+	// pair that we know exists.
+	resp, err := http.Get(ts.URL + "/v1/turns/recent")
+	require.NoError(t, err)
+	var turns struct {
+		Turns []map[string]any `json:"turns"`
+	}
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&turns))
+	resp.Body.Close()
+	require.NotEmpty(t, turns.Turns)
+	turnID, _ := turns.Turns[0]["turn_id"].(string)
+
+	resp, err = http.Get(ts.URL + "/v1/turns/" + turnID + "/spans")
+	require.NoError(t, err)
+	var spansResp struct {
+		Spans []map[string]any `json:"spans"`
+	}
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&spansResp))
+	resp.Body.Close()
+	require.NotEmpty(t, spansResp.Spans)
+
+	// Pick the first span that has a parent so the parent branch is also
+	// exercised. Fall back to the first span if no children exist.
+	var traceID, spanID string
+	for _, sp := range spansResp.Spans {
+		if parent, ok := sp["parent_span_id"].(string); ok && parent != "" {
+			traceID, _ = sp["trace_id"].(string)
+			spanID, _ = sp["span_id"].(string)
+			break
+		}
+	}
+	if spanID == "" {
+		traceID, _ = spansResp.Spans[0]["trace_id"].(string)
+		spanID, _ = spansResp.Spans[0]["span_id"].(string)
+	}
+	require.NotEmpty(t, traceID)
+	require.NotEmpty(t, spanID)
+
+	resp, err = http.Get(ts.URL + "/v1/spans/" + traceID + "/" + spanID + "/detail")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	var detail struct {
+		Span     map[string]any   `json:"span"`
+		Parent   map[string]any   `json:"parent"`
+		Children []map[string]any `json:"children"`
+	}
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&detail))
+	require.Equal(t, spanID, detail.Span["span_id"])
+
+	// Missing span → 404.
+	resp, err = http.Get(ts.URL + "/v1/spans/" + traceID + "/missing-span/detail")
+	require.NoError(t, err)
+	require.Equal(t, http.StatusNotFound, resp.StatusCode)
+	resp.Body.Close()
+}

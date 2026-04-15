@@ -1,17 +1,18 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import Link from "next/link";
 import { ChevronRight, Search, User, Users } from "lucide-react";
 
 import AttentionDot from "../components/AttentionDot";
 import Card from "../components/Card";
 import SectionHeader from "../components/SectionHeader";
+import SessionLabel from "../components/SessionLabel";
 import type {
   Agent,
   AgentsResponse,
   FilterOptions,
 } from "../lib/api-types";
+import { drawerLinkProps, useDrawerState } from "../lib/drawer";
 import { useApi } from "../lib/swr";
 import { timeAgo } from "../lib/time";
 
@@ -204,6 +205,7 @@ function AgentIcon({ agent }: { agent: Agent }) {
 }
 
 function FlatTable({ agents }: { agents: Agent[] }) {
+  const { open } = useDrawerState();
   return (
     <div className="overflow-x-auto">
       <table className="w-full border-collapse text-[12px]">
@@ -241,10 +243,17 @@ function FlatTable({ agents }: { agents: Agent[] }) {
         <tbody>
           {agents.map((a) => {
             const Sub = isSubagent(a);
+            const rowProps = drawerLinkProps(
+              `/agents?id=${encodeURIComponent(a.agent_id)}`,
+              () => open({ kind: "agent", id: a.agent_id }),
+            );
             return (
               <tr
                 key={`${a.agent_id}-${a.session_id}`}
-                className="group border-b border-[var(--border)] transition-colors hover:bg-[var(--bg-raised)]"
+                onClick={(e) =>
+                  rowProps.onClick(e as unknown as React.MouseEvent<HTMLElement>)
+                }
+                className="group cursor-pointer border-b border-[var(--border)] transition-colors hover:bg-[var(--bg-raised)]"
               >
                 <td className="px-3 py-2">
                   <AttentionDot state="healthy" />
@@ -264,13 +273,11 @@ function FlatTable({ agents }: { agents: Agent[] }) {
                 <td className="px-3 py-2 font-mono text-[11px] text-[var(--text-muted)]">
                   {a.parent_agent_id ? shortId(a.parent_agent_id) : "—"}
                 </td>
-                <td className="px-3 py-2 font-mono text-[11px]">
-                  <Link
-                    href={`/session/?id=${a.session_id}`}
-                    className="text-gray-200 hover:text-[var(--accent)]"
-                  >
-                    {shortId(a.session_id)}
-                  </Link>
+                <td
+                  className="px-3 py-2 font-mono text-[11px]"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <SessionLabel sessionID={a.session_id} />
                 </td>
                 <td className="px-3 py-2 text-right font-mono tabular-nums text-[var(--artemis-white)]">
                   {a.invocation_count}
@@ -315,6 +322,7 @@ function TreeRow({
   byParent: Map<string, Agent[]>;
   depth: number;
 }) {
+  const { open } = useDrawerState();
   const children = byParent.get(agent.agent_id) ?? [];
   return (
     <li className="border-b border-[var(--border)] last:border-b-0">
@@ -322,13 +330,23 @@ function TreeRow({
         <summary
           className="flex cursor-pointer list-none items-center gap-2 px-4 py-2 hover:bg-[var(--bg-raised)]"
           style={{ paddingLeft: `${16 + depth * 24}px` }}
+          onClick={(e) => {
+            // Preserve the native disclosure toggle on the chevron.
+            const target = e.target as HTMLElement;
+            if (target.closest("[data-agent-toggle]")) return;
+            if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+            e.preventDefault();
+            open({ kind: "agent", id: agent.agent_id });
+          }}
         >
           {children.length > 0 ? (
-            <ChevronRight
-              size={12}
-              strokeWidth={1.5}
-              className="text-[var(--text-muted)] transition-transform group-open:rotate-90"
-            />
+            <span data-agent-toggle>
+              <ChevronRight
+                size={12}
+                strokeWidth={1.5}
+                className="text-[var(--text-muted)] transition-transform group-open:rotate-90"
+              />
+            </span>
           ) : (
             <span className="inline-block w-[12px]" />
           )}
@@ -343,13 +361,9 @@ function TreeRow({
             <span>{agent.invocation_count} calls</span>
             <span>{humanDuration(agent.total_duration_ms)}</span>
             <span>{timeAgo(agent.last_seen)}</span>
-            <Link
-              href={`/session/?id=${agent.session_id}`}
-              className="text-[var(--accent)] hover:underline"
-              onClick={(e) => e.stopPropagation()}
-            >
-              session →
-            </Link>
+            <span onClick={(e) => e.stopPropagation()}>
+              <SessionLabel sessionID={agent.session_id} />
+            </span>
           </span>
         </summary>
         {children.length > 0 && (

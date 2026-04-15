@@ -5,6 +5,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 
 import { AlertTriangle } from "lucide-react";
 
+import { useDrawerState } from "../lib/drawer";
+
 import AttentionDot from "../components/AttentionDot";
 import Breadcrumb from "../components/Breadcrumb";
 import Card from "../components/Card";
@@ -101,6 +103,8 @@ export default function TurnDetailPage() {
   const turnId = searchParams.get("turn") ?? "";
   const selectedSpanId = searchParams.get("span");
   const composeRequested = searchParams.get("compose") === "1";
+
+  const { open: openDrawer } = useDrawerState();
 
   const setSelectedSpan = useCallback(
     (spanId: string | null) => {
@@ -483,12 +487,27 @@ export default function TurnDetailPage() {
       </section>
 
       <section>
-        <SectionHeader title="Span tree" subtitle="Click a row to select a span." />
+        <SectionHeader
+          title="Span tree"
+          subtitle="Click a row to open the span detail drawer."
+        />
         <Card className="p-2">
           <SpanTree
             spans={spans}
             selectedSpanId={selectedSpanId}
-            onSelect={setSelectedSpan}
+            onSelect={(spanId) => {
+              setSelectedSpan(spanId);
+              if (spanId) {
+                const span = spans.find((sp) => sp.span_id === spanId);
+                if (span) {
+                  openDrawer({
+                    kind: "span",
+                    traceID: span.trace_id,
+                    spanID: span.span_id,
+                  });
+                }
+              }
+            }}
             filter={filter}
             hitlEvents={hitlAllForTurn}
           />

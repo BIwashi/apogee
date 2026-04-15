@@ -81,7 +81,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   scanning the full history on every render — tangible win when 10+
   consumers with different filters are mounted under the same
   `SSEProvider`.
-
+- **PR #36 — cross-cutting SideDrawer + session summary display.**
+  Every dashboard table that used to throw the operator away from the
+  current page now opens a Datadog-style detail drawer in place. Clicking
+  a row in `/agents`, `/sessions`, the session detail Turns tab, or the
+  turn detail span tree slides a side drawer in from the right edge with
+  the entity bundle (no navigation, no full reload). The drawer's
+  identity lives in the URL via `?drawer=agent|session|turn|span&id=…`,
+  so deep links work and the browser back button cleanly closes the
+  drawer. Plain left-click pops the drawer; `Cmd+Click` /
+  `Shift+Click` / middle-click / right-click still open the matching
+  full page in a new tab so power users can keep both views side by
+  side. Recursive navigation (clicking a related entity inside one
+  drawer) calls the URL-state hook in place — the panel stays mounted
+  and only its contents swap, so there is no flash. New TypeScript
+  primitives under `web/app/components/`: `SideDrawer` (extended only
+  with new presentational siblings — backwards compatible with PR #30's
+  callers), `DrawerHeader` + `DrawerTabBar`, `DrawerKeyValue` +
+  `DrawerSection`, `DrawerFooterAction`, plus the four entity drawers
+  `AgentDrawer`, `SessionDrawer`, `TurnDrawer`, `SpanDrawer`. The
+  cross-cutting drawer is mounted exactly once at the root layout via
+  `CrossCuttingDrawer.tsx`, which reads `useDrawerState()`
+  (`web/app/lib/drawer.tsx`) and dispatches to the right body. A new
+  `SessionLabel` component replaces every raw `sess-…` text with the
+  short id, source app, and a one-line headline pulled lazily from
+  `/v1/sessions/:id/summary` (shared SWR cache key, so multiple rows
+  pointing at the same session share one network request). The Go
+  collector adds two read-only aggregate routes — `GET
+  /v1/agents/:id/detail` and `GET /v1/spans/:trace_id/:span_id/detail`
+  — that compute their payloads entirely from the existing `spans` and
+  `turns` tables (no schema migration). The collector tests gain two
+  new integration cases that exercise the new endpoints against the
+  bundled hook samples. See [`docs/drawer.md`](docs/drawer.md) for the
+  full design.
 - **PR #35 — static model catalog + probe + dropdowns.** The
   summarizer's three model aliases (recap / rollup / narrative) are now
   chosen from a curated static catalog

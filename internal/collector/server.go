@@ -262,6 +262,10 @@ func (s *Server) buildRouter() chi.Router {
 	r.Get("/v1/models", s.listModels)
 	r.Get("/v1/telemetry/status", s.telemetryStatus)
 	r.Get("/v1/agents/recent", s.listRecentAgents)
+	// PR #36: cross-cutting AgentDrawer detail endpoint.
+	r.Get("/v1/agents/{id}/detail", s.getAgentDetail)
+	// PR #36: cross-cutting SpanDrawer detail endpoint.
+	r.Get("/v1/spans/{trace_id}/{span_id}/detail", s.getSpanDetail)
 	r.Get("/v1/insights/overview", s.getInsightsOverview)
 	r.Post("/v1/events", handler.ReceiveEvent)
 	r.Get("/v1/sessions/recent", s.listRecentSessions)

@@ -63,6 +63,7 @@ for the schema, chaining, staleness guards, and cost estimate.
 | Agents | Per-agent view with main vs subagent split, invocation counts, rolling duration, parent→child tree. |
 | Insights | Aggregate analytics — error rate, duration percentiles, top tools, top phases, watchlist sessions (last 24h). |
 | Events browser | `/events/` — paginated table of every stored hook event (50 per page, Prev / Next, URL-backed page number, side-drawer JSON inspector). The Live dashboard's event ticker is now height-capped at 180 px with internal scroll, so new events no longer push the page around. |
+| Cross-cutting drawers | Datadog-style row-click pattern across `/agents`, `/sessions`, the session detail Turns tab, and the turn detail span tree. Plain click slides a detail drawer in from the right edge with the entity bundle (no navigation away); `Cmd+Click` still opens the full page in a new tab. State lives in `?drawer=…` so deep links and the back button work. See [`docs/drawer.md`](docs/drawer.md). |
 | Settings | Collector build metadata + OTel exporter status; config path and daemon/hook install flows surfaced inline. |
 | Session detail | Timeline tab (phase narrative) as the default, plus per-session rollup, scoped KPIs, and every turn ordered by attention |
 | Turn detail | Swim lane, span tree, recap panels, attention reasoning, HITL queue |
