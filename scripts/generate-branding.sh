@@ -91,10 +91,11 @@ render_trajectory () {
 # ── Banner (972×352) ───────────────────────────────────────────
 # Primary README hero. Cool Horizon Visual background, Artemis Inter
 # wordmark in white with wide NASA-style tracking, subtitle in Space
-# Grotesk medium. The wordmark sits slightly above the visual centre
-# so the brightest part of the horizon glow forms a luminous base for
-# the type rather than competing with it — mirroring the page-1 cover
-# composition where the Artemis logo floats above its glow.
+# Grotesk medium. The wordmark is the visual anchor of the banner so
+# it sits at the dead centre of the canvas; the subtitle hangs just
+# below the wordmark's baseline rather than around the canvas centre,
+# so the eye reads APOGEE first and the tag-line second without the
+# whole stack drifting upward.
 render_banner () {
   local out="$1"
   local w=972 h=352
@@ -104,17 +105,28 @@ render_banner () {
 
   render_cool_horizon "$bg" $w $h
 
+  # Render the wordmark and subtitle to transparent PNGs and then
+  # `-trim` them so their bounding boxes equal the painted pixels.
+  # ImageMagick's raw `label:` output reserves a descender row even
+  # for ALL-CAPS strings without descenders, which would otherwise
+  # shift the optical centre upward when composited at +0+0.
   magick -background none -fill "${WHITE}" \
     -font "$FONT_DISPLAY" -pointsize 132 -kerning 32 \
-    "label:${WORDMARK}" "$wordmark"
+    "label:${WORDMARK}" -trim +repage "$wordmark"
 
   magick -background none -fill "${SPACE_GRAY}" \
     -font "$FONT_SUBTITLE" -pointsize 18 -kerning 4 \
-    "label:${SUBTITLE}" "$subtitle"
+    "label:${SUBTITLE}" -trim +repage "$subtitle"
 
+  # Wordmark sits dead-centre on the canvas. We nudge it down 12 px
+  # to compensate for the optical-centre drift: ALL-CAPS Artemis Inter
+  # has a small extra cap-line gap above the glyphs that the trim
+  # cannot remove because it is part of the rasterised stroke, so a
+  # geometric +0+0 still reads ~12 px high. Subtitle hangs 70 px
+  # below the wordmark to keep the two-line stack from drifting.
   magick "$bg" \
-    "$wordmark" -gravity center -geometry +0-44 -compose over -composite \
-    "$subtitle" -gravity center -geometry +0+58 -compose over -composite \
+    "$wordmark" -gravity center -geometry +0+12 -compose over -composite \
+    "$subtitle" -gravity center -geometry +0+82 -compose over -composite \
     "$out"
 
   rm -f "$bg" "$wordmark" "$subtitle"
