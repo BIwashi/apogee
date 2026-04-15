@@ -411,6 +411,80 @@ export interface EventsRecentResponse {
 }
 
 /**
+ * FacetValue is one distinct value + row-count pair inside a facet
+ * dimension. Mirrors internal/store/duckdb.FacetValue.
+ */
+export interface FacetValue {
+  value: string;
+  count: number;
+}
+
+/**
+ * FacetDimension is a single left-rail column on the /events page.
+ * Mirrors internal/store/duckdb.FacetDimension. Values are ordered
+ * descending by count and capped at 50 entries.
+ */
+export interface FacetDimension {
+  key: string;
+  values: FacetValue[];
+}
+
+/**
+ * EventFacetsResponse is the body of GET /v1/events/facets. `window` is
+ * the caller's ?window= query param (e.g. "15m", "1h", "24h") if supplied.
+ */
+export interface EventFacetsResponse {
+  window?: string;
+  since?: string;
+  until?: string;
+  facets: FacetDimension[];
+}
+
+/**
+ * EventBucket is one time-series bucket from GET /v1/events/timeseries.
+ * Mirrors internal/store/duckdb.EventBucket. `by_severity` is keyed by
+ * lowercased severity text ("info", "warn", "error", ...). Severities
+ * with zero entries in the bucket are omitted.
+ */
+export interface EventBucket {
+  bucket: string;
+  total: number;
+  by_severity: Record<string, number>;
+}
+
+/**
+ * EventTimeseriesResponse is the body of GET /v1/events/timeseries.
+ * `total` is the unfiltered row count across every returned bucket —
+ * the /events header renders it as "N events found".
+ */
+export interface EventTimeseriesResponse {
+  window?: string;
+  since?: string;
+  until?: string;
+  step: string;
+  total: number;
+  buckets: EventBucket[];
+}
+
+/**
+ * LiveBootstrapResponse is the body of GET /v1/live/bootstrap — the
+ * consolidated first-paint payload for the Live landing page. PR #37
+ * consolidates ~7 parallel fetches into one round trip.
+ */
+export interface LiveBootstrapResponse {
+  recent_turns: Turn[];
+  attention: AttentionCounts;
+  recent_events: LogRow[];
+  metrics: {
+    active_turns: MetricSeriesPoint[];
+    tools_rate: MetricSeriesPoint[];
+    errors_rate: MetricSeriesPoint[];
+    hitl_pending: MetricSeriesPoint[];
+  };
+  now: string;
+}
+
+/**
  * AttentionSignal is one piece of evidence the engine considered while
  * scoring a turn. Mirrors internal/attention.Signal.
  */

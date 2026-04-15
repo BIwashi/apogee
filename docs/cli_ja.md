@@ -577,6 +577,9 @@ curl -s -X POST http://localhost:4100/v1/sessions/<id>/narrative
 | `/turn/?sess=<sess>&turn=<turn>` | スイムレーン、リキャップ、HITL、オペレータキューを含むターン詳細。 |
 | `/agents/` | エージェント別カタログ（main + subagents）。 |
 | `/insights/` | 集計分析。 |
-| `/events/` | **PR #30** — 保存されたフックイベントをページネーション付きで閲覧します。1 ページ 50 行、Prev / Next ボタン、URL バックの `?page=N`、サイドドロワーで JSON インスペクタ。`GET /v1/events/recent` がバックエンドです。 |
+| `/events/` | **PR #37** — Datadog 風のイベントブラウザ。左サイドの `FacetPanel` に折りたたみ可能な `source_app` / `hook_event` / `severity` / `session` グループが並び、各 facet に値一覧とカウントが表示されます。テーブル上の `LogHistogram` はスタックバーで密度を示し、ドラッグで時間範囲をズーム可能。フリーテキストで body を検索し、`?window=` で期間を切り替え、カーソルベースのページネーションで過去に遡ります。バックエンドは `GET /v1/events/recent`・`GET /v1/events/facets`・`GET /v1/events/timeseries` の 3 本立てです。 |
+| `GET /v1/events/facets` | **PR #37** — フィルタに一致する各 facet 次元（`source_app` / `hook_event` / `severity_text` / `session_id`）の distinct 値を上位 50 件まで、件数と合わせて返します。`?window=` / `?since=` / `?until=` / `?q=` / `?facets.<key>=a,b` のマルチセレクトに対応。レスポンス形状: `{ "facets": [{ "key": ..., "values": [{ "value": ..., "count": ... }, ...] }, ...] }`。 |
+| `GET /v1/events/timeseries` | **PR #37** — 同じフィルタで時系列ヒストグラムを返します。DuckDB の `time_bucket()` を利用し、`?step=30s` のバケット幅で severity 内訳付きに集計します。既定 step は window 長に合わせて自動調整（1 分→1 秒、1 時間→30 秒、24 時間→10 分、7 日→1 時間）。レスポンス: `{ "buckets": [{ "bucket": "...", "total": N, "by_severity": {"info": N, "error": N } }, ...], "total": N, "step": "30s" }`。 |
+| `GET /v1/live/bootstrap` | **PR #37** — Live ランディングページの初期描画に必要な情報を 1 回のラウンドトリップで返す統合エンドポイント。従来 `/v1/turns/active`・`/v1/attention/counts`・`/v1/events/recent`・`/v1/metrics/series` × 4 と 7 本並列で叩いていたものを `{ recent_turns, attention, recent_events, metrics: { active_turns, tools_rate, errors_rate, hitl_pending }, now }` の 1 レスポンスに束ねます。ウォーム状態の DuckDB で初期描画を約 600 ms → 80 ms に短縮します。 |
 | `/settings/` | コレクター情報とテレメトリの状態。 |
 | `/styleguide/` | デザイントークンとコンポーネントリファレンス。 |
