@@ -1,10 +1,9 @@
 "use client";
 
 import { useCallback } from "react";
-
 import type { SessionSummary } from "../lib/api-types";
-import { useApi } from "../lib/swr";
 import { useDrawerState } from "../lib/drawer";
+import { useApi } from "../lib/swr";
 
 /**
  * SessionLabel — the cross-cutting "session id → something human" helper
@@ -79,8 +78,7 @@ export default function SessionLabel({
     size === "md"
       ? "font-mono text-[12px] text-[var(--artemis-white)]"
       : "font-mono text-[11px] text-[var(--artemis-white)]";
-  const metaClass =
-    size === "md" ? "text-[11px]" : "text-[10px]";
+  const metaClass = size === "md" ? "text-[11px]" : "text-[10px]";
 
   const content = (
     <span className="flex min-w-0 flex-col gap-0.5">

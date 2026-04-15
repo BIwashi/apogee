@@ -1,7 +1,6 @@
 package metrics
 
 import (
-	"context"
 	"testing"
 	"time"
 
@@ -12,7 +11,7 @@ import (
 )
 
 func TestCollectorTickWritesMetricPoints(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	db, err := duckdb.Open(ctx, ":memory:")
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = db.Close() })
@@ -88,7 +87,7 @@ func TestCollectorTickWritesMetricPoints(t *testing.T) {
 // scope — active turns, hitl pending, tools/error rates — without
 // double-counting sessions beyond SessionScopeLimit.
 func TestCollectorTickEmitsPerSessionMetrics(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	db, err := duckdb.Open(ctx, ":memory:")
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = db.Close() })

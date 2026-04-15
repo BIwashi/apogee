@@ -3,7 +3,6 @@
 package daemon
 
 import (
-	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -90,7 +89,7 @@ func TestSystemdInstallWritesUnit(t *testing.T) {
 		LogDir:     "/tmp/logs",
 		KeepAlive:  true,
 	}
-	if err := m.Install(context.Background(), cfg); err != nil {
+	if err := m.Install(t.Context(), cfg); err != nil {
 		t.Fatalf("Install: %v", err)
 	}
 	data, err := os.ReadFile(m.UnitPath())
@@ -122,10 +121,10 @@ func TestSystemdInstallIdempotent(t *testing.T) {
 	r := &fakeRunner{}
 	m := systemdTestManager(t, r)
 	cfg := Config{BinaryPath: "/a", Args: []string{"serve"}}
-	if err := m.Install(context.Background(), cfg); err != nil {
+	if err := m.Install(t.Context(), cfg); err != nil {
 		t.Fatalf("install 1: %v", err)
 	}
-	if err := m.Install(context.Background(), cfg); err != nil {
+	if err := m.Install(t.Context(), cfg); err != nil {
 		t.Fatalf("install 2 (idempotent): %v", err)
 	}
 }
@@ -133,10 +132,10 @@ func TestSystemdInstallIdempotent(t *testing.T) {
 func TestSystemdInstallConflictWithoutForce(t *testing.T) {
 	r := &fakeRunner{}
 	m := systemdTestManager(t, r)
-	if err := m.Install(context.Background(), Config{BinaryPath: "/a", Args: []string{"serve"}}); err != nil {
+	if err := m.Install(t.Context(), Config{BinaryPath: "/a", Args: []string{"serve"}}); err != nil {
 		t.Fatalf("install 1: %v", err)
 	}
-	err := m.Install(context.Background(), Config{BinaryPath: "/b", Args: []string{"serve"}})
+	err := m.Install(t.Context(), Config{BinaryPath: "/b", Args: []string{"serve"}})
 	if err != ErrAlreadyInstalled {
 		t.Errorf("expected ErrAlreadyInstalled, got %v", err)
 	}
@@ -145,10 +144,10 @@ func TestSystemdInstallConflictWithoutForce(t *testing.T) {
 func TestSystemdInstallForceOverwrites(t *testing.T) {
 	r := &fakeRunner{}
 	m := systemdTestManager(t, r)
-	if err := m.Install(context.Background(), Config{BinaryPath: "/a", Args: []string{"serve"}}); err != nil {
+	if err := m.Install(t.Context(), Config{BinaryPath: "/a", Args: []string{"serve"}}); err != nil {
 		t.Fatalf("install 1: %v", err)
 	}
-	if err := m.Install(context.Background(), Config{BinaryPath: "/b", Args: []string{"serve"}, Force: true}); err != nil {
+	if err := m.Install(t.Context(), Config{BinaryPath: "/b", Args: []string{"serve"}, Force: true}); err != nil {
 		t.Fatalf("force install: %v", err)
 	}
 	data, _ := os.ReadFile(m.UnitPath())
@@ -160,7 +159,7 @@ func TestSystemdInstallForceOverwrites(t *testing.T) {
 func TestSystemdStartNotInstalled(t *testing.T) {
 	r := &fakeRunner{}
 	m := systemdTestManager(t, r)
-	if err := m.Start(context.Background()); err != ErrNotInstalled {
+	if err := m.Start(t.Context()); err != ErrNotInstalled {
 		t.Errorf("expected ErrNotInstalled, got %v", err)
 	}
 }
@@ -168,10 +167,10 @@ func TestSystemdStartNotInstalled(t *testing.T) {
 func TestSystemdUninstall(t *testing.T) {
 	r := &fakeRunner{}
 	m := systemdTestManager(t, r)
-	if err := m.Install(context.Background(), Config{BinaryPath: "/a", Args: []string{"serve"}}); err != nil {
+	if err := m.Install(t.Context(), Config{BinaryPath: "/a", Args: []string{"serve"}}); err != nil {
 		t.Fatalf("install: %v", err)
 	}
-	if err := m.Uninstall(context.Background()); err != nil {
+	if err := m.Uninstall(t.Context()); err != nil {
 		t.Fatalf("uninstall: %v", err)
 	}
 	if _, err := os.Stat(m.UnitPath()); !os.IsNotExist(err) {

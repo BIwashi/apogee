@@ -1,7 +1,6 @@
 package watchdog
 
 import (
-	"context"
 	"testing"
 	"time"
 
@@ -16,7 +15,7 @@ import (
 // clock is pinned to `now` so baseline/window bounds are deterministic.
 func newTestWorker(t *testing.T, now time.Time) (*Worker, *duckdb.Store, *sse.Hub) {
 	t.Helper()
-	ctx := context.Background()
+	ctx := t.Context()
 	store, err := duckdb.Open(ctx, ":memory:")
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = store.Close() })
@@ -40,7 +39,7 @@ func newTestWorker(t *testing.T, now time.Time) (*Worker, *duckdb.Store, *sse.Hu
 // across the hour preceding `now`. Each sample has the given value.
 func seedBaseline(t *testing.T, store *duckdb.Store, name string, now time.Time, value float64, n int) {
 	t.Helper()
-	ctx := context.Background()
+	ctx := t.Context()
 	for i := 0; i < n; i++ {
 		at := now.Add(-time.Duration(n-i) * time.Minute).Add(-5 * time.Minute)
 		require.NoError(t, store.InsertMetricPoint(ctx, duckdb.MetricPoint{
@@ -56,7 +55,7 @@ func seedBaseline(t *testing.T, store *duckdb.Store, name string, now time.Time,
 // seedWindow inserts samples spread over the last `window` before `now`.
 func seedWindow(t *testing.T, store *duckdb.Store, name string, now time.Time, values []float64) {
 	t.Helper()
-	ctx := context.Background()
+	ctx := t.Context()
 	step := time.Duration(0)
 	if len(values) > 0 {
 		step = 60 * time.Second / time.Duration(len(values))
@@ -74,7 +73,7 @@ func seedWindow(t *testing.T, store *duckdb.Store, name string, now time.Time, v
 }
 
 func TestDetectOnceEmitsOnSpike(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	now := time.Now().UTC().Truncate(time.Millisecond)
 	w, store, hub := newTestWorker(t, now)
 
@@ -119,7 +118,7 @@ func TestDetectOnceEmitsOnSpike(t *testing.T) {
 }
 
 func TestDetectOnceSkipsWithInsufficientBaseline(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	now := time.Now().UTC().Truncate(time.Millisecond)
 	w, store, _ := newTestWorker(t, now)
 	// Only two baseline points → degenerate baseline → no signal.
@@ -131,7 +130,7 @@ func TestDetectOnceSkipsWithInsufficientBaseline(t *testing.T) {
 }
 
 func TestDetectOnceSkipsBelowThreshold(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	now := time.Now().UTC().Truncate(time.Millisecond)
 	w, store, _ := newTestWorker(t, now)
 
@@ -156,7 +155,7 @@ func TestDetectOnceSkipsBelowThreshold(t *testing.T) {
 }
 
 func TestDetectOnceDedupesSpellsWhileAnomalous(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	now := time.Now().UTC().Truncate(time.Millisecond)
 	w, store, _ := newTestWorker(t, now)
 
@@ -195,7 +194,7 @@ func TestDetectOnceDedupesSpellsWhileAnomalous(t *testing.T) {
 }
 
 func TestDetectOnceClosesSpellAfterNormalWait(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	now := time.Now().UTC().Truncate(time.Millisecond)
 
 	// Seed store with a baseline + anomalous window at t0.

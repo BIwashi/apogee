@@ -15,7 +15,6 @@ import {
   ResponsiveContainer,
   YAxis,
 } from "recharts";
-
 import { apiUrl } from "../lib/api";
 import type {
   WatchdogAckResponse,
@@ -252,9 +251,12 @@ function SignalCard({ signal, onAcknowledged }: SignalCardProps) {
     setBusy(true);
     setError(null);
     try {
-      const resp = await fetch(apiUrl(`/v1/watchdog/signals/${signal.id}/ack`), {
-        method: "POST",
-      });
+      const resp = await fetch(
+        apiUrl(`/v1/watchdog/signals/${signal.id}/ack`),
+        {
+          method: "POST",
+        },
+      );
       if (!resp.ok) {
         throw new Error(`HTTP ${resp.status}`);
       }
@@ -283,7 +285,10 @@ function SignalCard({ signal, onAcknowledged }: SignalCardProps) {
       <header className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-2">
           <Icon size={14} strokeWidth={1.5} style={{ color: tint }} />
-          <span className="font-mono text-[11px] uppercase tracking-[0.08em]" style={{ color: tint }}>
+          <span
+            className="font-mono text-[11px] uppercase tracking-[0.08em]"
+            style={{ color: tint }}
+          >
             {signal.severity}
           </span>
         </div>
@@ -292,7 +297,9 @@ function SignalCard({ signal, onAcknowledged }: SignalCardProps) {
           <ArrowUpRight size={11} strokeWidth={1.75} className="opacity-60" />
         </span>
       </header>
-      <p className="text-[13px] text-[var(--artemis-white)]">{signal.headline}</p>
+      <p className="text-[13px] text-[var(--artemis-white)]">
+        {signal.headline}
+      </p>
       <div className="flex flex-wrap items-center gap-1 font-mono text-[10px] text-[var(--text-muted)]">
         <span className="rounded bg-[var(--bg-overlay)] px-1.5 py-0.5 text-[var(--artemis-space)]">
           {signal.metric_name}
@@ -305,16 +312,23 @@ function SignalCard({ signal, onAcknowledged }: SignalCardProps) {
             {k}: {v}
           </span>
         ))}
-        <span className="ml-auto">
-          z = {signal.z_score.toFixed(2)}
-        </span>
+        <span className="ml-auto">z = {signal.z_score.toFixed(2)}</span>
       </div>
       {data.length > 1 && (
         <div style={{ height: 40, width: "100%" }}>
           <ResponsiveContainer width="100%" height={40} minWidth={0}>
-            <AreaChart data={data} margin={{ top: 4, right: 0, left: 0, bottom: 0 }}>
+            <AreaChart
+              data={data}
+              margin={{ top: 4, right: 0, left: 0, bottom: 0 }}
+            >
               <defs>
-                <linearGradient id={`watchdogGrad-${signal.id}`} x1="0" y1="0" x2="0" y2="1">
+                <linearGradient
+                  id={`watchdogGrad-${signal.id}`}
+                  x1="0"
+                  y1="0"
+                  x2="0"
+                  y2="1"
+                >
                   <stop offset="0%" stopColor={tint} stopOpacity={0.45} />
                   <stop offset="100%" stopColor={tint} stopOpacity={0} />
                 </linearGradient>
@@ -341,10 +355,13 @@ function SignalCard({ signal, onAcknowledged }: SignalCardProps) {
       )}
       <div className="flex items-center justify-between gap-2">
         <span className="font-mono text-[10px] text-[var(--text-muted)]">
-          baseline {signal.baseline_mean.toFixed(2)} ± {signal.baseline_stddev.toFixed(2)}
+          baseline {signal.baseline_mean.toFixed(2)} ±{" "}
+          {signal.baseline_stddev.toFixed(2)}
         </span>
         {signal.acknowledged ? (
-          <span className="font-mono text-[10px] text-[var(--text-muted)]">acknowledged</span>
+          <span className="font-mono text-[10px] text-[var(--text-muted)]">
+            acknowledged
+          </span>
         ) : (
           <button
             type="button"
@@ -364,7 +381,9 @@ function SignalCard({ signal, onAcknowledged }: SignalCardProps) {
         )}
       </div>
       {error && (
-        <p className="font-mono text-[10px] text-[var(--status-warning)]">{error}</p>
+        <p className="font-mono text-[10px] text-[var(--status-warning)]">
+          {error}
+        </p>
       )}
     </a>
   );

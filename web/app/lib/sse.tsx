@@ -9,9 +9,8 @@ import {
   useRef,
   useState,
 } from "react";
-
-import type { ApogeeEvent } from "./api-types";
 import { apiUrl } from "./api";
+import type { ApogeeEvent } from "./api-types";
 
 /**
  * sse.tsx — layout-scoped, long-lived Server-Sent Events provider.
@@ -176,9 +175,8 @@ function appendToHistoryState(
 export function SSEProvider({ children }: { children: React.ReactNode }) {
   const [status, setStatus] = useState<StreamStatus>("connecting");
   const [lastEvent, setLastEvent] = useState<ApogeeEvent | null>(null);
-  const [historyState, setHistoryState] = useState<HistoryState>(
-    emptyHistoryState,
-  );
+  const [historyState, setHistoryState] =
+    useState<HistoryState>(emptyHistoryState);
   const history = historyState.history;
 
   // Imperative subscribers stored in a ref so adding/removing one does not

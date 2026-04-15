@@ -2,28 +2,26 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-
 import { AlertTriangle } from "lucide-react";
-
-import { useDrawerState } from "../lib/drawer";
-
 import AttentionDot from "../components/AttentionDot";
 import Breadcrumb from "../components/Breadcrumb";
 import Card from "../components/Card";
-import FilterChips, {
-  useFilterState,
-} from "../components/FilterChips";
+import FilterChips, { useFilterState } from "../components/FilterChips";
 import HITLPanel from "../components/HITLPanel";
+import LiveKeySteps from "../components/LiveKeySteps";
 import OperatorQueueSection from "../components/OperatorQueueSection";
 import RawLogsPanel from "../components/RawLogsPanel";
-import LiveKeySteps from "../components/LiveKeySteps";
 import RecapPanels from "../components/RecapPanels";
-import VersionTag from "../components/VersionTag";
 import SectionHeader from "../components/SectionHeader";
 import SpanTree from "../components/SpanTree";
 import StatusPill from "../components/StatusPill";
 import SwimLane from "../components/SwimLane";
-import { computeStaleness, humanDuration } from "../components/interventionVisuals";
+import VersionTag from "../components/VersionTag";
+import {
+  computeStaleness,
+  humanDuration,
+} from "../components/interventionVisuals";
+import { apiUrl } from "../lib/api";
 import type {
   ApogeeEvent,
   AttentionDetail,
@@ -41,8 +39,8 @@ import type {
   TurnSpansResponse,
 } from "../lib/api-types";
 import { SSE_EVENT_TYPES } from "../lib/api-types";
-import { apiUrl } from "../lib/api";
 import type { StatusKey } from "../lib/design-tokens";
+import { useDrawerState } from "../lib/drawer";
 import { useEventStream } from "../lib/sse";
 import { useApi } from "../lib/swr";
 import { formatClock, timeAgo } from "../lib/time";
@@ -177,7 +175,9 @@ export default function TurnDetailPage() {
     turnId ? `/v1/turns/${turnId}/hitl` : null,
     { refreshInterval: isRunning ? 5_000 : 0 },
   );
-  const [respondedIds, setRespondedIds] = useState<Set<string>>(() => new Set());
+  const [respondedIds, setRespondedIds] = useState<Set<string>>(
+    () => new Set(),
+  );
   const onResponded = useCallback(
     (hitlID: string) => {
       setRespondedIds((prev) => {
@@ -239,7 +239,13 @@ export default function TurnDetailPage() {
           break;
       }
     },
-    [turnId, sessionId, hitlPendingQuery, hitlTurnQuery, interventionPendingQuery],
+    [
+      turnId,
+      sessionId,
+      hitlPendingQuery,
+      hitlTurnQuery,
+      interventionPendingQuery,
+    ],
   );
 
   const turnFilter = useMemo(
@@ -310,8 +316,14 @@ export default function TurnDetailPage() {
     if (!recap?.phases?.length || spans.length === 0) return null;
     const mapped = recap.phases
       .map((phase) => {
-        const startIdx = Math.max(0, Math.min(spans.length - 1, phase.start_span_index));
-        const endIdx = Math.max(0, Math.min(spans.length - 1, phase.end_span_index));
+        const startIdx = Math.max(
+          0,
+          Math.min(spans.length - 1, phase.start_span_index),
+        );
+        const endIdx = Math.max(
+          0,
+          Math.min(spans.length - 1, phase.end_span_index),
+        );
         const startSpan = spans[startIdx];
         const endSpan = spans[endIdx];
         if (!startSpan || !endSpan) return null;
@@ -340,7 +352,8 @@ export default function TurnDetailPage() {
         />
         <Card>
           <p className="px-4 py-10 text-center text-[12px] text-[var(--text-muted)]">
-            No turn selected. Pick one from the live dashboard or the session detail.
+            No turn selected. Pick one from the live dashboard or the session
+            detail.
           </p>
         </Card>
       </div>
@@ -384,7 +397,9 @@ export default function TurnDetailPage() {
           ]}
         />
         <div className="flex flex-col gap-2">
-          <h1 className="text-xl font-medium text-[var(--artemis-white)]">{headline}</h1>
+          <h1 className="text-xl font-medium text-[var(--artemis-white)]">
+            {headline}
+          </h1>
           <div className="flex flex-wrap items-center gap-3 text-[12px] text-[var(--text-muted)]">
             <AttentionDot
               state={liveTurn.attention_state}
@@ -416,13 +431,18 @@ export default function TurnDetailPage() {
               <span className="text-[11px]">{liveTurn.attention_reason}</span>
             )}
             <span className="font-mono text-[11px]">
-              started {formatClock(liveTurn.started_at)} · {timeAgo(liveTurn.started_at)} ago
+              started {formatClock(liveTurn.started_at)} ·{" "}
+              {timeAgo(liveTurn.started_at)} ago
             </span>
-            <span className="font-mono text-[11px]">{liveTurn.model || "—"}</span>
+            <span className="font-mono text-[11px]">
+              {liveTurn.model || "—"}
+            </span>
             <StatusPill tone={statusTone(liveTurn.status)}>
               {liveTurn.status}
             </StatusPill>
-            <span className="font-mono text-[11px]">{durationLabel(liveTurn)}</span>
+            <span className="font-mono text-[11px]">
+              {durationLabel(liveTurn)}
+            </span>
           </div>
           <div className="flex flex-wrap items-center gap-3 font-mono text-[11px] text-[var(--text-muted)]">
             <span>tools {liveTurn.tool_call_count}</span>
@@ -451,7 +471,10 @@ export default function TurnDetailPage() {
 
       <section className="grid gap-3 md:grid-cols-[1fr_320px]">
         <div className="flex flex-col gap-3">
-          <SectionHeader title="Recap" subtitle="Populated by the Haiku summariser." />
+          <SectionHeader
+            title="Recap"
+            subtitle="Populated by the Haiku summariser."
+          />
           {/* While the turn is running and the Haiku recap has not
               yet landed, show a live key-steps panel derived from
               the streaming tool spans so the operator can see "what
@@ -469,7 +492,10 @@ export default function TurnDetailPage() {
           )}
         </div>
         <div className="flex flex-col gap-3">
-          <SectionHeader title="Human in the loop" subtitle="Pending HITL requests for this turn." />
+          <SectionHeader
+            title="Human in the loop"
+            subtitle="Pending HITL requests for this turn."
+          />
           <HITLPanel events={hitlPendingForTurn} onResponded={onResponded} />
         </div>
       </section>

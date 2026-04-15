@@ -65,18 +65,18 @@ type Config struct {
 // config.toml; they are no longer populated here.
 func Default() Config {
 	return Config{
-		Enabled:           true,
-		RecapModel:        "", // resolved via ResolveModelForUseCase(UseCaseRecap, ...)
-		RollupModel:       "", // resolved via ResolveModelForUseCase(UseCaseRollup, ...)
-		NarrativeModel:    "", // resolved via ResolveModelForUseCase(UseCaseNarrative, ...)
-		Concurrency:       1,
-		Timeout:           120 * time.Second,
-		CLIPath:           "claude",
-		QueueSize:         256,
-		MinTurnDurationMs: 1500,
-		MaxSpanCount:      500,
-		MaxLogCount:       300,
-		MaxRollupTurns:    40,
+		Enabled:                true,
+		RecapModel:             "", // resolved via ResolveModelForUseCase(UseCaseRecap, ...)
+		RollupModel:            "", // resolved via ResolveModelForUseCase(UseCaseRollup, ...)
+		NarrativeModel:         "", // resolved via ResolveModelForUseCase(UseCaseNarrative, ...)
+		Concurrency:            1,
+		Timeout:                120 * time.Second,
+		CLIPath:                "claude",
+		QueueSize:              256,
+		MinTurnDurationMs:      1500,
+		MaxSpanCount:           500,
+		MaxLogCount:            300,
+		MaxRollupTurns:         40,
 		RollupSchedulerEnabled: true,
 	}
 }

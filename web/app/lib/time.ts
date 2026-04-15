@@ -4,7 +4,10 @@
  * number. Pure function — no deps, no locale handling, safe on the server.
  */
 
-export function timeAgo(input: Date | string | number, now: number = Date.now()): string {
+export function timeAgo(
+  input: Date | string | number,
+  now: number = Date.now(),
+): string {
   const ts =
     typeof input === "number"
       ? input

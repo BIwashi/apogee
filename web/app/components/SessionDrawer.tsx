@@ -2,15 +2,14 @@
 
 import { useMemo, useState } from "react";
 import { Layers } from "lucide-react";
-
 import type {
   RollupResponse,
   SessionSummary,
   SessionTurnsResponse,
   Turn,
 } from "../lib/api-types";
-import { useApi } from "../lib/swr";
 import { useDrawerState } from "../lib/drawer";
+import { useApi } from "../lib/swr";
 import { formatClock, timeAgo } from "../lib/time";
 import DrawerFooterAction from "./DrawerFooterAction";
 import DrawerHeader, { DrawerTabBar } from "./DrawerHeader";
@@ -67,9 +66,9 @@ export default function SessionDrawer({ sessionID }: SessionDrawerProps) {
   const summary = summaryQuery.data ?? null;
   const turns: Turn[] = useMemo(
     () =>
-      (turnsQuery.data?.turns ?? []).slice().sort((a, b) =>
-        b.started_at.localeCompare(a.started_at),
-      ),
+      (turnsQuery.data?.turns ?? [])
+        .slice()
+        .sort((a, b) => b.started_at.localeCompare(a.started_at)),
     [turnsQuery.data],
   );
 
@@ -210,8 +209,7 @@ export default function SessionDrawer({ sessionID }: SessionDrawerProps) {
                 className="flex w-full flex-col gap-1 rounded border border-transparent px-2 py-2 text-left transition hover:border-[var(--border)] hover:bg-[var(--bg-raised)]"
               >
                 <span className="font-mono text-[11px] text-[var(--artemis-white)]">
-                  {shortId(turns[0].turn_id)} ·{" "}
-                  {turns[0].status}
+                  {shortId(turns[0].turn_id)} · {turns[0].status}
                 </span>
                 <span className="truncate text-[11px] text-[var(--text-muted)]">
                   {turns[0].headline ||
@@ -254,9 +252,7 @@ export default function SessionDrawer({ sessionID }: SessionDrawerProps) {
                         {shortId(t.turn_id)} · {t.status}
                       </span>
                       <span className="truncate text-[11px] text-[var(--text-muted)]">
-                        {t.headline ||
-                          t.prompt_text?.slice(0, 80) ||
-                          "—"}
+                        {t.headline || t.prompt_text?.slice(0, 80) || "—"}
                       </span>
                     </span>
                     <span className="shrink-0 font-mono text-[10px] text-[var(--text-muted)]">
@@ -299,12 +295,14 @@ export default function SessionDrawer({ sessionID }: SessionDrawerProps) {
               {rollupQuery.data.rollup.highlights?.length ? (
                 <DrawerSection title="Highlights">
                   <ul className="flex flex-col gap-1 text-[12px] text-[var(--artemis-white)]">
-                    {rollupQuery.data.rollup.highlights.slice(0, 3).map((h, i) => (
-                      <li key={i} className="flex gap-2">
-                        <span className="text-[var(--text-muted)]">·</span>
-                        <span>{h}</span>
-                      </li>
-                    ))}
+                    {rollupQuery.data.rollup.highlights
+                      .slice(0, 3)
+                      .map((h, i) => (
+                        <li key={i} className="flex gap-2">
+                          <span className="text-[var(--text-muted)]">·</span>
+                          <span>{h}</span>
+                        </li>
+                      ))}
                   </ul>
                 </DrawerSection>
               ) : null}

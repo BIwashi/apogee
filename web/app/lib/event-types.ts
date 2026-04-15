@@ -10,7 +10,6 @@
  * component from `lucide-react` themselves so this module stays dependency
  * free and can be reused server-side.
  */
-
 import type { StatusKey } from "./design-tokens";
 
 export type EventToneKey = StatusKey | "accent" | "earth";

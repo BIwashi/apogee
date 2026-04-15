@@ -1,20 +1,14 @@
 "use client";
 
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertTriangle, X } from "lucide-react";
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
-
+import { apiUrl } from "../lib/api";
 import type {
   AnyApogeeEvent,
   Intervention,
   InterventionListResponse,
 } from "../lib/api-types";
 import { isInterventionEvent } from "../lib/api-types";
-import { apiUrl } from "../lib/api";
 import { useEventStream } from "../lib/sse";
 import { useApi } from "../lib/swr";
 import { timeAgo } from "../lib/time";
@@ -77,7 +71,8 @@ export default function InterventionQueue({
     () => (sessionId ? { sessionId } : undefined),
     [sessionId],
   );
-  const { subscribe: subscribeInterventions } = useEventStream(interventionFilter);
+  const { subscribe: subscribeInterventions } =
+    useEventStream(interventionFilter);
   useEffect(() => {
     if (!sessionId) return;
     return subscribeInterventions((event) => {
@@ -91,16 +86,16 @@ export default function InterventionQueue({
   const interventions: Intervention[] = useMemo(() => {
     const raw = pendingQuery.data?.interventions ?? [];
     let filtered = raw.filter(
-      (iv) => PENDING_STATUSES.has(iv.status) && !cancellingIds.has(iv.intervention_id),
+      (iv) =>
+        PENDING_STATUSES.has(iv.status) &&
+        !cancellingIds.has(iv.intervention_id),
     );
     // When scoped to a turn, still show session-scoped rows so the
     // operator can see messages that apply to multiple turns.
     if (turnId) {
       filtered = filtered.filter(
         (iv) =>
-          iv.scope === "this_session" ||
-          iv.turn_id === turnId ||
-          !iv.turn_id,
+          iv.scope === "this_session" || iv.turn_id === turnId || !iv.turn_id,
       );
     }
     return sortInterventions(filtered);
@@ -190,7 +185,9 @@ function QueueRow({
 
   const lines = intervention.message.split("\n");
   const truncated = !expanded && lines.length > 3;
-  const shownBody = truncated ? lines.slice(0, 3).join("\n") + "…" : intervention.message;
+  const shownBody = truncated
+    ? lines.slice(0, 3).join("\n") + "…"
+    : intervention.message;
 
   return (
     <li
@@ -290,7 +287,12 @@ function QueueRow({
         {intervention.status === "delivered" && (
           <>
             <span aria-hidden>·</span>
-            <span>delivered{intervention.delivered_via ? ` via ${intervention.delivered_via}` : ""}</span>
+            <span>
+              delivered
+              {intervention.delivered_via
+                ? ` via ${intervention.delivered_via}`
+                : ""}
+            </span>
           </>
         )}
         {canCancel && (

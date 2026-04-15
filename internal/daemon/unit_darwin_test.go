@@ -3,7 +3,6 @@
 package daemon
 
 import (
-	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -94,7 +93,7 @@ func TestLaunchdInstallWritesPlist(t *testing.T) {
 		KeepAlive: true,
 		RunAtLoad: true,
 	}
-	if err := m.Install(context.Background(), cfg); err != nil {
+	if err := m.Install(t.Context(), cfg); err != nil {
 		t.Fatalf("Install: %v", err)
 	}
 	// Verify the plist file exists and contains expected fragments.
@@ -122,11 +121,11 @@ func TestLaunchdInstallIdempotent(t *testing.T) {
 	r := &fakeRunner{}
 	m, _ := launchdTestManager(t, r)
 	cfg := Config{BinaryPath: "/opt/homebrew/bin/apogee", Args: []string{"serve"}}
-	if err := m.Install(context.Background(), cfg); err != nil {
+	if err := m.Install(t.Context(), cfg); err != nil {
 		t.Fatalf("first install: %v", err)
 	}
 	before := len(r.calls)
-	if err := m.Install(context.Background(), cfg); err != nil {
+	if err := m.Install(t.Context(), cfg); err != nil {
 		t.Fatalf("second install should be idempotent, got %v", err)
 	}
 	// Second install should re-bootstrap (1 call) but not replace the file.
@@ -138,10 +137,10 @@ func TestLaunchdInstallIdempotent(t *testing.T) {
 func TestLaunchdInstallConflictWithoutForce(t *testing.T) {
 	r := &fakeRunner{}
 	m, _ := launchdTestManager(t, r)
-	if err := m.Install(context.Background(), Config{BinaryPath: "/bin/a", Args: []string{"serve"}}); err != nil {
+	if err := m.Install(t.Context(), Config{BinaryPath: "/bin/a", Args: []string{"serve"}}); err != nil {
 		t.Fatalf("first install: %v", err)
 	}
-	err := m.Install(context.Background(), Config{BinaryPath: "/bin/b", Args: []string{"serve"}})
+	err := m.Install(t.Context(), Config{BinaryPath: "/bin/b", Args: []string{"serve"}})
 	if err != ErrAlreadyInstalled {
 		t.Errorf("expected ErrAlreadyInstalled, got %v", err)
 	}
@@ -150,10 +149,10 @@ func TestLaunchdInstallConflictWithoutForce(t *testing.T) {
 func TestLaunchdInstallForceOverwrites(t *testing.T) {
 	r := &fakeRunner{}
 	m, _ := launchdTestManager(t, r)
-	if err := m.Install(context.Background(), Config{BinaryPath: "/bin/a", Args: []string{"serve"}}); err != nil {
+	if err := m.Install(t.Context(), Config{BinaryPath: "/bin/a", Args: []string{"serve"}}); err != nil {
 		t.Fatalf("first install: %v", err)
 	}
-	if err := m.Install(context.Background(), Config{BinaryPath: "/bin/b", Args: []string{"serve"}, Force: true}); err != nil {
+	if err := m.Install(t.Context(), Config{BinaryPath: "/bin/b", Args: []string{"serve"}, Force: true}); err != nil {
 		t.Fatalf("forced install: %v", err)
 	}
 	data, _ := os.ReadFile(m.UnitPath())
@@ -165,10 +164,10 @@ func TestLaunchdInstallForceOverwrites(t *testing.T) {
 func TestLaunchdUninstallRemovesPlist(t *testing.T) {
 	r := &fakeRunner{}
 	m, _ := launchdTestManager(t, r)
-	if err := m.Install(context.Background(), Config{BinaryPath: "/bin/a", Args: []string{"serve"}}); err != nil {
+	if err := m.Install(t.Context(), Config{BinaryPath: "/bin/a", Args: []string{"serve"}}); err != nil {
 		t.Fatalf("install: %v", err)
 	}
-	if err := m.Uninstall(context.Background()); err != nil {
+	if err := m.Uninstall(t.Context()); err != nil {
 		t.Fatalf("uninstall: %v", err)
 	}
 	if _, err := os.Stat(m.UnitPath()); !os.IsNotExist(err) {
@@ -179,7 +178,7 @@ func TestLaunchdUninstallRemovesPlist(t *testing.T) {
 func TestLaunchdStartNotInstalled(t *testing.T) {
 	r := &fakeRunner{}
 	m, _ := launchdTestManager(t, r)
-	err := m.Start(context.Background())
+	err := m.Start(t.Context())
 	if err != ErrNotInstalled {
 		t.Errorf("expected ErrNotInstalled, got %v", err)
 	}
@@ -192,7 +191,7 @@ func TestLaunchdStatusNotLoaded(t *testing.T) {
 		},
 	}
 	m, _ := launchdTestManager(t, r)
-	s, err := m.Status(context.Background())
+	s, err := m.Status(t.Context())
 	if err != nil {
 		t.Fatalf("Status: %v", err)
 	}

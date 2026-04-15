@@ -1,7 +1,6 @@
 package collector
 
 import (
-	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -19,7 +18,7 @@ func TestGetModels_DefaultsResolvedFromCatalog(t *testing.T) {
 	// and the real CLIRunner never runs — the test machine has no
 	// `claude` binary on PATH.
 	srv, ts := newTestServer(t)
-	ctx := context.Background()
+	ctx := t.Context()
 	for _, m := range summarizer.KnownModels {
 		if m.Status == summarizer.StatusCurrent {
 			require.NoError(t, srv.store.UpsertModelAvailability(ctx, m.Alias, true, ""))
@@ -59,7 +58,7 @@ func TestGetModels_DefaultsResolvedFromCatalog(t *testing.T) {
 
 func TestGetModels_HonorsSeededAvailabilityCache(t *testing.T) {
 	srv, ts := newTestServer(t)
-	ctx := context.Background()
+	ctx := t.Context()
 	// Seed a fresh cache row marking Haiku as unavailable. The resolver
 	// should fall back to the next-cheapest current candidate for recap
 	// (Sonnet 4.6).

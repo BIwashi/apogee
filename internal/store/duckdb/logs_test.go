@@ -1,7 +1,6 @@
 package duckdb
 
 import (
-	"context"
 	"fmt"
 	"testing"
 	"time"
@@ -17,7 +16,7 @@ import (
 // 50 until the cursor is exhausted, and asserts: no duplicates, strict
 // monotonically-decreasing id order across pages, and exact total recovery.
 func TestListRecentLogsCursorPagination(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	s := newTestStore(t)
 
 	// Pre-seed the parent rows the schema's foreign-key intent assumes.
@@ -56,7 +55,7 @@ func TestListRecentLogsCursorPagination(t *testing.T) {
 	// Walk the table in batches of 50. Track every id seen so we can
 	// assert no duplicates across pages.
 	seen := map[int64]bool{}
-	var lastID int64 = 0
+	var lastID int64
 	cursor := int64(0)
 	pageSize := 50
 	totalSeen := 0
@@ -115,7 +114,7 @@ func TestListRecentLogsCursorPagination(t *testing.T) {
 
 // TestListRecentLogsEmpty — empty table returns no rows and a zero cursor.
 func TestListRecentLogsEmpty(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	s := newTestStore(t)
 	rows, cursor, err := s.ListRecentLogs(ctx, LogFilter{}, 50)
 	require.NoError(t, err)

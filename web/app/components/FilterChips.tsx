@@ -1,18 +1,17 @@
 "use client";
 
+import { useCallback, useMemo } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   AlertOctagon,
   Layers,
+  type LucideIcon,
   MessageSquare,
   Shield,
   TerminalSquare,
   Users,
   Wrench,
-  type LucideIcon,
 } from "lucide-react";
-import { useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useMemo } from "react";
-
 import type { FilterKey } from "../lib/api-types";
 import { FILTER_KEYS } from "../lib/api-types";
 

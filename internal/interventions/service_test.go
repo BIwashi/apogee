@@ -14,7 +14,7 @@ import (
 
 func newServiceFixture(t *testing.T) (*Service, *duckdb.Store, *sse.Subscription) {
 	t.Helper()
-	ctx := context.Background()
+	ctx := t.Context()
 	store, err := duckdb.Open(ctx, ":memory:")
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = store.Close() })
@@ -65,7 +65,7 @@ func baseReq() duckdb.InterventionRequest {
 
 func TestServiceSubmitBroadcasts(t *testing.T) {
 	svc, _, sub := newServiceFixture(t)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	iv, err := svc.Submit(ctx, baseReq())
 	require.NoError(t, err)
@@ -84,7 +84,7 @@ func TestServiceSubmitBroadcasts(t *testing.T) {
 
 func TestServiceValidateRejectsBadInputs(t *testing.T) {
 	svc, _, _ := newServiceFixture(t)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	_, err := svc.Submit(ctx, duckdb.InterventionRequest{})
 	require.ErrorIs(t, err, ErrSessionRequired)
@@ -110,7 +110,7 @@ func TestServiceValidateRejectsBadInputs(t *testing.T) {
 
 func TestServiceCancelBroadcasts(t *testing.T) {
 	svc, _, sub := newServiceFixture(t)
-	ctx := context.Background()
+	ctx := t.Context()
 	iv, err := svc.Submit(ctx, baseReq())
 	require.NoError(t, err)
 
@@ -124,7 +124,7 @@ func TestServiceCancelBroadcasts(t *testing.T) {
 
 func TestServiceSweepExpiresStale(t *testing.T) {
 	svc, _, sub := newServiceFixture(t)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	req := baseReq()
 	req.TTL = time.Millisecond
@@ -142,7 +142,7 @@ func TestServiceSweepExpiresStale(t *testing.T) {
 
 func TestServiceClaimDeliverConsumedBroadcasts(t *testing.T) {
 	svc, _, sub := newServiceFixture(t)
-	ctx := context.Background()
+	ctx := t.Context()
 	iv, err := svc.Submit(ctx, baseReq())
 	require.NoError(t, err)
 
@@ -179,7 +179,7 @@ func TestServiceClaimDeliverConsumedBroadcasts(t *testing.T) {
 
 func TestServiceExpireForTurn(t *testing.T) {
 	svc, _, sub := newServiceFixture(t)
-	ctx := context.Background()
+	ctx := t.Context()
 	_, err := svc.Submit(ctx, baseReq())
 	require.NoError(t, err)
 	// Turn close → expire.
@@ -190,7 +190,7 @@ func TestServiceExpireForTurn(t *testing.T) {
 
 func TestServiceStartStopSafeOnShutdown(t *testing.T) {
 	svc, _, _ := newServiceFixture(t)
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	svc.Start(ctx)
 	// Immediate Stop must drain cleanly — no panic on a fresh sweeper.

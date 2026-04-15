@@ -6,13 +6,12 @@ import {
   Activity,
   ArrowRightCircle,
   Flag,
+  type LucideIcon,
   MessageSquare,
   PlayCircle,
   StopCircle,
   Wrench,
-  type LucideIcon,
 } from "lucide-react";
-
 import type { ApogeeEvent } from "../lib/api-types";
 import { SSE_EVENT_TYPES } from "../lib/api-types";
 import { formatClock, timeAgo } from "../lib/time";

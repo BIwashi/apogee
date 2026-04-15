@@ -1,7 +1,6 @@
 package summarizer
 
 import (
-	"context"
 	"encoding/json"
 	"strings"
 	"sync/atomic"
@@ -18,7 +17,7 @@ import (
 // has something to merge into.
 func seedRollupRow(t *testing.T, store *duckdb.Store, sessionID string, turnCount int) {
 	t.Helper()
-	ctx := context.Background()
+	ctx := t.Context()
 	blob, err := json.Marshal(Rollup{
 		Headline:    "Session rollup",
 		Narrative:   "Worked through multiple turns.",
@@ -229,7 +228,7 @@ func TestParseNarrativeForecast(t *testing.T) {
 }
 
 func TestNarrativeWorker_SkipsShortSessions(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	store, err := duckdb.Open(ctx, ":memory:")
 	require.NoError(t, err)
 	defer store.Close()
@@ -259,7 +258,7 @@ func TestNarrativeWorker_SkipsShortSessions(t *testing.T) {
 }
 
 func TestNarrativeWorker_WritesPhasesToRollupBlob(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	store, err := duckdb.Open(ctx, ":memory:")
 	require.NoError(t, err)
 	defer store.Close()
@@ -314,7 +313,7 @@ func TestNarrativeWorker_WritesPhasesToRollupBlob(t *testing.T) {
 }
 
 func TestNarrativeWorker_ChainsFromRollup(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	store, err := duckdb.Open(ctx, ":memory:")
 	require.NoError(t, err)
 	defer store.Close()

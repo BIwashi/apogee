@@ -1,12 +1,11 @@
 "use client";
 
-import Link from "next/link";
 import { useMemo } from "react";
-
+import Link from "next/link";
 import type { PhaseBlock, Turn } from "../lib/api-types";
 import { formatClock, timeAgo } from "../lib/time";
-import SideDrawer from "./SideDrawer";
 import { PHASE_COLORS } from "./PhaseCard";
+import SideDrawer from "./SideDrawer";
 
 /**
  * PhaseDrawer — the full-detail side drawer that opens when an operator
@@ -139,7 +138,8 @@ export default function PhaseDrawer({
               </h4>
               <div className="mt-1 flex flex-col gap-1">
                 {toolEntries.map(([name, count]) => {
-                  const width = maxTool > 0 ? Math.round((count / maxTool) * 100) : 0;
+                  const width =
+                    maxTool > 0 ? Math.round((count / maxTool) * 100) : 0;
                   return (
                     <div key={name} className="flex items-center gap-2">
                       <span className="w-20 truncate font-mono text-[11px] text-[var(--artemis-white)]">

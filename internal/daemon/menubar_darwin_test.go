@@ -3,7 +3,6 @@
 package daemon
 
 import (
-	"context"
 	"strings"
 	"testing"
 )
@@ -159,7 +158,7 @@ func TestLaunchdInstallMenubarPlist(t *testing.T) {
 	cfg.LogDir = tmp + "/.apogee/logs"
 	cfg.Environment = map[string]string{"HOME": tmp}
 
-	if err := m.Install(context.Background(), cfg); err != nil {
+	if err := m.Install(t.Context(), cfg); err != nil {
 		t.Fatalf("Install: %v", err)
 	}
 	// Fetch the last bootstrap call to confirm the target includes

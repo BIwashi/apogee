@@ -47,15 +47,16 @@ function resolveTone(
   }
 }
 
-export default function AttentionDot({ state, tone, reason }: AttentionDotProps) {
+export default function AttentionDot({
+  state,
+  tone,
+  reason,
+}: AttentionDotProps) {
   const effectiveState = state ?? "healthy";
   const color = resolveTone(tone, effectiveState);
   const label = LABEL_BY_STATE[effectiveState] ?? "—";
   return (
-    <span
-      title={reason || label}
-      className="inline-flex items-center gap-2"
-    >
+    <span title={reason || label} className="inline-flex items-center gap-2">
       <span
         aria-hidden
         style={{ background: color, boxShadow: `0 0 6px ${color}` }}

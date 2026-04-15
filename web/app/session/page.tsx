@@ -13,30 +13,29 @@ import {
   Send,
   Sparkles,
 } from "lucide-react";
-
 import Breadcrumb from "../components/Breadcrumb";
 import Card from "../components/Card";
 import KpiStrip from "../components/KpiStrip";
 import MissionMap from "../components/MissionMap";
 import PhaseTimeline from "../components/PhaseTimeline";
 import RawLogsPanel from "../components/RawLogsPanel";
-import RollupPanel from "../components/RollupPanel";
 import RecentTurnsTable from "../components/RecentTurnsTable";
+import RollupPanel from "../components/RollupPanel";
 import SectionHeader from "../components/SectionHeader";
 import SpanTree from "../components/SpanTree";
 import SwimLane from "../components/SwimLane";
 import Tabs, { type TabItem } from "../components/Tabs";
 import VersionTag from "../components/VersionTag";
-import { useDrawerState } from "../lib/drawer";
 import type {
   Intervention,
   InterventionListResponse,
   SessionLogsResponse,
   SessionSummary,
   SessionTurnsResponse,
-  TurnSpansResponse,
   Turn,
+  TurnSpansResponse,
 } from "../lib/api-types";
+import { useDrawerState } from "../lib/drawer";
 import { useApi } from "../lib/swr";
 import { formatClock, timeAgo } from "../lib/time";
 import { useSelection } from "../lib/url-state";
@@ -95,7 +94,8 @@ export default function SessionDetailPage() {
   }, [id, setSelection]);
 
   const rawTab = searchParams.get("tab") as TabKey | null;
-  const active: TabKey = rawTab && TABS.some((t) => t.key === rawTab) ? rawTab : "mission";
+  const active: TabKey =
+    rawTab && TABS.some((t) => t.key === rawTab) ? rawTab : "mission";
 
   const setActive = useCallback(
     (key: TabKey) => {
@@ -132,28 +132,37 @@ export default function SessionDetailPage() {
   );
 
   const { data: traceData } = useApi<TurnSpansResponse>(
-    latestTurnId && active === "trace" ? `/v1/turns/${latestTurnId}/spans` : null,
+    latestTurnId && active === "trace"
+      ? `/v1/turns/${latestTurnId}/spans`
+      : null,
   );
   const traceSpans = traceData?.spans ?? [];
   const tracePhases = traceData?.phases ?? [];
   const latestTurn = latestTurnId
-    ? turns.find((t) => t.turn_id === latestTurnId) ?? null
+    ? (turns.find((t) => t.turn_id === latestTurnId) ?? null)
     : null;
 
   const headline = summary?.latest_headline || "";
   const onCopyPrompt = useCallback(() => {
     const prompt = turns[0]?.prompt_text;
-    if (!prompt || typeof navigator === "undefined" || !navigator.clipboard) return;
+    if (!prompt || typeof navigator === "undefined" || !navigator.clipboard)
+      return;
     void navigator.clipboard.writeText(prompt);
   }, [turns]);
 
   if (!id) {
     return (
       <div className="mx-auto flex max-w-6xl flex-col gap-6 pt-6">
-        <Breadcrumb segments={[{ label: "Sessions", href: "/sessions" }, { label: "(missing id)" }]} />
+        <Breadcrumb
+          segments={[
+            { label: "Sessions", href: "/sessions" },
+            { label: "(missing id)" },
+          ]}
+        />
         <Card>
           <p className="px-4 py-10 text-center text-[12px] text-[var(--text-muted)]">
-            No session id supplied. Use the command palette (⌘K) to pick a session.
+            No session id supplied. Use the command palette (⌘K) to pick a
+            session.
           </p>
         </Card>
       </div>
@@ -196,7 +205,8 @@ export default function SessionDetailPage() {
               <span>{summary.source_app || "—"}</span>
               <span>started {formatClock(summary.started_at)}</span>
               <span>
-                last seen {timeAgo(summary.last_seen_at)} · {summary.turn_count} turns
+                last seen {timeAgo(summary.last_seen_at)} · {summary.turn_count}{" "}
+                turns
               </span>
             </div>
           )}
@@ -249,12 +259,30 @@ function OverviewTab({
   return (
     <div className="flex flex-col gap-6">
       <section>
-        <SectionHeader title="Summary" subtitle="Rolled up from every turn in the session." />
+        <SectionHeader
+          title="Summary"
+          subtitle="Rolled up from every turn in the session."
+        />
         <Card className="flex flex-wrap items-center gap-4 px-4 py-3 text-[12px]">
-          <SummaryStat label="TURNS" value={summary?.turn_count ?? turns.length} />
-          <SummaryStat label="RUNNING" value={summary?.running_count ?? 0} tone="info" />
-          <SummaryStat label="COMPLETED" value={summary?.completed_count ?? 0} tone="success" />
-          <SummaryStat label="ERRORED" value={summary?.errored_count ?? 0} tone="critical" />
+          <SummaryStat
+            label="TURNS"
+            value={summary?.turn_count ?? turns.length}
+          />
+          <SummaryStat
+            label="RUNNING"
+            value={summary?.running_count ?? 0}
+            tone="info"
+          />
+          <SummaryStat
+            label="COMPLETED"
+            value={summary?.completed_count ?? 0}
+            tone="success"
+          />
+          <SummaryStat
+            label="ERRORED"
+            value={summary?.errored_count ?? 0}
+            tone="critical"
+          />
           <SummaryStat label="MODEL" value={summary?.model || "—"} />
           <SummaryStat label="SOURCE" value={summary?.source_app || "—"} />
         </Card>
@@ -272,11 +300,17 @@ function OverviewTab({
         <RollupPanel sessionId={id} />
       </section>
       <section>
-        <SectionHeader title="Fleet KPIs (scoped)" subtitle="Sparklines scoped to this session." />
+        <SectionHeader
+          title="Fleet KPIs (scoped)"
+          subtitle="Sparklines scoped to this session."
+        />
         <KpiStrip sessionId={id} />
       </section>
       <section>
-        <SectionHeader title="Latest turns" subtitle="Click a row to drill into the swim lane." />
+        <SectionHeader
+          title="Latest turns"
+          subtitle="Click a row to drill into the swim lane."
+        />
         <Card className="p-0">
           <RecentTurnsTable turns={turns.slice(0, 20)} />
         </Card>
@@ -307,25 +341,24 @@ function SummaryStat({
       <span className="font-display text-[10px] uppercase tracking-[0.14em] text-[var(--artemis-space)]">
         {label}
       </span>
-      <span className={`font-mono text-[14px] tabular-nums ${color}`}>{value}</span>
+      <span className={`font-mono text-[14px] tabular-nums ${color}`}>
+        {value}
+      </span>
     </div>
   );
 }
 
-function TurnsTab({
-  sessionId,
-  turns,
-}: {
-  sessionId: string;
-  turns: Turn[];
-}) {
+function TurnsTab({ sessionId, turns }: { sessionId: string; turns: Turn[] }) {
   const runningTurns = useMemo(
     () => turns.filter((t) => t.status === "running"),
     [turns],
   );
   return (
     <section className="flex flex-col gap-4">
-      <SectionHeader title="All turns" subtitle="Attention-sorted. Click a row to drill in." />
+      <SectionHeader
+        title="All turns"
+        subtitle="Attention-sorted. Click a row to drill in."
+      />
       {runningTurns.length > 0 && (
         <Card className="flex flex-col gap-2">
           <p
@@ -484,11 +517,19 @@ function TraceTab({
           }
         />
         <Card>
-          <SwimLane turn={latestTurn} spans={spans} phases={phases} highlightedFilter="all" />
+          <SwimLane
+            turn={latestTurn}
+            spans={spans}
+            phases={phases}
+            highlightedFilter="all"
+          />
         </Card>
       </section>
       <section>
-        <SectionHeader title="Span tree" subtitle="Read-only snapshot scoped to the latest turn." />
+        <SectionHeader
+          title="Span tree"
+          subtitle="Read-only snapshot scoped to the latest turn."
+        />
         <Card className="p-2">
           <SpanTree
             spans={spans}

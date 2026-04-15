@@ -2,12 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Bell } from "lucide-react";
-
 import {
-  isWatchdogEvent,
   type AnyApogeeEvent,
   type WatchdogListResponse,
   type WatchdogSignal,
+  isWatchdogEvent,
 } from "../lib/api-types";
 import { useEventStream } from "../lib/sse";
 import { useApi } from "../lib/swr";

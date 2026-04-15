@@ -46,8 +46,11 @@ type turnCounterDebouncer struct {
 
 type debouncerEntry struct {
 	update pendingTurnUpdate
-	ctx    context.Context
-	timer  *time.Timer
+	// ctx is stored so the flush goroutine (spawned by time.AfterFunc
+	// without its own context) can reach the same request-scoped
+	// cancellation signal as the ingest path that scheduled the update.
+	ctx   context.Context //nolint:containedctx // see comment above
+	timer *time.Timer
 }
 
 // newTurnCounterDebouncer builds a debouncer backed by flush and the
@@ -87,14 +90,9 @@ func (d *turnCounterDebouncer) schedule(ctx context.Context, update pendingTurnU
 		entry.ctx = ctx
 		// Stop + Reset is the canonical "debounce" pattern. We do not
 		// care about the return value: if the timer already fired, the
-		// goroutine will find the entry missing and early-exit.
-		if !entry.timer.Stop() {
-			// Drain the channel if the timer had already fired — but
-			// time.Timer.C is not buffered in a way we can drain here.
-			// Instead we accept the small risk that an already-fired
-			// timer causes an extra flush by noting that the in-flight
-			// goroutine will synchronise on d.mu below.
-		}
+		// in-flight goroutine will find the entry missing (or drain
+		// synchronously on d.mu below) and early-exit.
+		entry.timer.Stop()
 		entry.timer.Reset(d.window)
 		d.mu.Unlock()
 		return

@@ -1,7 +1,6 @@
 package duckdb
 
 import (
-	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -57,7 +56,7 @@ func TestCheckDBLockHolderNoConflict(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "test.duckdb")
 
-	if err := CheckDBLockHolder(context.Background(), path); err != nil {
+	if err := CheckDBLockHolder(t.Context(), path); err != nil {
 		t.Errorf("expected nil for unlocked path, got %v", err)
 	}
 }
@@ -72,7 +71,7 @@ func TestCheckDBLockHolderDetectsLocked(t *testing.T) {
 	}
 	defer func() { _ = release() }()
 
-	err = CheckDBLockHolder(context.Background(), path)
+	err = CheckDBLockHolder(t.Context(), path)
 	if !errors.Is(err, ErrDBLocked) {
 		t.Fatalf("expected ErrDBLocked, got %v", err)
 	}

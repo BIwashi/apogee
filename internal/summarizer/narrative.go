@@ -21,11 +21,11 @@ import (
 // the resulting phases[] array back onto the existing session_rollups row.
 //
 // Trigger paths:
-//   1. Chained from the rollup worker — when tier-2 lands, the service
-//      enqueues a narrative job for the same session so phases are
-//      computed immediately after.
-//   2. Manual — POST /v1/sessions/:id/narrative enqueues with reason
-//      "manual".
+//  1. Chained from the rollup worker — when tier-2 lands, the service
+//     enqueues a narrative job for the same session so phases are
+//     computed immediately after.
+//  2. Manual — POST /v1/sessions/:id/narrative enqueues with reason
+//     "manual".
 type NarrativeWorker struct {
 	cfg    Config
 	runner Runner
@@ -402,11 +402,7 @@ func (w *NarrativeWorker) process(ctx context.Context, job narrativeJob) {
 	rollup.Phases = phases
 	rollup.Forecast = make([]ForecastPhase, 0, len(forecast))
 	for _, f := range forecast {
-		rollup.Forecast = append(rollup.Forecast, ForecastPhase{
-			Kind:      f.Kind,
-			Headline:  f.Headline,
-			Rationale: f.Rationale,
-		})
+		rollup.Forecast = append(rollup.Forecast, ForecastPhase(f))
 	}
 	rollup.NarrativeGeneratedAt = now
 	rollup.NarrativeModel = model

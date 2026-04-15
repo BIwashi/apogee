@@ -1,7 +1,6 @@
 package duckdb
 
 import (
-	"context"
 	"testing"
 	"time"
 
@@ -24,7 +23,7 @@ func mkSignal(metric string, detected time.Time, z float64, severity string) Wat
 }
 
 func TestWatchdogInsertAndGet(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	s := newTestStore(t)
 	now := time.Now().UTC().Truncate(time.Millisecond)
 
@@ -44,7 +43,7 @@ func TestWatchdogInsertAndGet(t *testing.T) {
 }
 
 func TestWatchdogListOrderAndFilter(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	s := newTestStore(t)
 	now := time.Now().UTC().Truncate(time.Millisecond)
 
@@ -68,7 +67,7 @@ func TestWatchdogListOrderAndFilter(t *testing.T) {
 }
 
 func TestWatchdogAckRoundTrip(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	s := newTestStore(t)
 	now := time.Now().UTC().Truncate(time.Millisecond)
 
@@ -100,7 +99,7 @@ func TestWatchdogAckRoundTrip(t *testing.T) {
 }
 
 func TestWatchdogLatestOpenSpell(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	s := newTestStore(t)
 	now := time.Now().UTC().Truncate(time.Millisecond)
 
@@ -120,7 +119,7 @@ func TestWatchdogLatestOpenSpell(t *testing.T) {
 }
 
 func TestWatchdogReadMetricWindow(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	s := newTestStore(t)
 	now := time.Now().UTC().Truncate(time.Millisecond)
 

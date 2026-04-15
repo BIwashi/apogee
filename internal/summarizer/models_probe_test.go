@@ -70,7 +70,7 @@ func TestProbe_MixedResults(t *testing.T) {
 		}
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
 
 	got := Probe(ctx, runner, nil)
@@ -120,7 +120,7 @@ func TestProbe_ConcurrencyCap(t *testing.T) {
 		runner.responses[m.Alias] = countingResult{out: "ok", delay: 80 * time.Millisecond}
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
 
 	got := Probe(ctx, runner, nil)
@@ -136,7 +136,7 @@ func TestProbe_ConcurrencyCap(t *testing.T) {
 }
 
 func TestProbe_NilRunnerYieldsEmptyMap(t *testing.T) {
-	got := Probe(context.Background(), nil, nil)
+	got := Probe(t.Context(), nil, nil)
 	if len(got) != 0 {
 		t.Errorf("nil runner should yield empty map, got %v", got)
 	}
@@ -161,7 +161,7 @@ func TestProbe_TimeoutMarksUnavailable(t *testing.T) {
 			"claude-sonnet-slow": {out: "ok", delay: probePerModelTimeout + 2*time.Second},
 		},
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
 	defer cancel()
 	got := Probe(ctx, runner, nil)
 	if got["claude-sonnet-slow"] {

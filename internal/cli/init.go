@@ -76,8 +76,8 @@ type InitConfig struct {
 
 // DefaultHookCommand is the default command prefix written into
 // settings.json. It is the currently-running apogee binary's absolute
-// path followed by ``hook``. When os.Executable() is not resolvable
-// (unusual), the function falls back to the literal ``apogee hook``
+// path followed by “hook“. When os.Executable() is not resolvable
+// (unusual), the function falls back to the literal “apogee hook“
 // so the generated settings.json still has a working command once the
 // binary is on PATH.
 func DefaultHookCommand() string {
@@ -184,9 +184,9 @@ func RunInit(args []string, stdout, stderr io.Writer) error {
 }
 
 // legacyPythonPrefix is the detection prefix used to find v0.1.x hook
-// entries that still call the old Python ``send_event.py`` script.
+// entries that still call the old Python “send_event.py“ script.
 // These rows are NOT auto-migrated — the plan output hints at
-// ``--force`` to replace them in place.
+// “--force“ to replace them in place.
 const legacyPythonPrefix = "python3 "
 
 // Init performs the init logic against an already-resolved InitConfig. It is
@@ -286,7 +286,7 @@ func Init(cfg InitConfig) (*InitResult, error) {
 
 // countEntriesWithPrefix returns the number of hook commands under
 // entries whose command starts with prefix. Used to count legacy
-// ``python3 send_event.py`` rows so init can warn about them.
+// “python3 send_event.py“ rows so init can warn about them.
 func countEntriesWithPrefix(entries []any, prefix string) int {
 	n := 0
 	for _, entry := range entries {
@@ -340,7 +340,7 @@ func ResolveTarget(target string, scope Scope) (string, error) {
 	return abs, nil
 }
 
-// hooksSectionOf safely extracts the ``hooks`` sub-object from a parsed
+// hooksSectionOf safely extracts the “hooks“ sub-object from a parsed
 // settings.json, creating it if absent.
 func hooksSectionOf(settings map[string]any) (map[string]any, error) {
 	raw, ok := settings["hooks"]
@@ -355,7 +355,7 @@ func hooksSectionOf(settings map[string]any) (map[string]any, error) {
 	return section, nil
 }
 
-// listOf converts ``hooksSection[event]`` into a concrete slice. Missing or
+// listOf converts “hooksSection[event]“ into a concrete slice. Missing or
 // wrong-typed entries become an empty slice.
 func listOf(raw any) []any {
 	if raw == nil {
@@ -368,7 +368,7 @@ func listOf(raw any) []any {
 	return slice
 }
 
-// hasApogeeEntry returns true if any hook under ``entries`` has a command
+// hasApogeeEntry returns true if any hook under “entries“ has a command
 // that starts with prefix.
 func hasApogeeEntry(entries []any, prefix string) bool {
 	for _, entry := range entries {
@@ -454,9 +454,9 @@ func marshalStable(v any) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// deriveSourceAppFromTarget converts a ``.claude`` directory path into a
+// deriveSourceAppFromTarget converts a “.claude“ directory path into a
 // plausible source_app label: the basename of the parent directory, or
-// ``apogee`` as a last resort. Kept for callers that want to pin a label
+// “apogee“ as a last resort. Kept for callers that want to pin a label
 // based on the current target directory; the default init flow leaves
 // SourceApp empty so `apogee hook` derives it at runtime.
 func deriveSourceAppFromTarget(target string) string {

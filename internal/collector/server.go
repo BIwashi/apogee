@@ -478,13 +478,13 @@ func (s *Server) healthz(w http.ResponseWriter, r *http.Request) {
 // running spans-exported counter. Read-only; safe to poll.
 func (s *Server) telemetryStatus(w http.ResponseWriter, _ *http.Request) {
 	body := map[string]any{
-		"enabled":             false,
-		"endpoint":            "",
-		"protocol":            "",
-		"service_name":        "",
-		"service_version":     "",
-		"service_instance_id": "",
-		"sample_ratio":        0.0,
+		"enabled":              false,
+		"endpoint":             "",
+		"protocol":             "",
+		"service_name":         "",
+		"service_version":      "",
+		"service_instance_id":  "",
+		"sample_ratio":         0.0,
 		"spans_exported_total": uint64(0),
 	}
 	if s.telemetry != nil {
@@ -664,9 +664,9 @@ func (s *Server) getMetricsSeries(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// parseLimit reads ?limit=N and clamps to [1, max]. Falls back to def when
-// the query param is missing or malformed.
-func parseLimit(r *http.Request, def, max int) int {
+// parseLimit reads ?limit=N and clamps to [1, maxLimit]. Falls back to def
+// when the query param is missing or malformed.
+func parseLimit(r *http.Request, def, maxLimit int) int {
 	raw := r.URL.Query().Get("limit")
 	if raw == "" {
 		return def
@@ -675,8 +675,8 @@ func parseLimit(r *http.Request, def, max int) int {
 	if err != nil || n <= 0 {
 		return def
 	}
-	if n > max {
-		return max
+	if n > maxLimit {
+		return maxLimit
 	}
 	return n
 }
@@ -867,7 +867,7 @@ func (s *Server) getTurnRecap(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"recap": nil})
 		return
 	}
-	var recap json.RawMessage = json.RawMessage(turn.RecapJSON)
+	recap := json.RawMessage(turn.RecapJSON)
 	out := map[string]any{"recap": recap}
 	if turn.RecapGeneratedAt != nil {
 		out["generated_at"] = *turn.RecapGeneratedAt
@@ -925,7 +925,7 @@ func (s *Server) getSessionRollup(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	var rollup json.RawMessage = json.RawMessage(row.RollupJSON)
+	rollup := json.RawMessage(row.RollupJSON)
 	writeJSON(w, http.StatusOK, map[string]any{
 		"rollup":       rollup,
 		"generated_at": row.GeneratedAt,

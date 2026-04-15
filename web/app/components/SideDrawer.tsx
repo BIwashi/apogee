@@ -1,13 +1,13 @@
 "use client";
 
-import { X } from "lucide-react";
 import {
+  type KeyboardEvent,
+  type ReactNode,
   useCallback,
   useEffect,
   useRef,
-  type KeyboardEvent,
-  type ReactNode,
 } from "react";
+import { X } from "lucide-react";
 
 /**
  * SideDrawer — Datadog-style overlay that slides in from the right edge of
@@ -78,7 +78,8 @@ export default function SideDrawer({
   // button. Close: restore focus to the trigger.
   useEffect(() => {
     if (open) {
-      previouslyFocusedRef.current = (document.activeElement as HTMLElement | null) ?? null;
+      previouslyFocusedRef.current =
+        (document.activeElement as HTMLElement | null) ?? null;
       // setTimeout 0 lets the panel mount before grabbing focus.
       const id = window.setTimeout(() => {
         closeButtonRef.current?.focus();
@@ -102,28 +103,25 @@ export default function SideDrawer({
     };
   }, [open]);
 
-  const onPanelKeyDown = useCallback(
-    (e: KeyboardEvent<HTMLDivElement>) => {
-      if (e.key !== "Tab") return;
-      const root = panelRef.current;
-      if (!root) return;
-      const focusables = root.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR);
-      if (focusables.length === 0) return;
-      const first = focusables[0];
-      const last = focusables[focusables.length - 1];
-      const active = document.activeElement as HTMLElement | null;
-      if (e.shiftKey) {
-        if (active === first || !root.contains(active)) {
-          e.preventDefault();
-          last.focus();
-        }
-      } else if (active === last) {
+  const onPanelKeyDown = useCallback((e: KeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== "Tab") return;
+    const root = panelRef.current;
+    if (!root) return;
+    const focusables = root.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR);
+    if (focusables.length === 0) return;
+    const first = focusables[0];
+    const last = focusables[focusables.length - 1];
+    const active = document.activeElement as HTMLElement | null;
+    if (e.shiftKey) {
+      if (active === first || !root.contains(active)) {
         e.preventDefault();
-        first.focus();
+        last.focus();
       }
-    },
-    [],
-  );
+    } else if (active === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  }, []);
 
   const widthPx = WIDTH_PX[width];
 
@@ -136,7 +134,10 @@ export default function SideDrawer({
       <div
         onClick={onClose}
         className={`absolute inset-0 transition-opacity duration-200 ${open ? "opacity-100" : "opacity-0"}`}
-        style={{ background: "color-mix(in srgb, var(--bg-deepspace) 75%, transparent)" }}
+        style={{
+          background:
+            "color-mix(in srgb, var(--bg-deepspace) 75%, transparent)",
+        }}
         aria-hidden
       />
       {/* Panel */}

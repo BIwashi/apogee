@@ -2,7 +2,6 @@
 
 import { useMemo } from "react";
 import { Activity } from "lucide-react";
-
 import type { Span } from "../lib/api-types";
 import Card from "./Card";
 import SectionHeader from "./SectionHeader";

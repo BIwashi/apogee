@@ -36,9 +36,12 @@ function useSeries(
   params.set("kind", kind);
   if (scope.sessionId) params.set("session_id", scope.sessionId);
   if (scope.sourceApp) params.set("source_app", scope.sourceApp);
-  const { data } = useApi<MetricSeries>(`/v1/metrics/series?${params.toString()}`, {
-    refreshInterval: 5_000,
-  });
+  const { data } = useApi<MetricSeries>(
+    `/v1/metrics/series?${params.toString()}`,
+    {
+      refreshInterval: 5_000,
+    },
+  );
   return data?.points ?? [];
 }
 
@@ -69,12 +72,11 @@ interface KpiTileProps {
 }
 
 function KpiTile({ config, sessionId, sourceApp }: KpiTileProps) {
-  const points = useSeries(config.metric, config.kind, { sessionId, sourceApp });
+  const points = useSeries(config.metric, config.kind, {
+    sessionId,
+    sourceApp,
+  });
   return (
-    <KpiSparkline
-      points={points}
-      label={config.label}
-      format={config.format}
-    />
+    <KpiSparkline points={points} label={config.label} format={config.format} />
   );
 }

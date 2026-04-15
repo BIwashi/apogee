@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { ArrowUpCircle, Loader2, Timer } from "lucide-react";
-
 import type { ApogeeInfo } from "../lib/api-types";
 import { useApi } from "../lib/swr";
 

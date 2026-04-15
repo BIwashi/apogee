@@ -1,7 +1,7 @@
 "use client";
 
+import { type ReactNode, useCallback } from "react";
 import { Copy } from "lucide-react";
-import { useCallback, type ReactNode } from "react";
 
 /**
  * DrawerKeyValue — a vertically stacked key/value grid used inside every

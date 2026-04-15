@@ -2,7 +2,6 @@ package cli
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -60,7 +59,7 @@ func TestDoctorCmdJSON(t *testing.T) {
 }
 
 func TestRunDoctorChecksHasSevenChecks(t *testing.T) {
-	checks := runDoctorChecks(context.Background())
+	checks := runDoctorChecks(t.Context())
 	if len(checks) < 6 {
 		t.Errorf("expected at least 6 checks, got %d: %+v", len(checks), checks)
 	}

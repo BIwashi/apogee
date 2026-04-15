@@ -287,22 +287,22 @@ func (s *Store) querySpans(ctx context.Context, query string, args ...any) ([]Sp
 
 func scanSpanRow(r rowScanner) (*SpanRow, error) {
 	var (
-		out             SpanRow
-		parentSpanID    sql.NullString
-		endTime         sql.NullTime
-		durationNs      sql.NullInt64
-		statusMessage   sql.NullString
-		sessionID       sql.NullString
-		turnID          sql.NullString
-		agentID         sql.NullString
-		agentKind       sql.NullString
-		toolName        sql.NullString
-		toolUseID       sql.NullString
-		mcpServer       sql.NullString
-		mcpTool         sql.NullString
-		hookEvent       sql.NullString
-		attributesJSON  string
-		eventsJSON      string
+		out            SpanRow
+		parentSpanID   sql.NullString
+		endTime        sql.NullTime
+		durationNs     sql.NullInt64
+		statusMessage  sql.NullString
+		sessionID      sql.NullString
+		turnID         sql.NullString
+		agentID        sql.NullString
+		agentKind      sql.NullString
+		toolName       sql.NullString
+		toolUseID      sql.NullString
+		mcpServer      sql.NullString
+		mcpTool        sql.NullString
+		hookEvent      sql.NullString
+		attributesJSON string
+		eventsJSON     string
 	)
 	if err := r.Scan(
 		&out.TraceID, &out.SpanID, &parentSpanID, &out.Name, &out.Kind, &out.StartTime, &endTime, &durationNs,

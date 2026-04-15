@@ -125,7 +125,7 @@ func TestUpgradeWatcherDetectsBumpedBinary(t *testing.T) {
 		t.Fatalf("rewrite binary: %v", err)
 	}
 
-	if err := w.check(context.Background()); err != nil {
+	if err := w.check(t.Context()); err != nil {
 		t.Fatalf("check: %v", err)
 	}
 	avail, detected := w.Snapshot()
@@ -163,7 +163,7 @@ func TestUpgradeWatcherIgnoresSameVersion(t *testing.T) {
 	if err := os.WriteFile(bin, []byte("v1-rebuild"), 0o755); err != nil {
 		t.Fatalf("rewrite: %v", err)
 	}
-	if err := w.check(context.Background()); err != nil {
+	if err := w.check(t.Context()); err != nil {
 		t.Fatalf("check: %v", err)
 	}
 	if avail, _ := w.Snapshot(); avail != "" {
@@ -184,7 +184,7 @@ func TestUpgradeWatcherCheckErrorPropagates(t *testing.T) {
 			return "", errors.New("should not be called")
 		},
 	}
-	if err := w.check(context.Background()); err == nil {
+	if err := w.check(t.Context()); err == nil {
 		t.Fatalf("expected error from missing path")
 	}
 }
@@ -266,7 +266,7 @@ func TestAutoRestartLoopFiresAfterDelay(t *testing.T) {
 			AutoRestartDelay: 10 * time.Millisecond,
 		},
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
 
 	// Run the loop directly with a sub-tick override is not exposed;
@@ -317,7 +317,7 @@ func TestAutoRestartLoopWaitsForDelay(t *testing.T) {
 			AutoRestartDelay: 2 * time.Second,
 		},
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	ctx, cancel := context.WithTimeout(t.Context(), 300*time.Millisecond)
 	defer cancel()
 	go srv.autoRestartLoopWithTick(ctx, 20*time.Millisecond)
 

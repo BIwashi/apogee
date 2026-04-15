@@ -2,7 +2,6 @@
 
 import { useMemo, useState } from "react";
 import { Search } from "lucide-react";
-
 import AttentionDot from "../components/AttentionDot";
 import Card from "../components/Card";
 import SectionHeader from "../components/SectionHeader";
@@ -49,11 +48,13 @@ export default function SessionsPage() {
     <div className="mx-auto flex max-w-6xl flex-col gap-6">
       <header className="flex flex-wrap items-end justify-between gap-4 pt-6">
         <div>
-          <h1 className="font-display-accent text-3xl tracking-[0.16em] text-[var(--artemis-white)]">SESSIONS</h1>
+          <h1 className="font-display-accent text-3xl tracking-[0.16em] text-[var(--artemis-white)]">
+            SESSIONS
+          </h1>
           <div className="accent-gradient-bar mt-3 h-[3px] w-32 rounded-full" />
           <p className="mt-3 max-w-xl text-[13px] text-[var(--text-muted)]">
-            Every Claude Code session reporting to this collector. Click a row to drill
-            into its tabbed detail page.
+            Every Claude Code session reporting to this collector. Click a row
+            to drill into its tabbed detail page.
           </p>
         </div>
       </header>
@@ -61,7 +62,11 @@ export default function SessionsPage() {
       <section>
         <Card className="flex flex-wrap items-center gap-3 px-4 py-3">
           <div className="flex flex-1 items-center gap-2">
-            <Search size={14} strokeWidth={1.5} className="text-[var(--artemis-space)]" />
+            <Search
+              size={14}
+              strokeWidth={1.5}
+              className="text-[var(--artemis-space)]"
+            />
             <input
               type="search"
               placeholder="Search by id, source_app, or prompt…"
@@ -107,12 +112,24 @@ export default function SessionsPage() {
             <table className="w-full border-collapse text-[12px]">
               <thead>
                 <tr className="text-left text-[10px] uppercase tracking-[0.14em] text-[var(--text-muted)]">
-                  <th className="border-b border-[var(--border)] px-3 py-2 font-medium">Attention</th>
-                  <th className="border-b border-[var(--border)] px-3 py-2 font-medium">Session</th>
-                  <th className="border-b border-[var(--border)] px-3 py-2 font-medium">Source App</th>
-                  <th className="border-b border-[var(--border)] px-3 py-2 font-medium">Headline</th>
-                  <th className="border-b border-[var(--border)] px-3 py-2 font-medium">Last Seen</th>
-                  <th className="border-b border-[var(--border)] px-3 py-2 text-right font-medium">Turns</th>
+                  <th className="border-b border-[var(--border)] px-3 py-2 font-medium">
+                    Attention
+                  </th>
+                  <th className="border-b border-[var(--border)] px-3 py-2 font-medium">
+                    Session
+                  </th>
+                  <th className="border-b border-[var(--border)] px-3 py-2 font-medium">
+                    Source App
+                  </th>
+                  <th className="border-b border-[var(--border)] px-3 py-2 font-medium">
+                    Headline
+                  </th>
+                  <th className="border-b border-[var(--border)] px-3 py-2 font-medium">
+                    Last Seen
+                  </th>
+                  <th className="border-b border-[var(--border)] px-3 py-2 text-right font-medium">
+                    Turns
+                  </th>
                   <th className="border-b border-[var(--border)] px-3 py-2 font-medium"></th>
                 </tr>
               </thead>
@@ -161,7 +178,9 @@ export default function SessionsPage() {
                       </td>
                       <td className="px-3 py-2 text-[11px] text-[var(--text-muted)]">
                         <span className="line-clamp-1">
-                          {hit.latest_headline || hit.latest_prompt_snippet || "—"}
+                          {hit.latest_headline ||
+                            hit.latest_prompt_snippet ||
+                            "—"}
                         </span>
                       </td>
                       <td className="px-3 py-2 font-mono text-[11px] text-[var(--text-muted)]">

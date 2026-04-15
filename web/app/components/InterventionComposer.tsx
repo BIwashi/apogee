@@ -1,6 +1,17 @@
 "use client";
 
 import {
+  type ChangeEvent,
+  type KeyboardEvent,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import {
   AlertTriangle,
   GitCommit,
   Layers,
@@ -11,18 +22,7 @@ import {
   Shuffle,
   X,
 } from "lucide-react";
-import {
-  useCallback,
-  useEffect,
-  useId,
-  useMemo,
-  useRef,
-  useState,
-  type ChangeEvent,
-  type KeyboardEvent,
-  type ReactNode,
-} from "react";
-
+import { apiUrl } from "../lib/api";
 import type {
   Intervention,
   InterventionCreateRequest,
@@ -30,7 +30,6 @@ import type {
   InterventionScope,
   InterventionUrgency,
 } from "../lib/api-types";
-import { apiUrl } from "../lib/api";
 
 /**
  * InterventionComposer — keyboard-first form for pushing an operator
@@ -546,9 +545,7 @@ function RadioGroup<T extends string>({
               onClick={() => onChange(opt.value)}
               className="flex items-center gap-2 rounded border px-2 py-[3px] text-left font-mono text-[11px] disabled:cursor-not-allowed disabled:opacity-50"
               style={{
-                background: selected
-                  ? "var(--bg-raised)"
-                  : "transparent",
+                background: selected ? "var(--bg-raised)" : "transparent",
                 borderColor: selected
                   ? "var(--artemis-earth)"
                   : "var(--border)",
@@ -559,9 +556,7 @@ function RadioGroup<T extends string>({
                 aria-hidden
                 className="inline-block h-[8px] w-[8px] rounded-full"
                 style={{
-                  background: selected
-                    ? "var(--artemis-earth)"
-                    : "transparent",
+                  background: selected ? "var(--artemis-earth)" : "transparent",
                   border: `1px solid ${
                     selected ? "var(--artemis-earth)" : "var(--border-bright)"
                   }`,

@@ -1,8 +1,7 @@
 "use client";
 
-import { ChevronDown, ChevronRight } from "lucide-react";
 import { useState } from "react";
-
+import { ChevronDown, ChevronRight } from "lucide-react";
 import type { LogRow } from "../lib/api-types";
 import { formatClock } from "../lib/time";
 
@@ -63,9 +62,17 @@ export default function RawLogsPanel({
       >
         <span className="flex items-center gap-2">
           {open ? (
-            <ChevronDown size={14} strokeWidth={1.5} className="text-[var(--text-muted)]" />
+            <ChevronDown
+              size={14}
+              strokeWidth={1.5}
+              className="text-[var(--text-muted)]"
+            />
           ) : (
-            <ChevronRight size={14} strokeWidth={1.5} className="text-[var(--text-muted)]" />
+            <ChevronRight
+              size={14}
+              strokeWidth={1.5}
+              className="text-[var(--text-muted)]"
+            />
           )}
           <span className="font-display text-[12px] uppercase tracking-[0.14em] text-[var(--artemis-white)]">
             {title}

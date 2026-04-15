@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useRef } from "react";
 import { Orbit } from "lucide-react";
-
 import type { AttentionState, Turn } from "../lib/api-types";
 import { timeAgo } from "../lib/time";
 import AttentionDot from "./AttentionDot";

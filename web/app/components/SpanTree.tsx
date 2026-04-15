@@ -1,9 +1,13 @@
 "use client";
 
-import { ChevronDown, ChevronRight } from "lucide-react";
 import { useMemo, useState } from "react";
-
-import type { FilterKey, HITLEvent, Span, SpanTreeNode } from "../lib/api-types";
+import { ChevronDown, ChevronRight } from "lucide-react";
+import type {
+  FilterKey,
+  HITLEvent,
+  Span,
+  SpanTreeNode,
+} from "../lib/api-types";
 import HITLTimelineItem from "./HITLTimelineItem";
 
 /**
@@ -83,7 +87,9 @@ function matchesFilter(span: Span, filter: FilterKey | undefined): boolean {
   if (!filter || filter === "all") return true;
   switch (filter) {
     case "tools":
-      return Boolean(span.tool_name) || span.name.startsWith("claude_code.tool");
+      return (
+        Boolean(span.tool_name) || span.name.startsWith("claude_code.tool")
+      );
     case "commands":
       return span.tool_name === "Bash" || span.tool_name === "KillShell";
     case "errors":
@@ -190,9 +196,7 @@ function SpanRow({
         <span className="flex-1 truncate font-mono text-[11px] text-[var(--artemis-white)]">
           {node.name}
         </span>
-        {hitlEvent && (
-          <HITLStatusChip event={hitlEvent} />
-        )}
+        {hitlEvent && <HITLStatusChip event={hitlEvent} />}
         <span className="font-mono text-[10px] text-[var(--text-muted)]">
           {durationLabel(node)}
         </span>

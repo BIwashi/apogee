@@ -22,9 +22,16 @@ interface TabsProps<K extends string> {
   onSelect: (key: K) => void;
 }
 
-export default function Tabs<K extends string>({ items, active, onSelect }: TabsProps<K>) {
+export default function Tabs<K extends string>({
+  items,
+  active,
+  onSelect,
+}: TabsProps<K>) {
   return (
-    <div role="tablist" className="flex items-center gap-1 border-b border-[var(--border)]">
+    <div
+      role="tablist"
+      className="flex items-center gap-1 border-b border-[var(--border)]"
+    >
       {items.map((item) => {
         const Icon = item.icon;
         const isActive = item.key === active;

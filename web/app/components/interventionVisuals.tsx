@@ -1,5 +1,6 @@
 "use client";
 
+import type { ComponentType, ReactNode } from "react";
 import {
   ArrowRightCircle,
   CheckCheck,
@@ -13,8 +14,6 @@ import {
   Shuffle,
   XCircle,
 } from "lucide-react";
-import type { ComponentType, ReactNode } from "react";
-
 import type {
   Intervention,
   InterventionMode,

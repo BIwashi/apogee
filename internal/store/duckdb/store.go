@@ -8,6 +8,7 @@ import (
 	"database/sql"
 	"fmt"
 
+	// Blank-imported so database/sql sees the "duckdb" driver at init time.
 	_ "github.com/marcboeker/go-duckdb/v2"
 )
 

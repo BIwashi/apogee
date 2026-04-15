@@ -1,7 +1,6 @@
 package duckdb
 
 import (
-	"context"
 	"testing"
 	"time"
 
@@ -11,7 +10,7 @@ import (
 )
 
 func TestInsertSpanDefaults(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	s := newTestStore(t)
 
 	now := time.Now().UTC().Truncate(time.Millisecond)
@@ -19,14 +18,14 @@ func TestInsertSpanDefaults(t *testing.T) {
 	require.NoError(t, s.InsertTurn(ctx, Turn{TurnID: "t1", TraceID: "deadbeefdeadbeefdeadbeefdeadbeef", SessionID: "s1", SourceApp: "demo", StartedAt: now, Status: "running"}))
 
 	sp := &otel.Span{
-		TraceID:   otel.TraceID("deadbeefdeadbeefdeadbeefdeadbeef"),
-		SpanID:    otel.SpanID("1234567890abcdef"),
-		Name:      "claude_code.turn",
-		Kind:      otel.SpanKindInternal,
-		StartTime: now,
+		TraceID:    otel.TraceID("deadbeefdeadbeefdeadbeefdeadbeef"),
+		SpanID:     otel.SpanID("1234567890abcdef"),
+		Name:       "claude_code.turn",
+		Kind:       otel.SpanKindInternal,
+		StartTime:  now,
 		StatusCode: otel.StatusUnset,
-		SessionID: "s1",
-		TurnID:    "t1",
+		SessionID:  "s1",
+		TurnID:     "t1",
 	}
 	require.NoError(t, s.InsertSpan(ctx, sp))
 
@@ -38,7 +37,7 @@ func TestInsertSpanDefaults(t *testing.T) {
 }
 
 func TestGetSpansByTurnOrder(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	s := newTestStore(t)
 
 	now := time.Now().UTC().Truncate(time.Millisecond)
@@ -78,7 +77,7 @@ func TestGetSpansByTurnOrder(t *testing.T) {
 }
 
 func TestListLogsByTurnAndSession(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	s := newTestStore(t)
 
 	now := time.Now().UTC().Truncate(time.Millisecond)

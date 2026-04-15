@@ -2,13 +2,8 @@
 
 import Link from "next/link";
 import { ArrowRight, Wrench } from "lucide-react";
-
-import type {
-  PhaseSegment,
-  RecapResponse,
-  Span,
-  Turn,
-} from "../lib/api-types";
+import type { PhaseSegment, RecapResponse, Span, Turn } from "../lib/api-types";
+import type { StatusKey } from "../lib/design-tokens";
 import { formatClock, timeAgo } from "../lib/time";
 import AttentionDot from "./AttentionDot";
 import Card from "./Card";
@@ -16,7 +11,6 @@ import FocusCardEmpty from "./FocusCardEmpty";
 import RecapPanels from "./RecapPanels";
 import StatusPill from "./StatusPill";
 import SwimLane from "./SwimLane";
-import type { StatusKey } from "../lib/design-tokens";
 
 /**
  * FocusCard — the hero of the `/` Live page. Renders the currently-focused
@@ -136,20 +130,27 @@ export default function FocusCard({
           <span className="inline-flex items-center gap-1">
             <Wrench size={12} strokeWidth={1.5} />
             tools{" "}
-            <span className="text-[var(--artemis-white)]">{turn.tool_call_count}</span>
+            <span className="text-[var(--artemis-white)]">
+              {turn.tool_call_count}
+            </span>
           </span>
           {currentTool && (
             <>
               <span>·</span>
               <span>
-                last <span className="text-[var(--artemis-white)]">{currentTool}</span>
+                last{" "}
+                <span className="text-[var(--artemis-white)]">
+                  {currentTool}
+                </span>
               </span>
             </>
           )}
           <span>·</span>
           <span>
             subagents{" "}
-            <span className="text-[var(--artemis-white)]">{turn.subagent_count}</span>
+            <span className="text-[var(--artemis-white)]">
+              {turn.subagent_count}
+            </span>
           </span>
           <span>·</span>
           <span
@@ -157,7 +158,10 @@ export default function FocusCard({
               turn.error_count > 0 ? "text-[var(--status-critical)]" : undefined
             }
           >
-            errors <span className="text-[var(--artemis-white)]">{turn.error_count}</span>
+            errors{" "}
+            <span className="text-[var(--artemis-white)]">
+              {turn.error_count}
+            </span>
           </span>
         </div>
       </div>

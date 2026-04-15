@@ -248,7 +248,7 @@ func TestIntegrationInterventionClaimConcurrentRace(t *testing.T) {
 func TestIntegrationInterventionAutoExpire(t *testing.T) {
 	// Fresh in-memory store + a fast-expiring service to avoid sleeping
 	// past the sweeper default.
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	store, err := duckdb.Open(ctx, ":memory:")
 	require.NoError(t, err)

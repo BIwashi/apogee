@@ -2,10 +2,9 @@
 
 import { useMemo, useState } from "react";
 import { Users } from "lucide-react";
-
 import type { Agent, Turn } from "../lib/api-types";
-import { useApi } from "../lib/swr";
 import { useDrawerState } from "../lib/drawer";
+import { useApi } from "../lib/swr";
 import { formatClock, timeAgo } from "../lib/time";
 import DrawerFooterAction from "./DrawerFooterAction";
 import DrawerHeader, { DrawerTabBar } from "./DrawerHeader";
@@ -72,10 +71,7 @@ export default function AgentDrawer({ agentID }: AgentDrawerProps) {
   const detail = detailQuery.data ?? null;
   const agent = detail?.agent ?? null;
   const turns = useMemo(() => detail?.turns ?? [], [detail]);
-  const toolCounts = useMemo(
-    () => detail?.tool_counts ?? [],
-    [detail],
-  );
+  const toolCounts = useMemo(() => detail?.tool_counts ?? [], [detail]);
   const parent = detail?.parent ?? null;
   const children = useMemo(() => detail?.children ?? [], [detail]);
   const maxToolCount = useMemo(
@@ -104,7 +100,8 @@ export default function AgentDrawer({ agentID }: AgentDrawerProps) {
         subtitle={
           agent?.last_seen ? (
             <>
-              last seen {formatClock(agent.last_seen)} · {timeAgo(agent.last_seen)}
+              last seen {formatClock(agent.last_seen)} ·{" "}
+              {timeAgo(agent.last_seen)}
             </>
           ) : null
         }

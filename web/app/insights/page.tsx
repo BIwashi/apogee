@@ -9,13 +9,9 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-
 import Card from "../components/Card";
 import SectionHeader from "../components/SectionHeader";
-import type {
-  InsightsOverview,
-  SessionSearchResponse,
-} from "../lib/api-types";
+import type { InsightsOverview, SessionSearchResponse } from "../lib/api-types";
 import { useApi } from "../lib/swr";
 import { timeAgo } from "../lib/time";
 
@@ -55,9 +51,7 @@ interface StatTileProps {
 }
 
 function StatTile({ label, value, sub, tone }: StatTileProps) {
-  const color = tone
-    ? `var(--status-${tone})`
-    : "var(--artemis-earth)";
+  const color = tone ? `var(--status-${tone})` : "var(--artemis-earth)";
   return (
     <Card>
       <p className="font-display text-[10px] tracking-[0.14em] text-[var(--text-muted)]">
@@ -130,17 +124,14 @@ export default function InsightsPage() {
           </h1>
           <div className="accent-gradient-bar mt-3 h-[3px] w-32 rounded-full" />
           <p className="mt-3 max-w-xl text-[13px] text-[var(--text-muted)]">
-            Aggregate analytics across every session the collector has
-            ingested. Window: last 24 hours.
+            Aggregate analytics across every session the collector has ingested.
+            Window: last 24 hours.
           </p>
         </div>
       </header>
 
       <section className="grid gap-3 md:grid-cols-4">
-        <StatTile
-          label="SESSIONS"
-          value={String(data.total_sessions ?? 0)}
-        />
+        <StatTile label="SESSIONS" value={String(data.total_sessions ?? 0)} />
         <StatTile label="TURNS" value={String(data.total_turns ?? 0)} />
         <StatTile label="EVENTS" value={String(data.total_events ?? 0)} />
         <StatTile
@@ -215,10 +206,7 @@ export default function InsightsPage() {
                     />
                     <Bar dataKey="count">
                       {topTools.map((_, idx) => (
-                        <Cell
-                          key={`tool-${idx}`}
-                          fill="var(--artemis-earth)"
-                        />
+                        <Cell key={`tool-${idx}`} fill="var(--artemis-earth)" />
                       ))}
                     </Bar>
                   </BarChart>
@@ -300,9 +288,7 @@ export default function InsightsPage() {
                       {shortId(hit.session_id, 12)}
                     </p>
                     <p className="line-clamp-1 text-[11px] text-[var(--text-muted)]">
-                      {hit.latest_headline ||
-                        hit.latest_prompt_snippet ||
-                        "—"}
+                      {hit.latest_headline || hit.latest_prompt_snippet || "—"}
                     </p>
                   </div>
                   <span className="font-mono text-[10px] text-[var(--text-muted)]">

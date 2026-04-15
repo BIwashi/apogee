@@ -26,9 +26,7 @@ interface VersionTagProps {
 
 export default function VersionTag({ suffix }: VersionTagProps) {
   const { data } = useApi<ApogeeInfo>("/v1/info", { refreshInterval: 60_000 });
-  const version = data?.version
-    ? `apogee v${data.version}`
-    : "apogee";
+  const version = data?.version ? `apogee v${data.version}` : "apogee";
   const trailer = suffix ? ` — ${suffix}` : "";
   return (
     <span className="font-mono text-[10px] text-[var(--text-muted)]">

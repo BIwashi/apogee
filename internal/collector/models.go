@@ -35,9 +35,9 @@ type modelInfoResponse struct {
 
 // modelsResponse is the full /v1/models response body.
 type modelsResponse struct {
-	Models      []modelInfoResponse        `json:"models"`
-	Defaults    modelsResponseDefaults     `json:"defaults"`
-	RefreshedAt time.Time                  `json:"refreshed_at"`
+	Models      []modelInfoResponse    `json:"models"`
+	Defaults    modelsResponseDefaults `json:"defaults"`
+	RefreshedAt time.Time              `json:"refreshed_at"`
 }
 
 // modelsResponseDefaults is the resolver's default pick per summarizer

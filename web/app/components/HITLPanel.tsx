@@ -1,14 +1,14 @@
 "use client";
 
-import { Check, Clock, ShieldAlert, Slash, X } from "lucide-react";
 import {
+  type FormEvent,
+  type KeyboardEvent,
   useCallback,
   useMemo,
   useState,
-  type FormEvent,
-  type KeyboardEvent,
 } from "react";
-
+import { Check, Clock, ShieldAlert, Slash, X } from "lucide-react";
+import { apiUrl } from "../lib/api";
 import type {
   HITLDecision,
   HITLEvent,
@@ -17,7 +17,6 @@ import type {
   HITLResumeMode,
 } from "../lib/api-types";
 import { HITL_REASONS, HITL_RESUME_MODES } from "../lib/api-types";
-import { apiUrl } from "../lib/api";
 import { timeAgo } from "../lib/time";
 import Card from "./Card";
 
@@ -97,7 +96,14 @@ function HITLEntry({
         setForm((prev) => ({ ...prev, submitting: false, error: message }));
       }
     },
-    [event.hitl_id, form.submitting, form.reason, form.note, form.resume, onResponded],
+    [
+      event.hitl_id,
+      form.submitting,
+      form.reason,
+      form.note,
+      form.resume,
+      onResponded,
+    ],
   );
 
   const onSubmitForm = useCallback(
@@ -120,7 +126,10 @@ function HITLEntry({
     [submit],
   );
 
-  const ageLabel = useMemo(() => `${timeAgo(event.requested_at)} ago`, [event.requested_at]);
+  const ageLabel = useMemo(
+    () => `${timeAgo(event.requested_at)} ago`,
+    [event.requested_at],
+  );
 
   return (
     <li
@@ -161,11 +170,7 @@ function HITLEntry({
           <ContextChip label="file" value={event.context.target_file} />
         )}
         {event.context.command_preview && (
-          <ContextChip
-            label="cmd"
-            value={event.context.command_preview}
-            mono
-          />
+          <ContextChip label="cmd" value={event.context.command_preview} mono />
         )}
       </div>
 
@@ -177,7 +182,10 @@ function HITLEntry({
               type="button"
               onClick={() => void submit("custom", sugg)}
               className="rounded border px-2 py-[2px] font-mono text-[10px] text-[var(--text-muted)] hover:text-[var(--artemis-white)]"
-              style={{ borderColor: "var(--border-bright)", background: "var(--bg-overlay)" }}
+              style={{
+                borderColor: "var(--border-bright)",
+                background: "var(--bg-overlay)",
+              }}
             >
               {sugg}
             </button>
@@ -219,7 +227,10 @@ function HITLEntry({
             <select
               value={form.reason}
               onChange={(ev) =>
-                setForm((prev) => ({ ...prev, reason: ev.target.value as HITLReason }))
+                setForm((prev) => ({
+                  ...prev,
+                  reason: ev.target.value as HITLReason,
+                }))
               }
               className="rounded border bg-transparent px-2 py-1 font-mono text-[11px] text-[var(--artemis-white)]"
               style={{ borderColor: "var(--border-bright)" }}
@@ -298,7 +309,11 @@ function ContextChip({
     >
       <span className="uppercase tracking-wider">{label}</span>
       <span
-        className={mono ? "font-mono text-[var(--artemis-white)]" : "text-[var(--text-primary)]"}
+        className={
+          mono
+            ? "font-mono text-[var(--artemis-white)]"
+            : "text-[var(--text-primary)]"
+        }
         style={{ maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis" }}
       >
         {value}

@@ -26,20 +26,20 @@ var ErrWatchdogSignalNotFound = errors.New("watchdog signal not found")
 // are wrapped in sql.NullXxx types; the HTTP / SSE layers project them
 // onto the wire shape.
 type WatchdogSignal struct {
-	ID              int64        `json:"id"`
-	DetectedAt      time.Time    `json:"detected_at"`
-	EndedAt         sql.NullTime `json:"-"`
-	MetricName      string       `json:"metric_name"`
-	LabelsJSON      string       `json:"labels_json"`
-	ZScore          float64      `json:"z_score"`
-	BaselineMean    float64      `json:"baseline_mean"`
-	BaselineStddev  float64      `json:"baseline_stddev"`
-	WindowValue     float64      `json:"window_value"`
-	Severity        string       `json:"severity"`
-	Headline        string       `json:"headline"`
-	EvidenceJSON    string       `json:"evidence_json"`
-	Acknowledged    bool         `json:"acknowledged"`
-	AcknowledgedAt  sql.NullTime `json:"-"`
+	ID             int64        `json:"id"`
+	DetectedAt     time.Time    `json:"detected_at"`
+	EndedAt        sql.NullTime `json:"-"`
+	MetricName     string       `json:"metric_name"`
+	LabelsJSON     string       `json:"labels_json"`
+	ZScore         float64      `json:"z_score"`
+	BaselineMean   float64      `json:"baseline_mean"`
+	BaselineStddev float64      `json:"baseline_stddev"`
+	WindowValue    float64      `json:"window_value"`
+	Severity       string       `json:"severity"`
+	Headline       string       `json:"headline"`
+	EvidenceJSON   string       `json:"evidence_json"`
+	Acknowledged   bool         `json:"acknowledged"`
+	AcknowledgedAt sql.NullTime `json:"-"`
 }
 
 // WatchdogListFilter narrows ListWatchdogSignals queries.

@@ -1,7 +1,6 @@
 "use client";
 
 import { Radar } from "lucide-react";
-
 import Card from "./Card";
 
 /**
@@ -34,15 +33,15 @@ export default function FocusCardEmpty() {
         <li className="flex gap-2">
           <span className="text-[var(--artemis-space)]">01</span>
           <span>
-            <code className="text-[var(--artemis-white)]">apogee serve</code> keeps the
-            collector running.
+            <code className="text-[var(--artemis-white)]">apogee serve</code>{" "}
+            keeps the collector running.
           </span>
         </li>
         <li className="flex gap-2">
           <span className="text-[var(--artemis-space)]">02</span>
           <span>
-            <code className="text-[var(--artemis-white)]">apogee init</code> wires Claude
-            Code&apos;s hooks into the collector.
+            <code className="text-[var(--artemis-white)]">apogee init</code>{" "}
+            wires Claude Code&apos;s hooks into the collector.
           </span>
         </li>
         <li className="flex gap-2">

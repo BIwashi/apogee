@@ -1,13 +1,12 @@
 "use client";
 
+import { useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState, useSyncExternalStore } from "react";
-
-import VersionTag from "./components/VersionTag";
 import {
   BarChart3,
   Layers,
+  type LucideIcon,
   Palette,
   PanelLeftClose,
   PanelLeftOpen,
@@ -15,8 +14,8 @@ import {
   ScrollText,
   SlidersHorizontal,
   Users,
-  type LucideIcon,
 } from "lucide-react";
+import VersionTag from "./components/VersionTag";
 
 /**
  * Sidebar — the primary navigation shell. PR #24 rewrites the information
@@ -87,9 +86,10 @@ const NAV: NavItem[] = [
 
 function isActive(pathname: string, item: NavItem): boolean {
   // Strip trailing slash so "/sessions/" matches "/sessions".
-  const normalised = pathname.endsWith("/") && pathname !== "/"
-    ? pathname.slice(0, -1)
-    : pathname;
+  const normalised =
+    pathname.endsWith("/") && pathname !== "/"
+      ? pathname.slice(0, -1)
+      : pathname;
   if (item.href === "/") {
     return normalised === "/" || normalised === "";
   }
@@ -142,7 +142,9 @@ export default function Sidebar({ children }: { children: React.ReactNode }) {
               APOGEE
             </h1>
           ) : (
-            <span className="font-display-accent text-sm text-[var(--artemis-white)]">A</span>
+            <span className="font-display-accent text-sm text-[var(--artemis-white)]">
+              A
+            </span>
           )}
           <button
             onClick={() => setUserCollapsed(!collapsed)}
@@ -196,7 +198,9 @@ export default function Sidebar({ children }: { children: React.ReactNode }) {
                 <div
                   role="tooltip"
                   className={`pointer-events-none absolute top-1/2 z-50 -translate-y-1/2 whitespace-normal rounded border border-[var(--border-bright)] bg-[var(--bg-overlay)] p-3 text-[11px] leading-snug text-[var(--text-primary)] opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100 ${
-                    collapsed ? "left-[calc(100%+8px)] w-56" : "left-[calc(100%+4px)] w-60"
+                    collapsed
+                      ? "left-[calc(100%+8px)] w-56"
+                      : "left-[calc(100%+4px)] w-60"
                   }`}
                 >
                   <p className="font-display text-[10px] uppercase tracking-[0.14em] text-[var(--artemis-white)]">

@@ -1,0 +1,46 @@
+# lefthook pre-commit hooks for apogee.
+#
+# Install lefthook locally:
+#   brew install lefthook
+#   lefthook install
+#
+# The hooks are deliberately narrow: they only touch files that are about
+# to be committed (`{staged_files}`) and only call tools that are pinned
+# via go.mod `tool` directives or web/package.json devDependencies, so
+# every contributor runs the same versions without a separate install
+# step for the formatter or linter.
+
+pre-commit:
+  parallel: true
+  commands:
+    go-format:
+      glob: "*.go"
+      exclude: "internal/webassets/dist|desktop/frontend/wailsjs"
+      # gofumpt rewrites first, then gci sorts imports. Both are pinned
+      # tools so `go tool` picks the exact version recorded in go.mod.
+      run: |
+        go tool gofumpt -w {staged_files}
+        go tool gci write -s standard -s default -s localmodule --skip-vendor {staged_files}
+      stage_fixed: true
+
+    go-lint:
+      glob: "*.go"
+      exclude: "internal/webassets/dist|desktop/frontend/wailsjs"
+      # golangci-lint --new-from-rev would be nicer, but lefthook's
+      # {staged_files} already scopes the run to the changed files.
+      run: golangci-lint run --path-mode=abs {staged_files}
+
+    prettier:
+      root: web/
+      glob: "*.{ts,tsx,js,jsx,css,json,md}"
+      exclude: "\\.next|out|node_modules|package-lock\\.json"
+      # Use the locally-installed prettier so every contributor lands on
+      # the same version the repo pins in web/package.json.
+      run: ./node_modules/.bin/prettier --write {staged_files}
+      stage_fixed: true
+
+    eslint:
+      root: web/
+      glob: "*.{ts,tsx,js,jsx}"
+      exclude: "\\.next|out|node_modules"
+      run: ./node_modules/.bin/eslint {staged_files}

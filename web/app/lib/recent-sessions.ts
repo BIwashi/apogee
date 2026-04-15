@@ -21,7 +21,9 @@ const STORAGE_KEY = "apogee:recent-sessions";
 const MAX = 5;
 
 function isBrowser(): boolean {
-  return typeof window !== "undefined" && typeof window.localStorage !== "undefined";
+  return (
+    typeof window !== "undefined" && typeof window.localStorage !== "undefined"
+  );
 }
 
 export function getRecentSessions(): RecentSessionEntry[] {
@@ -48,9 +50,13 @@ export function getRecentSessions(): RecentSessionEntry[] {
   }
 }
 
-export function addRecentSession(entry: RecentSessionEntry): RecentSessionEntry[] {
+export function addRecentSession(
+  entry: RecentSessionEntry,
+): RecentSessionEntry[] {
   if (!isBrowser()) return [];
-  const existing = getRecentSessions().filter((x) => x.session_id !== entry.session_id);
+  const existing = getRecentSessions().filter(
+    (x) => x.session_id !== entry.session_id,
+  );
   const next = [entry, ...existing].slice(0, MAX);
   try {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));

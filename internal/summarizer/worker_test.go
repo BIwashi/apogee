@@ -1,7 +1,6 @@
 package summarizer
 
 import (
-	"context"
 	"testing"
 	"time"
 
@@ -16,7 +15,7 @@ import (
 // something to summarise.
 func seedTurn(t *testing.T, store *duckdb.Store, turnID string, durationMs int64) {
 	t.Helper()
-	ctx := context.Background()
+	ctx := t.Context()
 	start := time.Now().Add(-10 * time.Second)
 	end := start.Add(time.Duration(durationMs) * time.Millisecond)
 
@@ -57,7 +56,7 @@ func seedTurn(t *testing.T, store *duckdb.Store, turnID string, durationMs int64
 }
 
 func TestWorkerProcessesJob(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	store, err := duckdb.Open(ctx, ":memory:")
 	require.NoError(t, err)
 	defer store.Close()
@@ -110,7 +109,7 @@ func TestWorkerProcessesJob(t *testing.T) {
 }
 
 func TestWorkerSkipsShortTurn(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	store, err := duckdb.Open(ctx, ":memory:")
 	require.NoError(t, err)
 	defer store.Close()
@@ -135,7 +134,7 @@ func TestWorkerSkipsShortTurn(t *testing.T) {
 }
 
 func TestWorkerDropsOnFullQueue(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	store, err := duckdb.Open(ctx, ":memory:")
 	require.NoError(t, err)
 	defer store.Close()

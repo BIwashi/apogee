@@ -28,8 +28,8 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	tracenoop "go.opentelemetry.io/otel/trace/noop"
 
-	apogeesemconv "github.com/BIwashi/apogee/semconv"
 	"github.com/BIwashi/apogee/internal/version"
+	apogeesemconv "github.com/BIwashi/apogee/semconv"
 )
 
 // Protocol enumerates the OTLP exporter wire protocols apogee supports.
@@ -82,11 +82,11 @@ func (c Config) IsEnabled() bool {
 // missing or malformed values fall back to defaults.
 func LoadConfigFromEnv() Config {
 	cfg := Config{
-		Protocol:    ProtocolGRPC,
-		ServiceName: "apogee",
-		SampleRatio: 1.0,
-		Headers:     map[string]string{},
-		ResourceAttrs: map[string]string{},
+		Protocol:       ProtocolGRPC,
+		ServiceName:    "apogee",
+		SampleRatio:    1.0,
+		Headers:        map[string]string{},
+		ResourceAttrs:  map[string]string{},
 		ServiceVersion: version.Version,
 	}
 
@@ -230,11 +230,11 @@ func (e *CountingExporter) Shutdown(ctx context.Context) error {
 // Server struct so HTTP handlers can read the counter and so Run can
 // flush spans on shutdown.
 type Provider struct {
-	TP             trace.TracerProvider
-	Shutdown       func(context.Context) error
-	SpansExported  *atomic.Uint64
-	Cfg            Config
-	Enabled        bool
+	TP            trace.TracerProvider
+	Shutdown      func(context.Context) error
+	SpansExported *atomic.Uint64
+	Cfg           Config
+	Enabled       bool
 }
 
 // Tracer returns a tracer suitable for the apogee reconstructor. Always

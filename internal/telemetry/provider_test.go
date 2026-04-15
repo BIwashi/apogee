@@ -1,7 +1,6 @@
 package telemetry
 
 import (
-	"context"
 	"testing"
 )
 
@@ -98,7 +97,7 @@ func TestLoadConfigFromEnv_ProtocolAndHeaders(t *testing.T) {
 func TestNewTracerProvider_Disabled(t *testing.T) {
 	clearOTelEnv(t)
 	cfg := LoadConfigFromEnv()
-	prov, err := NewTracerProvider(context.Background(), cfg, nil)
+	prov, err := NewTracerProvider(t.Context(), cfg, nil)
 	if err != nil {
 		t.Fatalf("NewTracerProvider: %v", err)
 	}
@@ -114,7 +113,7 @@ func TestNewTracerProvider_Disabled(t *testing.T) {
 	if prov.SpansExported == nil {
 		t.Fatal("SpansExported counter must be present")
 	}
-	if err := prov.Shutdown(context.Background()); err != nil {
+	if err := prov.Shutdown(t.Context()); err != nil {
 		t.Fatalf("noop shutdown: %v", err)
 	}
 }
@@ -123,7 +122,7 @@ func TestNewTracerProvider_BogusEndpointStillStarts(t *testing.T) {
 	clearOTelEnv(t)
 	t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://127.0.0.1:1") // unreachable
 	cfg := LoadConfigFromEnv()
-	prov, err := NewTracerProvider(context.Background(), cfg, nil)
+	prov, err := NewTracerProvider(t.Context(), cfg, nil)
 	if err != nil {
 		t.Fatalf("NewTracerProvider: %v", err)
 	}
@@ -132,9 +131,9 @@ func TestNewTracerProvider_BogusEndpointStillStarts(t *testing.T) {
 	}
 	// Force a no-op tracer call to ensure the shape is wired.
 	tr := prov.Tracer()
-	_, span := tr.Start(context.Background(), "smoke")
+	_, span := tr.Start(t.Context(), "smoke")
 	span.End()
-	_ = prov.Shutdown(context.Background())
+	_ = prov.Shutdown(t.Context())
 }
 
 func TestParseKVList(t *testing.T) {

@@ -206,12 +206,15 @@ func buildMenu(s menubarSnapshot, base string) []menuet.MenuItem {
 	items = append(items, menuet.MenuItem{Type: menuet.Separator})
 	items = append(items,
 		menuet.MenuItem{
-			Text:    "Open dashboard",
-			Clicked: func() { _ = exec.Command("open", base+"/").Run() },
+			Text: "Open dashboard",
+			// base comes from the statically-configured dashboard URL, not
+			// user input; the subprocess target is the macOS `open` binary.
+			Clicked: func() { _ = exec.Command("open", base+"/").Run() }, //nolint:gosec // see comment above
 		},
 		menuet.MenuItem{
-			Text:    "Open logs",
-			Clicked: func() { _ = exec.Command("open", expandHomeOrEmpty("~/.apogee/logs")).Run() },
+			Text: "Open logs",
+			// Expanded from a static "~/.apogee/logs" template.
+			Clicked: func() { _ = exec.Command("open", expandHomeOrEmpty("~/.apogee/logs")).Run() }, //nolint:gosec // see comment above
 		},
 	)
 	items = append(items, menuet.MenuItem{Type: menuet.Separator})

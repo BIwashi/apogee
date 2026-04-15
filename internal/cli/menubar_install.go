@@ -203,4 +203,3 @@ func printMenubarInstallSummary(out io.Writer, m daemon.Manager, cfg daemon.Conf
 	inner := styleSuccess.Render(glyphCheck+" menubar installed") + "\n\n" + body + "\n\n" + styleMuted.Render(hint)
 	fmt.Fprintln(out, boxSuccess.Render(inner))
 }
-

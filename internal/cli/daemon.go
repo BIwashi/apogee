@@ -335,4 +335,3 @@ const (
 	checkGlyph = "\u2713"
 	crossGlyph = "\u2717"
 )
-

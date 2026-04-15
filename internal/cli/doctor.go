@@ -81,8 +81,8 @@ func runDoctorChecks(ctx context.Context) []DoctorCheck {
 	if apogeeDir != "" {
 		dbPath = filepath.Join(apogeeDir, "apogee.duckdb")
 	}
-	switch {
-	case dbPath == "":
+	switch dbPath {
+	case "":
 		out = append(out, DoctorCheck{Name: "db_path", Severity: "warn", Message: "default db path not resolvable"})
 	default:
 		if err := checkDirWritable(filepath.Dir(dbPath)); err != nil {

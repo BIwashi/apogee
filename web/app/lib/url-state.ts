@@ -2,12 +2,11 @@
 
 import { useCallback, useMemo } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-
 import {
   DEFAULT_TIME_RANGE_VALUE,
+  type TimeRange,
   parseTimeRange,
   serializeTimeRange,
-  type TimeRange,
 } from "./time-range";
 
 /**
@@ -70,8 +69,10 @@ export function useSelection(): UseSelectionResult {
     const p = new URLSearchParams();
     if (selection.sess) p.set("session_id", selection.sess);
     if (selection.env) p.set("source_app", selection.env);
-    if (selection.time.since) p.set("since", selection.time.since.toISOString());
-    if (selection.time.until) p.set("until", selection.time.until.toISOString());
+    if (selection.time.since)
+      p.set("since", selection.time.since.toISOString());
+    if (selection.time.until)
+      p.set("until", selection.time.until.toISOString());
     return p;
   }, [selection]);
 

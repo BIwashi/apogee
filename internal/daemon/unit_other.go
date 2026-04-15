@@ -41,18 +41,23 @@ type unsupportedManager struct {
 func (m *unsupportedManager) Install(ctx context.Context, cfg Config) error {
 	return wrapUnsupported(m.goos)
 }
+
 func (m *unsupportedManager) Uninstall(ctx context.Context) error {
 	return wrapUnsupported(m.goos)
 }
+
 func (m *unsupportedManager) Start(ctx context.Context) error {
 	return wrapUnsupported(m.goos)
 }
+
 func (m *unsupportedManager) Stop(ctx context.Context) error {
 	return wrapUnsupported(m.goos)
 }
+
 func (m *unsupportedManager) Restart(ctx context.Context) error {
 	return wrapUnsupported(m.goos)
 }
+
 func (m *unsupportedManager) Status(ctx context.Context) (Status, error) {
 	return Status{Label: m.label}, wrapUnsupported(m.goos)
 }

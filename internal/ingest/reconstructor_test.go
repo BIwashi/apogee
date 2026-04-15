@@ -1,7 +1,6 @@
 package ingest
 
 import (
-	"context"
 	"testing"
 	"time"
 
@@ -12,7 +11,7 @@ import (
 
 func newTestRec(t *testing.T) (*Reconstructor, *duckdb.Store) {
 	t.Helper()
-	ctx := context.Background()
+	ctx := t.Context()
 	s, err := duckdb.Open(ctx, ":memory:")
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = s.Close() })
@@ -33,7 +32,7 @@ func ev(typ, sess string, ts time.Time, mods ...func(*HookEvent)) *HookEvent {
 }
 
 func TestFullScenarioBashRead(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	rec, store := newTestRec(t)
 
 	t0 := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)
@@ -92,7 +91,7 @@ func TestFullScenarioBashRead(t *testing.T) {
 }
 
 func TestSubagentScenario(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	rec, store := newTestRec(t)
 
 	t0 := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)
@@ -141,7 +140,7 @@ func TestSubagentScenario(t *testing.T) {
 }
 
 func TestErrorScenario(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	rec, store := newTestRec(t)
 
 	t0 := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)
@@ -176,7 +175,7 @@ func TestErrorScenario(t *testing.T) {
 }
 
 func TestOutOfOrderPostToolUse(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	rec, store := newTestRec(t)
 
 	t0 := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)
@@ -196,7 +195,7 @@ func TestOutOfOrderPostToolUse(t *testing.T) {
 }
 
 func TestPreCompactMarksTurnCompacted(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	rec, store := newTestRec(t)
 
 	t0 := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)
@@ -212,7 +211,7 @@ func TestPreCompactMarksTurnCompacted(t *testing.T) {
 }
 
 func TestSecondUserPromptClosesPrevious(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	rec, store := newTestRec(t)
 
 	t0 := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)
@@ -228,7 +227,7 @@ func TestSecondUserPromptClosesPrevious(t *testing.T) {
 }
 
 func TestPermissionRequestSpanLeftOpen(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	rec, store := newTestRec(t)
 
 	t0 := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)
@@ -262,7 +261,7 @@ func TestPermissionRequestSpanLeftOpen(t *testing.T) {
 }
 
 func TestPermissionRequestBroadcastsViaCallback(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	rec, _ := newTestRec(t)
 	var captured duckdb.HITLEvent
 	rec.OnHITLRequested = func(ev duckdb.HITLEvent) {
@@ -282,7 +281,7 @@ func TestPermissionRequestBroadcastsViaCallback(t *testing.T) {
 }
 
 func TestCloseTurnExpiresPendingHITL(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	rec, store := newTestRec(t)
 
 	t0 := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)
@@ -309,7 +308,7 @@ func TestMCPToolNameParsing(t *testing.T) {
 }
 
 func TestMCPToolSpanName(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	rec, store := newTestRec(t)
 	t0 := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)
 	require.NoError(t, rec.Apply(ctx, ev("UserPromptSubmit", "s-1", t0)))

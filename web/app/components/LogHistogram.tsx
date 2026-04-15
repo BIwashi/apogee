@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
-
 import type { EventBucket } from "../lib/api-types";
 
 /**
@@ -92,7 +91,10 @@ export default function LogHistogram({
   const onMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!onBrush || !containerRef.current) return;
     const rect = containerRef.current.getBoundingClientRect();
-    setBrush({ startX: e.clientX - rect.left, currentX: e.clientX - rect.left });
+    setBrush({
+      startX: e.clientX - rect.left,
+      currentX: e.clientX - rect.left,
+    });
   };
   const onMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!brush || !containerRef.current) return;
@@ -126,12 +128,8 @@ export default function LogHistogram({
     setBrush(null);
   };
 
-  const brushLeft = brush
-    ? Math.min(brush.startX, brush.currentX)
-    : 0;
-  const brushWidth = brush
-    ? Math.abs(brush.currentX - brush.startX)
-    : 0;
+  const brushLeft = brush ? Math.min(brush.startX, brush.currentX) : 0;
+  const brushWidth = brush ? Math.abs(brush.currentX - brush.startX) : 0;
 
   return (
     <div className="flex flex-col gap-1">
@@ -161,7 +159,10 @@ export default function LogHistogram({
         }}
       >
         {formatted.map((b, idx) => {
-          const totalH = Math.max(1, Math.round((b.total / maxTotal) * (HEIGHT - 4)));
+          const totalH = Math.max(
+            1,
+            Math.round((b.total / maxTotal) * (HEIGHT - 4)),
+          );
           return (
             <div
               key={b.bucket + idx}
@@ -180,10 +181,7 @@ export default function LogHistogram({
                 {SEVERITY_ORDER.map((sev) => {
                   const count = b.by_severity?.[sev] ?? 0;
                   if (count === 0) return null;
-                  const h = Math.max(
-                    1,
-                    Math.round((count / b.total) * totalH),
-                  );
+                  const h = Math.max(1, Math.round((count / b.total) * totalH));
                   return (
                     <div
                       key={sev}

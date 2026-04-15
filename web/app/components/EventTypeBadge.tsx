@@ -1,6 +1,7 @@
 import {
   AlertOctagon,
   Bell,
+  type LucideIcon,
   MessageSquare,
   Minimize2,
   Octagon,
@@ -10,9 +11,7 @@ import {
   UserCheck,
   Users,
   Wrench,
-  type LucideIcon,
 } from "lucide-react";
-
 import type { EventToneKey, EventTypeSpec } from "../lib/event-types";
 
 /**
@@ -35,7 +34,10 @@ const ICON_MAP: Record<string, LucideIcon> = {
   Minimize2,
 };
 
-const TONE_STYLES: Record<EventToneKey, { bg: string; fg: string; border: string }> = {
+const TONE_STYLES: Record<
+  EventToneKey,
+  { bg: string; fg: string; border: string }
+> = {
   critical: {
     bg: "var(--tint-critical)",
     fg: "var(--status-critical)",

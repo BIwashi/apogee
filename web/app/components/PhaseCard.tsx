@@ -1,12 +1,12 @@
 "use client";
 
 import {
+  type KeyboardEvent,
+  type MouseEvent,
   useCallback,
   useEffect,
   useRef,
   useState,
-  type KeyboardEvent,
-  type MouseEvent,
 } from "react";
 import {
   Bug,
@@ -16,11 +16,10 @@ import {
   Compass,
   Eye,
   GitBranch,
+  type LucideIcon,
   Sparkles,
   Users,
-  type LucideIcon,
 } from "lucide-react";
-
 import type { PhaseBlock, PhaseKind, Turn } from "../lib/api-types";
 import { formatClock, timeAgo } from "../lib/time";
 
@@ -184,7 +183,8 @@ export default function PhaseCard({
                 {phase.kind}
               </span>
               <span className="font-mono text-[10px] text-[var(--text-muted)]">
-                {phase.turn_count} turn{phase.turn_count === 1 ? "" : "s"} · {formatDuration(phase.duration_ms)}
+                {phase.turn_count} turn{phase.turn_count === 1 ? "" : "s"} ·{" "}
+                {formatDuration(phase.duration_ms)}
               </span>
             </div>
             <p className="text-[14px] font-medium leading-snug text-[var(--artemis-white)]">
@@ -198,7 +198,10 @@ export default function PhaseCard({
             {visibleSteps.length > 0 && (
               <ul className="flex flex-col gap-0.5 pl-1 text-[11px] text-[var(--text-muted)]">
                 {visibleSteps.map((step, idx) => (
-                  <li key={`${phase.index}-${idx}`} className="flex gap-2 leading-snug">
+                  <li
+                    key={`${phase.index}-${idx}`}
+                    className="flex gap-2 leading-snug"
+                  >
                     <span className="font-mono text-[10px]">·</span>
                     <span className="text-[var(--text-primary)]">{step}</span>
                   </li>
@@ -221,9 +224,13 @@ export default function PhaseCard({
           style={{ borderColor: color }}
         >
           <p className="font-display text-[11px] uppercase tracking-[0.16em] text-[var(--text-muted)]">
-            {phase.kind} · {phase.turn_count} turn{phase.turn_count === 1 ? "" : "s"} · {formatDuration(phase.duration_ms)}
+            {phase.kind} · {phase.turn_count} turn
+            {phase.turn_count === 1 ? "" : "s"} ·{" "}
+            {formatDuration(phase.duration_ms)}
           </p>
-          <p className="mt-1 text-[12px] font-medium text-[var(--artemis-white)]">{phase.headline}</p>
+          <p className="mt-1 text-[12px] font-medium text-[var(--artemis-white)]">
+            {phase.headline}
+          </p>
           {phase.narrative && (
             <p className="mt-2 whitespace-pre-line text-[11px] leading-relaxed text-[var(--text-muted)]">
               {phase.narrative}
@@ -232,8 +239,13 @@ export default function PhaseCard({
           {phase.key_steps.length > 0 && (
             <ul className="mt-2 flex flex-col gap-0.5 text-[11px]">
               {phase.key_steps.map((step, idx) => (
-                <li key={`preview-${phase.index}-${idx}`} className="flex gap-2 leading-snug text-[var(--artemis-white)]">
-                  <span className="font-mono text-[10px] text-[var(--text-muted)]">·</span>
+                <li
+                  key={`preview-${phase.index}-${idx}`}
+                  className="flex gap-2 leading-snug text-[var(--artemis-white)]"
+                >
+                  <span className="font-mono text-[10px] text-[var(--text-muted)]">
+                    ·
+                  </span>
                   <span>{step}</span>
                 </li>
               ))}

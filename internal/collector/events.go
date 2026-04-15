@@ -71,7 +71,7 @@ func parseLogFilter(r *http.Request) duckdb.LogFilter {
 
 // multiQuery reads a repeated query parameter under any of the provided
 // keys and explodes comma-separated values. Empty strings are stripped so
-// the store layer does not see "IN ('')" clauses. Duplicates are removed to
+// the store layer does not see "IN (”)" clauses. Duplicates are removed to
 // keep the placeholder count tight.
 func multiQuery(q map[string][]string, keys ...string) []string {
 	seen := map[string]bool{}
