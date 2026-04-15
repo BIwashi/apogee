@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.9] - 2026-04-15
+
+### Added
+
+- **Mission Map forecast tier (PR #51).** The tier-3 narrative LLM
+  call now emits a short `forecast[]` array of 0-3 predicted next
+  phases alongside the historical `phases[]`. The Mission Map
+  extrapolates a dashed approach vector beyond the trailing real
+  planet and renders each forecast as a dimmed dashed planet with
+  a "NEXT · kind" label, giving the user the "future" half of the
+  planetary view — the "未来こうなる予定で、今ここで" piece of the
+  original spec. The prompt is explicit that the model should
+  return an empty forecast rather than speculate. Reuses the same
+  Sonnet call the narrative worker already makes, so the feature
+  is effectively free beyond a slightly longer response.
+- **Hoverable moons with per-turn recap tooltip (PR #52).**
+  Completes the three Mission Map zoom levels: Sun (Sonnet tier-2
+  rollup, session goal), planets (Sonnet tier-3 phases), moons
+  (Haiku tier-1 per-turn recaps). Each moon now carries a native
+  SVG `<title>` that shows the turn's Haiku recap headline on
+  hover, an invisible 8 px hit target so hovering is easy, and a
+  click handler that navigates to `/turn?id=…`. No floating-tooltip
+  library, no extra fetch — the session page already has the
+  turns array in memory.
+
 ## [0.1.8] - 2026-04-15
 
 ### Added
