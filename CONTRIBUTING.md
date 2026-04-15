@@ -100,7 +100,7 @@ English doc:
 3. At the top of the Japanese file, keep the `[English version / 英語版](./<name>.md)` link that points back to the English source.
 4. Keep code blocks, commands, identifiers, JSON examples, and API paths
    in English in both versions. Only the prose is translated.
-5. `README.md` and `README.ja.md` are mirrored the same way. Update both
+5. `README.md` and `README_ja.md` are mirrored the same way. Update both
    when you ship a user-visible change to the CLI or the dashboard.
 
 If you land a change that is hard to translate in the same sitting, it is

@@ -80,6 +80,7 @@ type onboardState struct {
 	DaemonStatus   daemon.Status
 	DaemonOK       bool
 	Prefs          summarizer.Preferences
+	Defaults       summarizer.Config // canonical defaults for placeholder hints
 	Telemetry      telemetry.Config
 	HasTelemetry   bool
 }
@@ -100,12 +101,14 @@ type onboardPlan struct {
 	StartDaemon  bool
 
 	// Summarizer
-	SkipSummarizer      bool
-	SummarizerLanguage  string
-	RecapSystemPrompt   string
-	RollupSystemPrompt  string
-	RecapModelOverride  string
-	RollupModelOverride string
+	SkipSummarizer         bool
+	SummarizerLanguage     string
+	RecapSystemPrompt      string
+	RollupSystemPrompt     string
+	NarrativeSystemPrompt  string
+	RecapModelOverride     string
+	RollupModelOverride    string
+	NarrativeModelOverride string
 
 	// OTel
 	SkipTelemetry     bool
@@ -351,6 +354,12 @@ func loadOnboardState(ctx context.Context, opts onboardOptions) (onboardState, e
 		state.Prefs = summarizer.Defaults()
 	}
 
+	// Canonical summarizer defaults — used as placeholder hints in
+	// the wizard so every model override row shows the default model
+	// alias next to the input, and every system prompt textarea
+	// shows an example.
+	state.Defaults = summarizer.Default()
+
 	// Telemetry — read the TOML file directly rather than going
 	// through telemetry.LoadConfig because the latter also overlays
 	// env vars, which would let a locally-set OTEL_EXPORTER_OTLP_*
@@ -441,8 +450,10 @@ func toPlanDefaults(opts onboardOptions, state onboardState) onboardPlan {
 	}
 	plan.RecapSystemPrompt = state.Prefs.RecapSystemPrompt
 	plan.RollupSystemPrompt = state.Prefs.RollupSystemPrompt
+	plan.NarrativeSystemPrompt = state.Prefs.NarrativeSystemPrompt
 	plan.RecapModelOverride = state.Prefs.RecapModelOverride
 	plan.RollupModelOverride = state.Prefs.RollupModelOverride
+	plan.NarrativeModelOverride = state.Prefs.NarrativeModelOverride
 
 	// OTel
 	if state.Telemetry.Endpoint != "" {
@@ -522,25 +533,45 @@ func promptOnboardPlan(plan *onboardPlan, state onboardState, opts onboardOption
 				Value(&plan.StartDaemon),
 		).WithHideFunc(func() bool { return opts.SkipDaemon }),
 		huh.NewGroup(
-			huh.NewNote().Title("Summarizer").Description("Language + optional system prompts (2048 chars max)."),
+			huh.NewNote().Title("Summarizer").Description("Three LLM tiers: per-turn recap, per-session rollup, phase narrative. Language + optional system prompts (2048 chars max)."),
 			huh.NewSelect[string]().
 				Title("Output language").
+				Description("Applies to every tier. Default: "+summarizer.LanguageEN+" (English).").
 				Options(langChoices...).
 				Value(&plan.SummarizerLanguage),
 			huh.NewText().
-				Title("Recap system prompt (optional)").
+				Title("Recap system prompt — tier 1 (per turn, "+state.Defaults.RecapModel+")").
+				Description("Prepended to the recap prompt. Leave empty to use the default instructions only.").
+				Placeholder("e.g. Keep every recap under 3 sentences. Prefer active voice.").
 				Value(&plan.RecapSystemPrompt).
 				CharLimit(summarizer.SystemPromptMaxLen),
 			huh.NewText().
-				Title("Rollup system prompt (optional)").
+				Title("Rollup system prompt — tier 2 (per session, "+state.Defaults.RollupModel+")").
+				Description("Prepended to the rollup prompt. Leave empty to use the default instructions only.").
+				Placeholder("e.g. Focus on user intent and outcomes, not implementation details.").
 				Value(&plan.RollupSystemPrompt).
 				CharLimit(summarizer.SystemPromptMaxLen),
+			huh.NewText().
+				Title("Narrative system prompt — tier 3 (phase timeline, "+state.Defaults.NarrativeModel+")").
+				Description("Prepended to the narrative prompt. Leave empty to use the default instructions only.").
+				Placeholder("e.g. Use 3-6 phases per session. Prefer verb-led headlines.").
+				Value(&plan.NarrativeSystemPrompt).
+				CharLimit(summarizer.SystemPromptMaxLen),
 			huh.NewInput().
-				Title("Override recap model? (blank = default)").
+				Title("Override recap model?").
+				Description("Default: "+state.Defaults.RecapModel+". Leave empty to keep the default.").
+				Placeholder(state.Defaults.RecapModel).
 				Value(&plan.RecapModelOverride),
 			huh.NewInput().
-				Title("Override rollup model? (blank = default)").
+				Title("Override rollup model?").
+				Description("Default: "+state.Defaults.RollupModel+". Leave empty to keep the default.").
+				Placeholder(state.Defaults.RollupModel).
 				Value(&plan.RollupModelOverride),
+			huh.NewInput().
+				Title("Override narrative model?").
+				Description("Default: "+state.Defaults.NarrativeModel+". Leave empty to keep the default.").
+				Placeholder(state.Defaults.NarrativeModel).
+				Value(&plan.NarrativeModelOverride),
 		).WithHideFunc(func() bool { return opts.SkipSummarizer }),
 		huh.NewGroup(
 			huh.NewNote().Title("OpenTelemetry").Description("Forward apogee's OTel spans to an external collector (optional)."),
@@ -639,11 +670,17 @@ func formatSummarizerPlan(plan onboardPlan) string {
 	if plan.RollupSystemPrompt != "" {
 		parts = append(parts, fmt.Sprintf("rollup_prompt=%d chars", len(plan.RollupSystemPrompt)))
 	}
+	if plan.NarrativeSystemPrompt != "" {
+		parts = append(parts, fmt.Sprintf("narrative_prompt=%d chars", len(plan.NarrativeSystemPrompt)))
+	}
 	if plan.RecapModelOverride != "" {
 		parts = append(parts, "recap_model="+plan.RecapModelOverride)
 	}
 	if plan.RollupModelOverride != "" {
 		parts = append(parts, "rollup_model="+plan.RollupModelOverride)
+	}
+	if plan.NarrativeModelOverride != "" {
+		parts = append(parts, "narrative_model="+plan.NarrativeModelOverride)
 	}
 	return strings.Join(parts, ", ")
 }
@@ -728,11 +765,13 @@ func applyOnboardPlan(ctx context.Context, plan onboardPlan, opts onboardOptions
 	// 4. Summarizer preferences
 	if !plan.SkipSummarizer {
 		prefs := summarizer.Preferences{
-			Language:            plan.SummarizerLanguage,
-			RecapSystemPrompt:   plan.RecapSystemPrompt,
-			RollupSystemPrompt:  plan.RollupSystemPrompt,
-			RecapModelOverride:  plan.RecapModelOverride,
-			RollupModelOverride: plan.RollupModelOverride,
+			Language:               plan.SummarizerLanguage,
+			RecapSystemPrompt:      plan.RecapSystemPrompt,
+			RollupSystemPrompt:     plan.RollupSystemPrompt,
+			NarrativeSystemPrompt:  plan.NarrativeSystemPrompt,
+			RecapModelOverride:     plan.RecapModelOverride,
+			RollupModelOverride:    plan.RollupModelOverride,
+			NarrativeModelOverride: plan.NarrativeModelOverride,
 		}
 		// In --yes / non-interactive mode we must NOT overwrite a
 		// non-empty existing prompt with an empty default. Guard
@@ -743,6 +782,9 @@ func applyOnboardPlan(ctx context.Context, plan onboardPlan, opts onboardOptions
 			}
 			if state.Prefs.RollupSystemPrompt != "" && prefs.RollupSystemPrompt == "" {
 				prefs.RollupSystemPrompt = state.Prefs.RollupSystemPrompt
+			}
+			if state.Prefs.NarrativeSystemPrompt != "" && prefs.NarrativeSystemPrompt == "" {
+				prefs.NarrativeSystemPrompt = state.Prefs.NarrativeSystemPrompt
 			}
 		}
 		dbPath, _ := expandHome(opts.DBPath)
