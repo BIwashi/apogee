@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/BIwashi/apogee/internal/otel"
@@ -74,6 +75,84 @@ FROM logs WHERE turn_id = ? ORDER BY timestamp ASC, id ASC LIMIT ?
 	}
 	defer rows.Close()
 	return scanLogRows(rows)
+}
+
+// LogFilter is the optional set of predicates applied by ListRecentLogs.
+// Zero-valued fields are ignored. Before is a cursor: rows with id strictly
+// less than Before are returned (newest-first paging).
+type LogFilter struct {
+	// Before is the exclusive upper bound on `logs.id`. Zero disables the
+	// cursor and the most recent rows are returned. The cursor matches the
+	// `next_before` returned by the previous page.
+	Before int64
+	// SessionID restricts the result to a single Claude Code session.
+	SessionID string
+	// SourceApp restricts the result to a single labelled environment.
+	SourceApp string
+	// Type restricts the result to a single hook event name (e.g.
+	// "PreToolUse").
+	Type string
+}
+
+// ListRecentLogs returns up to `limit` rows ordered by id DESC (i.e. newest
+// first) subject to the provided filter. The second return value is the
+// `next_before` cursor — the smallest id in the returned batch, suitable as
+// the `Before` value of the next page request. When fewer than `limit` rows
+// are returned the caller has reached the end and should stop paginating.
+//
+// limit defaults to 50 and is clamped to [1, 500].
+func (s *Store) ListRecentLogs(ctx context.Context, filter LogFilter, limit int) ([]LogRow, int64, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	if limit > 500 {
+		limit = 500
+	}
+
+	// Build the WHERE clause dynamically. Args track positional ?'s.
+	where := []string{}
+	args := []any{}
+	if filter.Before > 0 {
+		where = append(where, "id < ?")
+		args = append(args, filter.Before)
+	}
+	if filter.SessionID != "" {
+		where = append(where, "session_id = ?")
+		args = append(args, filter.SessionID)
+	}
+	if filter.SourceApp != "" {
+		where = append(where, "source_app = ?")
+		args = append(args, filter.SourceApp)
+	}
+	if filter.Type != "" {
+		where = append(where, "hook_event = ?")
+		args = append(args, filter.Type)
+	}
+
+	q := `SELECT id, timestamp, trace_id, span_id, severity_text, severity_number, body,
+       session_id, turn_id, hook_event, source_app, attributes_json
+FROM logs`
+	if len(where) > 0 {
+		q += " WHERE " + strings.Join(where, " AND ")
+	}
+	q += " ORDER BY id DESC LIMIT ?"
+	args = append(args, limit)
+
+	rows, err := s.db.QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, 0, fmt.Errorf("list recent logs: %w", err)
+	}
+	defer rows.Close()
+	out, err := scanLogRows(rows)
+	if err != nil {
+		return nil, 0, err
+	}
+	if len(out) == 0 {
+		return out, 0, nil
+	}
+	// Ordered DESC by id, so the smallest id is the last row in the batch.
+	nextCursor := out[len(out)-1].ID
+	return out, nextCursor, nil
 }
 
 // ListLogsBySession returns log rows for one session ordered by timestamp

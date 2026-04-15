@@ -536,3 +536,24 @@ These apply to every subcommand.
 
 There is no global `--verbose` flag. Individual subcommands with network I/O
 log their progress to stderr at INFO level and log errors regardless.
+
+---
+
+## Web routes
+
+The embedded Next.js dashboard is served from the same origin as the `/v1`
+API. Every route below is statically exported and accessible directly when
+the collector is running (`apogee serve`). Trailing slashes are mandatory —
+`output: "export"` writes one `index.html` per directory.
+
+| Route | Purpose |
+| --- | --- |
+| `/` | Live dashboard. Focus card, triage rail, KPI strip, and the height-capped event ticker (PR #30). |
+| `/sessions/` | Session catalog with search and source-app filter. |
+| `/session/?id=<id>` | Tabbed session detail (Overview / Turns / Trace / Logs / Metrics). |
+| `/turn/?sess=<sess>&turn=<turn>` | Turn detail with swim lane, recap, HITL, operator queue. |
+| `/agents/` | Per-agent catalog (main + subagents). |
+| `/insights/` | Aggregate analytics. |
+| `/events/` | **PR #30** — paginated browser of every stored hook event. 50 rows per page, Prev / Next navigation, URL-backed `?page=N`, side-drawer JSON inspector. Backed by `GET /v1/events/recent`. |
+| `/settings/` | Collector info and telemetry status. |
+| `/styleguide/` | Design tokens and component reference. |

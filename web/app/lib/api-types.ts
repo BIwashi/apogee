@@ -353,6 +353,19 @@ export interface SessionLogsResponse {
 }
 
 /**
+ * EventsRecentResponse mirrors the body of GET /v1/events/recent. The
+ * collector returns at most `limit` rows ordered newest-first; `next_before`
+ * is the cursor (smallest id in the batch) the client passes as `?before=`
+ * to fetch the next page. `has_more` is true when the page is full and the
+ * client should enable the "Next" button.
+ */
+export interface EventsRecentResponse {
+  events: LogRow[];
+  next_before: number | null;
+  has_more: boolean;
+}
+
+/**
  * AttentionSignal is one piece of evidence the engine considered while
  * scoring a turn. Mirrors internal/attention.Signal.
  */

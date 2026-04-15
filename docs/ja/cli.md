@@ -473,3 +473,21 @@ curl -s -X DELETE http://localhost:4100/v1/preferences
 | `-v`, `--version` | `apogee --version` の短い文字列 |
 
 グローバルな `--verbose` フラグはありません。ネットワーク I/O を持つサブコマンドは、INFO レベルでそれぞれ stderr に進捗を出力し、エラーは常にログに残します。
+
+---
+
+## Web ルート
+
+埋め込み Next.js ダッシュボードは `/v1` API と同じオリジンで配信されます。下記のルートはすべて静的にエクスポートされ、コレクターが起動していれば（`apogee serve`）直接アクセスできます。`output: "export"` がディレクトリごとに `index.html` を書き出すため、末尾のスラッシュは必須です。
+
+| ルート | 用途 |
+| --- | --- |
+| `/` | ライブダッシュボード。フォーカスカード、トリアージレール、KPI ストリップ、そして高さ固定のイベントティッカー（PR #30）を表示します。 |
+| `/sessions/` | セッションカタログ。検索と source_app フィルタ。 |
+| `/session/?id=<id>` | タブ付きセッション詳細（Overview / Turns / Trace / Logs / Metrics）。 |
+| `/turn/?sess=<sess>&turn=<turn>` | スイムレーン、リキャップ、HITL、オペレータキューを含むターン詳細。 |
+| `/agents/` | エージェント別カタログ（main + subagents）。 |
+| `/insights/` | 集計分析。 |
+| `/events/` | **PR #30** — 保存されたフックイベントをページネーション付きで閲覧します。1 ページ 50 行、Prev / Next ボタン、URL バックの `?page=N`、サイドドロワーで JSON インスペクタ。`GET /v1/events/recent` がバックエンドです。 |
+| `/settings/` | コレクター情報とテレメトリの状態。 |
+| `/styleguide/` | デザイントークンとコンポーネントリファレンス。 |

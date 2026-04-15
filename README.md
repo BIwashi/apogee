@@ -56,6 +56,7 @@ for the full HTTP contract and validation rules.
 | Sessions catalog | Searchable, filterable table of every session the collector has seen (Datadog Service Catalog analogue). |
 | Agents | Per-agent view with main vs subagent split, invocation counts, rolling duration, parent→child tree. |
 | Insights | Aggregate analytics — error rate, duration percentiles, top tools, top phases, watchlist sessions (last 24h). |
+| Events browser | `/events/` — paginated table of every stored hook event (50 per page, Prev / Next, URL-backed page number, side-drawer JSON inspector). The Live dashboard's event ticker is now height-capped at 180 px with internal scroll, so new events no longer push the page around. |
 | Settings | Collector build metadata + OTel exporter status; config path and daemon/hook install flows surfaced inline. |
 | Session detail | Per-session rollup, scoped KPIs, every turn ordered by attention |
 | Turn detail | Swim lane, span tree, recap panels, attention reasoning, HITL queue |
@@ -129,6 +130,7 @@ for the full HTTP contract and validation rules.
                                 │  │ /turn?sess=  turn detail + operator queue│ │
                                 │  │ /agents      per-agent main/sub view    │ │
                                 │  │ /insights    aggregate analytics        │ │
+                                │  │ /events/     paginated event browser    │ │
                                 │  │ /settings    collector info + OTel      │ │
                                 │  └─────────────────────────────────────────┘ │
                                 └──────────────────────────────────────────────┘

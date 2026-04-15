@@ -9,6 +9,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Radar,
+  ScrollText,
   SlidersHorizontal,
   Users,
   type LucideIcon,
@@ -40,6 +41,7 @@ const NAV: NavItem[] = [
   { href: "/sessions", label: "Sessions", icon: Layers },
   { href: "/agents", label: "Agents", icon: Users },
   { href: "/insights", label: "Insights", icon: BarChart3 },
+  { href: "/events", label: "Events", icon: ScrollText },
   { href: "/settings", label: "Settings", icon: SlidersHorizontal },
   { href: "/styleguide", label: "Styleguide", icon: Palette },
 ];

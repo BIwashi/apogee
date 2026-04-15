@@ -290,6 +290,17 @@ export default function LivePage() {
         />
       </section>
 
+      {/*
+       * EventTicker — pinned directly below the count pills with a fixed
+       * 180px max-height and internal scroll. PR #30 made this the stable
+       * anchor of the live dashboard so new events no longer push the
+       * triage / focus grid offscreen. The ring buffer is capped at 40
+       * events upstream in onEvent, so the DOM never grows past that.
+       */}
+      <section>
+        <EventTicker events={events} maxHeightPx={180} />
+      </section>
+
       <section className="grid gap-4 lg:grid-cols-12">
         <div className="lg:col-span-4">
           <TriageRail
@@ -316,20 +327,6 @@ export default function LivePage() {
           subtitle="Rolling 5-minute windows from the collector metric sampler."
         />
         <KpiStrip />
-      </section>
-
-      <section>
-        <details className="group">
-          <summary className="flex cursor-pointer list-none items-center gap-2 rounded border border-[var(--border)] bg-[var(--bg-raised)] px-4 py-2 font-display text-[11px] tracking-[0.14em] text-[var(--text-muted)] hover:text-white">
-            <span className="inline-block transition-transform group-open:rotate-90">
-              ▸
-            </span>
-            EVENT TICKER · {events.length}
-          </summary>
-          <div className="mt-3 rounded border border-[var(--border)] bg-[var(--bg-surface)]">
-            <EventTicker events={events} />
-          </div>
-        </details>
       </section>
 
       <footer className="pb-8 pt-2">

@@ -482,9 +482,18 @@ function TraceTab({
 }
 
 function LogsTab({ logs }: { logs: SessionLogsResponse["logs"] }) {
+  // PR #30: cap the expanded panel at 60vh with internal scroll so long log
+  // lists no longer push the rest of the page (footer + tab nav) offscreen.
+  // The panel is also opened by default since this tab exists for nothing
+  // else, removing the awkward double-click before any rows show up.
   return (
     <section>
-      <RawLogsPanel logs={logs} title="Raw logs (last 200)" />
+      <RawLogsPanel
+        logs={logs}
+        title="Raw logs (last 200)"
+        defaultOpen
+        maxHeight="60vh"
+      />
     </section>
   );
 }

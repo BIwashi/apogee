@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import {
   Activity,
   ArrowRightCircle,
@@ -21,10 +22,30 @@ import { formatClock, timeAgo } from "../lib/time";
  * row shows an icon, the event type, the truncated id it references, and a
  * time-ago badge that re-renders every second so "now" / "2s" / "1m" stay
  * current without reconnecting to the stream.
+ *
+ * PR #30 wraps the list in a fixed-height bordered card with internal
+ * scrolling, so the live dashboard's total page height is stable regardless
+ * of how many events have arrived. The card header carries the count and a
+ * "View all events →" deep link to the new `/events` browser. The list
+ * itself remains a ring buffer driven by the parent — once the buffer is
+ * full the oldest events fall off so memory does not grow unbounded.
  */
 
 interface EventTickerProps {
   events: ApogeeEvent[];
+  /**
+   * Maximum height of the scrollable list region in pixels. Defaults to 180,
+   * which fits roughly 5–6 rows. Pass a larger number when the ticker is
+   * embedded in a wider context (e.g. the future drawer view).
+   */
+  maxHeightPx?: number;
+  /**
+   * When true the card header renders the "View all events →" link and the
+   * count badge. The Live dashboard uses this; embedded callers that already
+   * have their own header (e.g. inside a drawer) can pass false to suppress
+   * it. Defaults to true.
+   */
+  showHeader?: boolean;
 }
 
 const ICON_BY_TYPE: Record<string, LucideIcon> = {
@@ -115,7 +136,11 @@ function summarise(event: ApogeeEvent): { subject: string; detail: string } {
   return { subject: "", detail: event.type };
 }
 
-export default function EventTicker({ events }: EventTickerProps) {
+export default function EventTicker({
+  events,
+  maxHeightPx = 180,
+  showHeader = true,
+}: EventTickerProps) {
   // Re-render once a second so the time-ago column stays fresh without
   // touching the event buffer.
   const [tick, setTick] = useState(0);
@@ -125,59 +150,84 @@ export default function EventTicker({ events }: EventTickerProps) {
   }, []);
   void tick;
 
-  if (events.length === 0) {
-    return (
-      <div className="flex flex-col items-center gap-2 py-10 text-center">
-        <Activity
-          size={20}
-          strokeWidth={1.5}
-          className="text-[var(--artemis-earth)]"
-        />
-        <p className="font-display text-[11px] text-white">Awaiting events</p>
-        <p className="max-w-sm text-[11px] text-[var(--text-muted)]">
-          The ticker fills in as the collector broadcasts new hook events.
-        </p>
-      </div>
-    );
-  }
-
   return (
-    <ul className="flex flex-col">
-      {events.map((event, idx) => {
-        const Icon = ICON_BY_TYPE[event.type] ?? Activity;
-        const color = COLOR_BY_TYPE[event.type] ?? "var(--text-muted)";
-        const { subject, detail } = summarise(event);
-        return (
-          <li
-            key={`${event.at}-${idx}`}
-            className="flex items-center gap-3 border-b border-[var(--border)] px-3 py-1.5 text-[12px] last:border-b-0"
+    <div className="surface-card p-0">
+      {showHeader && (
+        <header className="flex items-center justify-between gap-3 border-b border-[var(--border)] px-3 py-2">
+          <div className="flex items-center gap-2">
+            <span className="font-display text-[11px] uppercase tracking-[0.16em] text-white">
+              Event ticker
+            </span>
+            <span className="font-mono text-[10px] text-[var(--text-muted)]">
+              · last {events.length}, newest first
+            </span>
+          </div>
+          <Link
+            href="/events/"
+            className="font-mono text-[11px] text-[var(--accent)] hover:underline"
           >
-            <span className="font-mono text-[10px] text-[var(--text-muted)]">
-              {formatClock(event.at)}
-            </span>
-            <Icon
-              size={14}
+            View all events →
+          </Link>
+        </header>
+      )}
+      <div
+        className="overflow-y-auto"
+        style={{ maxHeight: `${maxHeightPx}px` }}
+      >
+        {events.length === 0 ? (
+          <div className="flex flex-col items-center gap-2 py-10 text-center">
+            <Activity
+              size={20}
               strokeWidth={1.5}
-              style={{ color }}
-              className="flex-shrink-0"
+              className="text-[var(--artemis-earth)]"
             />
-            <span className="font-mono text-[11px] text-gray-200">
-              {event.type}
-            </span>
-            {subject && (
-              <span className="font-mono text-[11px] text-[var(--text-muted)]">
-                {subject}
-              </span>
-            )}
-            <span className="flex-1 truncate text-[11px] text-[var(--text-muted)]">
-              {detail}
-            </span>
-            <span className="font-mono text-[10px] text-[var(--text-muted)]">
-              {timeAgo(event.at)}
-            </span>
-          </li>
-        );
-      })}
-    </ul>
+            <p className="font-display text-[11px] text-white">
+              Awaiting events
+            </p>
+            <p className="max-w-sm text-[11px] text-[var(--text-muted)]">
+              The ticker fills in as the collector broadcasts new hook events.
+            </p>
+          </div>
+        ) : (
+          <ul className="flex flex-col">
+            {events.map((event, idx) => {
+              const Icon = ICON_BY_TYPE[event.type] ?? Activity;
+              const color = COLOR_BY_TYPE[event.type] ?? "var(--text-muted)";
+              const { subject, detail } = summarise(event);
+              return (
+                <li
+                  key={`${event.at}-${idx}`}
+                  className="flex items-center gap-3 border-b border-[var(--border)] px-3 py-1.5 text-[12px] last:border-b-0"
+                >
+                  <span className="font-mono text-[10px] text-[var(--text-muted)]">
+                    {formatClock(event.at)}
+                  </span>
+                  <Icon
+                    size={14}
+                    strokeWidth={1.5}
+                    style={{ color }}
+                    className="flex-shrink-0"
+                  />
+                  <span className="font-mono text-[11px] text-gray-200">
+                    {event.type}
+                  </span>
+                  {subject && (
+                    <span className="font-mono text-[11px] text-[var(--text-muted)]">
+                      {subject}
+                    </span>
+                  )}
+                  <span className="flex-1 truncate text-[11px] text-[var(--text-muted)]">
+                    {detail}
+                  </span>
+                  <span className="font-mono text-[10px] text-[var(--text-muted)]">
+                    {timeAgo(event.at)}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
+    </div>
   );
 }

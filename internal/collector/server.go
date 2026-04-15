@@ -260,6 +260,7 @@ func (s *Server) buildRouter() chi.Router {
 	r.Get("/v1/metrics/series", s.getMetricsSeries)
 	r.Get("/v1/filter-options", s.getFilterOptions)
 	r.Get("/v1/events/stream", s.streamEvents)
+	r.Get("/v1/events/recent", s.listRecentEvents)
 	r.Get("/v1/hitl", s.listHITL)
 	r.Get("/v1/hitl/{hitl_id}", s.getHITL)
 	r.Post("/v1/hitl/{hitl_id}/respond", s.respondHITL)
@@ -590,6 +591,57 @@ func (s *Server) listTurnLogs(w http.ResponseWriter, r *http.Request) {
 		logs = []duckdb.LogRow{}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"logs": logs})
+}
+
+// listRecentEvents is the cursor-paginated raw-events browser endpoint that
+// powers the `/events` web route. Newest first; pass the previous response's
+// `next_before` value as `?before=` to fetch the next page.
+//
+// Query params (all optional):
+//   - limit       — page size, default 50, max 500
+//   - before      — exclusive id cursor; rows with id < before are returned
+//   - session_id  — restrict to one Claude Code session
+//   - source_app  — restrict to one labelled environment
+//   - type        — restrict to one hook event name
+//
+// Response shape:
+//
+//	{ "events": [...LogRow], "next_before": int|null, "has_more": bool }
+//
+// `has_more` is true when the page is full — the client uses it to decide
+// whether to enable the "Next" button. `next_before` is null when no rows
+// were returned at all, otherwise it is the smallest id in the batch.
+func (s *Server) listRecentEvents(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	limit := parseLimit(r, 50, 500)
+	filter := duckdb.LogFilter{
+		SessionID: q.Get("session_id"),
+		SourceApp: q.Get("source_app"),
+		Type:      q.Get("type"),
+	}
+	if raw := q.Get("before"); raw != "" {
+		if n, err := strconv.ParseInt(raw, 10, 64); err == nil && n > 0 {
+			filter.Before = n
+		}
+	}
+	rows, nextCursor, err := s.store.ListRecentLogs(r.Context(), filter, limit)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if rows == nil {
+		rows = []duckdb.LogRow{}
+	}
+	body := map[string]any{
+		"events":   rows,
+		"has_more": len(rows) == limit,
+	}
+	if nextCursor > 0 {
+		body["next_before"] = nextCursor
+	} else {
+		body["next_before"] = nil
+	}
+	writeJSON(w, http.StatusOK, body)
 }
 
 func (s *Server) listSessionLogs(w http.ResponseWriter, r *http.Request) {

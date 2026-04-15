@@ -48,6 +48,7 @@ apogee は、マルチエージェントの [Claude Code](https://docs.claude.co
 | Sessions カタログ | 収集済みセッションの検索・フィルタ可能な一覧（Datadog の Service Catalog に相当）。 |
 | Agents | エージェントごとのビュー。main / subagent の分割、呼び出し回数、滑走平均時間、親 → 子のツリー表示。 |
 | Insights | 集計分析。エラー率、継続時間パーセンタイル、上位ツール、上位 phase、直近 24 時間の watchlist セッション。 |
+| イベントブラウザ | `/events/` — 保存されたフックイベントをページネーション付きで一覧（1 ページ 50 件、Prev / Next、URL バックのページ番号、サイドドロワーで JSON インスペクタ）。Live ダッシュボードのイベントティッカーは 180 px の固定高さ＋内部スクロールに変更され、新しいイベントが届いてもページが押し下がらなくなりました。 |
 | Settings | コレクターのビルド情報と OTel エクスポータの状態。config パスや daemon / hook のインストール導線もこの画面から辿れます。 |
 | Session 詳細 | セッション単位の rollup、スコープ付き KPI、attention 順に並ぶ全ターン。 |
 | Turn 詳細 | スイムレーン、span ツリー、recap パネル、attention の根拠、HITL キュー。 |
@@ -121,6 +122,7 @@ apogee は、マルチエージェントの [Claude Code](https://docs.claude.co
                                 │  │ /turn?sess=  ターン詳細 + operator queue │ │
                                 │  │ /agents      main / subagent ビュー     │ │
                                 │  │ /insights    集計分析                   │ │
+                                │  │ /events/     ページネーション付きブラウザ │ │
                                 │  │ /settings    コレクター情報 + OTel      │ │
                                 │  └─────────────────────────────────────────┘ │
                                 └──────────────────────────────────────────────┘
