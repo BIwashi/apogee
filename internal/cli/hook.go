@@ -44,6 +44,26 @@ const (
 	defaultHookSourceApp = "unknown"
 
 	hookUserAgent = "apogee-hook/0.0.0-dev"
+
+	// HookSkipEnvVar is the environment variable the apogee hook honors
+	// to short-circuit. When it is set to "1" the hook mirrors stdin to
+	// stdout (so the Claude Code pipeline keeps flowing) and returns
+	// without POSTing a telemetry event or claiming an intervention.
+	//
+	// Why this exists: the apogee summarizer spawns `claude` subprocesses
+	// to generate per-turn recaps, session rollups, and phase narratives.
+	// Those subprocesses inherit `~/.claude/settings.json`, which points
+	// every hook event back at `apogee hook`, which POSTs to /v1/events,
+	// which ingests as a new fake "session" under
+	// source_app=".apogee" (the cwd basename of the daemon's working
+	// directory). Left unchecked the sessions and agents lists balloon
+	// with synthetic rows and the summarizer recurses on its own output.
+	//
+	// The summarizer runner sets HookSkipEnvVar=1 on its child process
+	// env so apogee's own hook invocations silently skip the POST. The
+	// value intentionally does NOT affect other Claude Code hook
+	// implementations — they won't read this var.
+	HookSkipEnvVar = "APOGEE_HOOK_SKIP"
 )
 
 // flatHookFields lists the top-level keys promoted out of the Claude Code
@@ -174,6 +194,21 @@ func runHook(ctx context.Context, opts *hookOptions) error {
 	if err != nil {
 		fmt.Fprintf(opts.Stderr, "apogee hook: failed to read stdin: %v\n", err)
 		rawStdin = nil
+	}
+
+	// Short-circuit when the parent process set APOGEE_HOOK_SKIP=1.
+	// This is the feedback-loop guard for the summarizer subprocess:
+	// apogee's own claude spawns should not post their own hook
+	// events back into /v1/events. We still mirror stdin so the
+	// Claude Code pipeline behaves the same as a passthrough hook;
+	// only the telemetry POST and the intervention claim are skipped.
+	if os.Getenv(HookSkipEnvVar) == "1" {
+		if len(rawStdin) > 0 {
+			if _, werr := opts.Stdout.Write(rawStdin); werr != nil {
+				fmt.Fprintf(opts.Stderr, "apogee hook: failed to echo stdin: %v\n", werr)
+			}
+		}
+		return nil
 	}
 
 	inputData := parseHookInput(rawStdin, opts.Stderr)

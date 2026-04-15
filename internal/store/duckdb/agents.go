@@ -80,6 +80,10 @@ func (s *Store) ListRecentAgents(ctx context.Context, limit int) ([]Agent, error
 	if limit > 500 {
 		limit = 500
 	}
+	// Hide spans from synthetic ".apogee" sessions created by the
+	// summarizer feedback loop. See internal/store/duckdb/sessions.go
+	// ListRecentSessions for the full rationale. Real source_app
+	// values never start with a dot, so this filter is always safe.
 	const q = `
 SELECT
   agent_id,
@@ -92,6 +96,7 @@ SELECT
   CAST(COALESCE(SUM(duration_ns), 0) / 1000000 AS BIGINT) AS total_duration_ms
 FROM spans
 WHERE agent_id IS NOT NULL AND agent_id <> ''
+  AND source_app NOT LIKE '.%'
 GROUP BY agent_id, agent_kind, session_id
 ORDER BY last_seen DESC
 LIMIT ?

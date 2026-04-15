@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -83,6 +84,14 @@ func (r *CLIRunner) Run(ctx context.Context, model, prompt string) (string, erro
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
+	// Flag the subprocess so apogee's own hook (which fires inside
+	// this `claude` invocation via ~/.claude/settings.json) skips its
+	// POST to /v1/events. Without this the summarizer's own recap
+	// subprocesses get re-ingested as fake ".apogee" sessions and
+	// the dashboard sessions/agents lists balloon. See the
+	// HookSkipEnvVar docs in internal/cli/hook.go for the full
+	// rationale.
+	cmd.Env = append(os.Environ(), "APOGEE_HOOK_SKIP=1")
 
 	if err := cmd.Run(); err != nil {
 		// Surface both streams so operators can debug a failed invocation.

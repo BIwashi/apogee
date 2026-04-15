@@ -210,6 +210,35 @@ func TestRunHook_StdinEcho(t *testing.T) {
 	}
 }
 
+// TestRunHook_SkipEnvVarShortCircuits guards the summarizer
+// feedback-loop guard: when the APOGEE_HOOK_SKIP=1 env var is set on
+// the current process, runHook mirrors stdin and returns without
+// POSTing to /v1/events. Exists because the summarizer spawns
+// `claude` subprocesses that inherit ~/.claude/settings.json and
+// would otherwise re-ingest their own telemetry into apogee under a
+// fake ".apogee" source_app, inflating the sessions/agents lists
+// with synthetic rows.
+func TestRunHook_SkipEnvVarShortCircuits(t *testing.T) {
+	t.Setenv("APOGEE_HOOK_SKIP", "1")
+	srv := newHookServer(t)
+	stdin := `{"session_id":"sess-1","tool_name":"Read"}`
+	opts := newHookOpts(t, srv, "PostToolUse", stdin)
+	if err := runHook(context.Background(), opts); err != nil {
+		t.Fatalf("runHook: %v", err)
+	}
+	// stdin must still be echoed — the Claude Code pipeline expects
+	// every hook to be a passthrough even when skipping apogee.
+	out := opts.Stdout.(*bytes.Buffer).String()
+	if out != stdin {
+		t.Errorf("stdout should echo stdin verbatim.\n got: %q\nwant: %q", out, stdin)
+	}
+	// But no event POST should have happened.
+	if len(srv.requestsMatching("/v1/events")) != 0 {
+		t.Errorf("events POST should be skipped under APOGEE_HOOK_SKIP=1, got %d requests",
+			len(srv.requestsMatching("/v1/events")))
+	}
+}
+
 func TestRunHook_InterruptInterventionEmitsDecisionJSON(t *testing.T) {
 	srv := newHookServer(t)
 	srv.claim = func() (int, []byte) {

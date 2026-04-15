@@ -95,11 +95,21 @@ func (s *Store) GetSession(ctx context.Context, sessionID string) (*Session, err
 }
 
 // ListRecentSessions returns up to limit sessions ordered by last_seen_at DESC.
+//
+// Sessions whose source_app starts with "." are filtered out because
+// those are the synthetic rows created by the summarizer feedback
+// loop (the `claude` subprocess's cwd basename ends up as the
+// source_app, and the daemon runs from ~/.apogee). Real source_app
+// values can never legitimately start with a dot — the apogee hook's
+// derivation rules (env var > git toplevel > cwd basename) would
+// never pick a hidden directory — so this filter is a safe global
+// cleanup that also hides any legacy rows left over from before the
+// APOGEE_HOOK_SKIP guard was added.
 func (s *Store) ListRecentSessions(ctx context.Context, limit int) ([]Session, error) {
 	if limit <= 0 {
 		limit = 100
 	}
-	const q = `SELECT session_id, source_app, started_at, ended_at, last_seen_at, turn_count, model, machine_id FROM sessions ORDER BY last_seen_at DESC LIMIT ?`
+	const q = `SELECT session_id, source_app, started_at, ended_at, last_seen_at, turn_count, model, machine_id FROM sessions WHERE source_app NOT LIKE '.%' ORDER BY last_seen_at DESC LIMIT ?`
 	rows, err := s.db.QueryContext(ctx, q, limit)
 	if err != nil {
 		return nil, fmt.Errorf("list sessions: %w", err)
@@ -174,14 +184,17 @@ SELECT s.session_id,
        COALESCE(lt.attention_state, '')
 FROM sessions s
 LEFT JOIN latest_turn lt ON lt.session_id = s.session_id AND lt.rn = 1
+WHERE s.source_app NOT LIKE '.%'
 `
 	args := []any{}
 	if q != "" {
 		query += `
-WHERE s.session_id LIKE ?
-   OR s.source_app LIKE ?
-   OR COALESCE(lt.prompt_text, '') LIKE ?
-   OR COALESCE(lt.headline, '') LIKE ?
+  AND (
+        s.session_id LIKE ?
+     OR s.source_app LIKE ?
+     OR COALESCE(lt.prompt_text, '') LIKE ?
+     OR COALESCE(lt.headline, '') LIKE ?
+  )
 `
 		like := "%" + q + "%"
 		prefix := q + "%"
