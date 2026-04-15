@@ -24,6 +24,7 @@ import SectionHeader from "../components/SectionHeader";
 import SpanTree from "../components/SpanTree";
 import SwimLane from "../components/SwimLane";
 import Tabs, { type TabItem } from "../components/Tabs";
+import { useDrawerState } from "../lib/drawer";
 import type {
   Intervention,
   InterventionListResponse,
@@ -445,6 +446,7 @@ function TraceTab({
   sessionId: string;
   latestTurnId: string | null;
 }) {
+  const { open: openDrawer } = useDrawerState();
   if (!latestTurn || !latestTurnId) {
     return (
       <Card>
@@ -478,7 +480,22 @@ function TraceTab({
       <section>
         <SectionHeader title="Span tree" subtitle="Read-only snapshot scoped to the latest turn." />
         <Card className="p-2">
-          <SpanTree spans={spans} selectedSpanId={null} onSelect={() => {}} filter="all" />
+          <SpanTree
+            spans={spans}
+            selectedSpanId={null}
+            onSelect={(spanId) => {
+              if (!spanId) return;
+              const span = spans.find((sp) => sp.span_id === spanId);
+              if (span) {
+                openDrawer({
+                  kind: "span",
+                  traceID: span.trace_id,
+                  spanID: span.span_id,
+                });
+              }
+            }}
+            filter="all"
+          />
         </Card>
       </section>
     </div>

@@ -1,10 +1,14 @@
+"use client";
+
 import Link from "next/link";
 import { ChevronRight, Orbit } from "lucide-react";
 
 import type { AttentionState, Turn } from "../lib/api-types";
 import type { StatusKey } from "../lib/design-tokens";
+import { drawerLinkProps, useDrawerState } from "../lib/drawer";
 import { formatClock } from "../lib/time";
 import AttentionDot from "./AttentionDot";
+import SessionLabel from "./SessionLabel";
 import StatusPill from "./StatusPill";
 
 /**
@@ -35,12 +39,6 @@ function statusTone(status: string): StatusKey {
   }
 }
 
-function shortId(id: string, len = 8): string {
-  if (!id) return "—";
-  if (id.length <= len) return id;
-  return id.slice(0, len);
-}
-
 /**
  * normaliseAttention degrades a possibly-null attention state to a typed
  * default. Pre-engine rows (older turns written before PR #4 landed) fall
@@ -59,6 +57,7 @@ function normaliseAttention(t: Turn): AttentionState {
 }
 
 export default function RecentTurnsTable({ turns }: RecentTurnsTableProps) {
+  const { open } = useDrawerState();
   if (turns.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
@@ -99,81 +98,68 @@ export default function RecentTurnsTable({ turns }: RecentTurnsTableProps) {
           {turns.map((turn) => {
             const attention = normaliseAttention(turn);
             const turnHref = `/turn/?sess=${turn.session_id}&turn=${turn.turn_id}`;
-            const sessionHref = `/session/?id=${turn.session_id}`;
+            const rowProps = drawerLinkProps(turnHref, () =>
+              open({
+                kind: "turn",
+                sess: turn.session_id,
+                turn: turn.turn_id,
+              }),
+            );
             return (
               <tr
                 key={turn.turn_id}
-                className="group border-b border-[var(--border)] transition-colors hover:bg-[var(--bg-raised)] focus-within:bg-[var(--bg-raised)] focus-within:ring-1 focus-within:ring-[var(--border-bright)]"
+                onClick={(e) =>
+                  rowProps.onClick(e as unknown as React.MouseEvent<HTMLElement>)
+                }
+                className="group cursor-pointer border-b border-[var(--border)] transition-colors hover:bg-[var(--bg-raised)] focus-within:bg-[var(--bg-raised)] focus-within:ring-1 focus-within:ring-[var(--border-bright)]"
               >
                 <td className="px-3 py-2">
-                  <Link
-                    href={turnHref}
-                    className="block focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--border-bright)]"
-                  >
-                    <AttentionDot
-                      state={attention}
-                      tone={turn.attention_tone}
-                      reason={turn.attention_reason}
-                    />
-                  </Link>
+                  <AttentionDot
+                    state={attention}
+                    tone={turn.attention_tone}
+                    reason={turn.attention_reason}
+                  />
                 </td>
                 <td className="px-3 py-2 font-mono text-[11px] text-[var(--text-muted)]">
-                  <Link href={turnHref} className="block">
-                    {formatClock(turn.started_at)}
-                  </Link>
+                  {formatClock(turn.started_at)}
                 </td>
-                <td className="px-3 py-2 font-mono text-[11px] text-[var(--artemis-white)]">
-                  <Link
-                    href={sessionHref}
-                    className="hover:text-[var(--accent)] focus:outline-none focus-visible:underline"
-                  >
-                    {shortId(turn.session_id)}
-                  </Link>
+                <td
+                  className="px-3 py-2 font-mono text-[11px]"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <SessionLabel sessionID={turn.session_id} />
                 </td>
                 <td className="px-3 py-2 text-[var(--artemis-white)]">
-                  <Link href={turnHref} className="block">
-                    {turn.source_app || "—"}
-                  </Link>
+                  {turn.source_app || "—"}
                 </td>
                 <td className="px-3 py-2 font-mono text-[11px] text-[var(--text-muted)]">
-                  <Link href={turnHref} className="block">
-                    {turn.phase || "—"}
-                  </Link>
+                  {turn.phase || "—"}
                 </td>
                 <td className="px-3 py-2">
-                  <Link href={turnHref} className="block">
-                    <StatusPill tone={statusTone(turn.status)}>{turn.status}</StatusPill>
-                  </Link>
+                  <StatusPill tone={statusTone(turn.status)}>{turn.status}</StatusPill>
                 </td>
                 <td className="px-3 py-2 text-right font-mono tabular-nums text-[var(--artemis-white)]">
-                  <Link href={turnHref} className="block">
-                    {turn.tool_call_count}
-                  </Link>
+                  {turn.tool_call_count}
                 </td>
                 <td className="px-3 py-2 text-right font-mono tabular-nums text-[var(--artemis-white)]">
-                  <Link href={turnHref} className="block">
-                    {turn.subagent_count}
-                  </Link>
+                  {turn.subagent_count}
                 </td>
                 <td
                   className={`px-3 py-2 text-right font-mono tabular-nums ${
                     turn.error_count > 0 ? "text-[var(--status-critical)]" : "text-gray-200"
                   }`}
                 >
-                  <Link href={turnHref} className="block">
-                    {turn.error_count}
-                  </Link>
+                  {turn.error_count}
                 </td>
                 <td className="px-3 py-2 font-mono text-[11px] text-[var(--text-muted)]">
-                  <Link href={turnHref} className="block">
-                    {turn.model || "—"}
-                  </Link>
+                  {turn.model || "—"}
                 </td>
                 <td className="px-2 py-2 text-right">
                   <Link
                     href={turnHref}
                     aria-label="Open turn detail"
                     className="block"
+                    onClick={(e) => e.stopPropagation()}
                   >
                     <ChevronRight
                       size={14}

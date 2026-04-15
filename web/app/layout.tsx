@@ -3,6 +3,7 @@ import { Suspense } from "react";
 
 import "./globals.css";
 import Sidebar from "./sidebar";
+import CrossCuttingDrawer from "./components/CrossCuttingDrawer";
 import TopRibbon from "./components/TopRibbon";
 import { RefreshProvider } from "./lib/refresh";
 import { SSEProvider } from "./lib/sse";
@@ -61,6 +62,7 @@ export default function RootLayout({
               <RefreshProvider>
                 <TopRibbon />
                 <Sidebar>{children}</Sidebar>
+                <CrossCuttingDrawer />
               </RefreshProvider>
             </SSEProvider>
           </ThemeProvider>
