@@ -34,16 +34,52 @@ interface NavItem {
   href: string;
   label: string;
   icon: LucideIcon;
+  hint: string;
 }
 
 const NAV: NavItem[] = [
-  { href: "/", label: "Live", icon: Radar },
-  { href: "/sessions", label: "Sessions", icon: Layers },
-  { href: "/agents", label: "Agents", icon: Users },
-  { href: "/insights", label: "Insights", icon: BarChart3 },
-  { href: "/events", label: "Events", icon: ScrollText },
-  { href: "/settings", label: "Settings", icon: SlidersHorizontal },
-  { href: "/styleguide", label: "Styleguide", icon: Palette },
+  {
+    href: "/",
+    label: "Live",
+    icon: Radar,
+    hint: "Active turns, attention triage, and recent events as they stream in.",
+  },
+  {
+    href: "/sessions",
+    label: "Sessions",
+    icon: Layers,
+    hint: "Every Claude Code session with rollups, phases, and drill-down.",
+  },
+  {
+    href: "/agents",
+    label: "Agents",
+    icon: Users,
+    hint: "Main agent + subagent activity and tool usage per session.",
+  },
+  {
+    href: "/insights",
+    label: "Insights",
+    icon: BarChart3,
+    hint: "Aggregate analytics: tool rate, error rate, HITL, latency.",
+  },
+  {
+    href: "/events",
+    label: "Events",
+    icon: ScrollText,
+    hint: "Datadog-style event explorer with facets and timeseries.",
+  },
+  {
+    href: "/settings",
+    label: "Settings",
+    icon: SlidersHorizontal,
+    hint: "Collector info, summarizer prefs, telemetry, theme.",
+  },
+  {
+    href: "/styleguide",
+    label: "Styleguide",
+    icon: Palette,
+    hint: "Design token reference — colours, typography, spacing.",
+  },
 ];
 
 function isActive(pathname: string, item: NavItem): boolean {
@@ -121,7 +157,7 @@ export default function Sidebar({ children }: { children: React.ReactNode }) {
         {/* Nav */}
         <ul className="mt-2 flex-1 space-y-0.5 px-2">
           {NAV.map((item) => {
-            const { href, label, icon: Icon } = item;
+            const { href, label, icon: Icon, hint } = item;
             const active = isActive(pathname, item);
             const base =
               "flex items-center gap-2.5 rounded px-3 py-1.5 text-[13px] transition-colors w-full";
@@ -129,15 +165,29 @@ export default function Sidebar({ children }: { children: React.ReactNode }) {
               ? "bg-[var(--accent)]/10 font-medium text-[var(--accent)]"
               : "text-[var(--text-muted)] hover:bg-[var(--surface-raised)] hover:text-[var(--artemis-white)]";
             return (
-              <li key={href}>
+              <li key={href} className="group relative">
                 <a
                   href={href}
                   className={`${base} ${tone}`}
-                  title={collapsed ? label : undefined}
+                  aria-label={collapsed ? `${label} — ${hint}` : undefined}
                 >
                   <Icon size={16} strokeWidth={1.5} className="flex-shrink-0" />
                   {!collapsed && <span>{label}</span>}
                 </a>
+                {/* Hover hint — rendered at sidebar edge so it escapes the
+                    nav column without shifting the hit target. Keyboard
+                    focus opens the same popover for a11y. */}
+                <div
+                  role="tooltip"
+                  className={`pointer-events-none absolute top-1/2 z-50 -translate-y-1/2 whitespace-normal rounded border border-[var(--border-bright)] bg-[var(--bg-overlay)] p-3 text-[11px] leading-snug text-[var(--text-primary)] opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100 ${
+                    collapsed ? "left-[calc(100%+8px)] w-56" : "left-[calc(100%+4px)] w-60"
+                  }`}
+                >
+                  <p className="font-display text-[10px] uppercase tracking-[0.14em] text-[var(--artemis-white)]">
+                    {label}
+                  </p>
+                  <p className="mt-1 text-[var(--text-muted)]">{hint}</p>
+                </div>
               </li>
             );
           })}

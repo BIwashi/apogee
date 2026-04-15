@@ -125,14 +125,25 @@ apogee は PR #33 までダーク専用でした。2 つめのパレットは
 
 ## タイポグラフィ
 
-### ディスプレイ — Artemis Inter
+### ディスプレイ — Space Grotesk
 
-- ファイル: `web/public/fonts/Artemis_Inter.otf`（aperion から逐語的にコピー）
-- ウェイト: `700`
+- ファイル: `web/public/fonts/SpaceGrotesk-Medium.ttf`（ウェイト 500）と
+  `web/public/fonts/SpaceGrotesk-Bold.ttf`（ウェイト 700）。どちらも上流の
+  variable font から instancing したもの。
+- ライセンス: SIL Open Font License 1.1。同じディレクトリの
+  `web/public/fonts/SpaceGrotesk-OFL.txt` にライセンス本文を同梱しています。
+  Space Grotesk の作者は Florian Karsten
+  （上流: https://github.com/floriankarsten/space-grotesk）。OFL により、
+  ライセンスファイルをフォントバイナリと一緒に配布する限り apogee 内への
+  再配布が認められています。
+- ウェイト: ヒーロー／セクション見出しには `700`、10–12 px の ALL-CAPS
+  ラベルには `500` を使用。
 - `text-transform: uppercase`
 - `letter-spacing: 0.12em`（ヒーロー系は `0.16em`–`0.20em` まで拡大）
 - CSS クラス: `.font-display`
-- ルール: ディスプレイ文字列は短く保つこと。NASA ガイドラインに従い、1 ブロックあたり 3 語まで。
+- ルール: ディスプレイフォントは**見出し専用** — uppercase、1〜3 語、
+  大きめのディスプレイサイズで使用。長い見出し（recap 本文、プロンプト）や
+  数語を超えるラベルは body スタックを使うこと。
 
 ### 本文 — システムフォントスタック
 
@@ -153,7 +164,7 @@ font-family: ui-monospace, "SF Mono", Menlo, monospace;
 
 | レベル   | サイズ     | ウェイト      | 用途               |
 | ------- | -------- | ------------- | ------------------ |
-| Display | 20–60 px | 700 (Artemis) | ヒーロー、ページタイトル |
+| Display | 20–60 px | 700 (Space Grotesk) | ヒーロー、ページタイトル |
 | Heading | 14–16 px | 600           | セクションヘッダー |
 | Body    | 13 px    | 400           | 既定テキスト       |
 | Caption | 11 px    | 400           | ラベル、タイムスタンプ |
