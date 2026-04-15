@@ -23,6 +23,7 @@ func TestRenderPlistGolden(t *testing.T) {
 		LogDir:     "/Users/me/.apogee/logs",
 		Environment: map[string]string{
 			"HOME": "/Users/me",
+			"PATH": "/Users/me/.local/bin:/opt/homebrew/bin:/usr/bin:/bin",
 		},
 		KeepAlive: true,
 		RunAtLoad: true,

@@ -105,6 +105,16 @@ Common pitfalls:
   on disk that prevents re-open. Remove the `.wal` file and restart.
 - **Stale plist / service file.** A mid-install crash can leave a
   partial unit file. Re-run `apogee daemon install --force`.
+- **Summarizer can't find `claude` on PATH.** Logs show
+  `summarizer: runner error … executable file not found in $PATH`.
+  This means the daemon was installed by a version that did not
+  inject a usable PATH into the unit file, and launchd / systemd
+  fall back to `/usr/bin:/bin:/usr/sbin:/sbin` which usually does not
+  contain `claude` (`~/.local/bin`, `/opt/homebrew/bin`, etc.). Fix
+  by re-running `apogee daemon install --force` with v0.1.8+ — the
+  installer snapshots the install-time `PATH` so the supervised
+  daemon inherits the same lookup directories your interactive shell
+  has. Then `apogee daemon restart` to reload.
 
 ## DuckDB lock
 

@@ -88,6 +88,7 @@ tail -n 200 ~/.apogee/logs/apogee.err.log
 - **ポート 4100 がすでに占有されている。** 以前の dev セッションの `apogee serve` が残っています。`pkill -f "apogee serve"` で片付けます。
 - **DuckDB のロックファイル。** ハードキルすると `.duckdb.wal` のロックがディスクに残り、再 open を邪魔します。`.wal` を削除して再起動します。
 - **壊れた plist / unit ファイル。** install の途中でクラッシュすると不完全なユニットが残ります。`apogee daemon install --force` で上書きします。
+- **summarizer が `claude` を見つけられない。** ログに `summarizer: runner error … executable file not found in $PATH` が出ていたら、古いバージョンで install されたユニットファイルに PATH が設定されておらず、launchd / systemd が `/usr/bin:/bin:/usr/sbin:/sbin` の最小 PATH しか渡していないのが原因です。`claude` は通常 `~/.local/bin` や `/opt/homebrew/bin` にあるため、見つかりません。v0.1.8 以降で `apogee daemon install --force` を再実行すると、インストール時の `PATH` をスナップショットしてユニットに焼き付けるので、対話シェルと同じディレクトリ列が daemon にも継承されます。その後 `apogee daemon restart` で再読み込みしてください。
 
 ## DuckDB ロック
 

@@ -19,6 +19,8 @@
 	<dict>
 		<key>HOME</key>
 		<string>/Users/me</string>
+		<key>PATH</key>
+		<string>/Users/me/.local/bin:/opt/homebrew/bin:/usr/bin:/bin</string>
 	</dict>
 	<key>RunAtLoad</key>
 	<true/>

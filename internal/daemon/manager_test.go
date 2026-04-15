@@ -2,10 +2,58 @@ package daemon
 
 import (
 	"context"
+	"os"
 	"strings"
 	"sync"
 	"testing"
 )
+
+// TestApplyDefaultEnvInjectsPATH guards the launchd / systemd PATH
+// fix. Without an explicit PATH the supervisor would inherit only
+// /usr/bin:/bin:/usr/sbin:/sbin and the summarizer worker's call to
+// the `claude` CLI would silently fail with "executable file not
+// found in $PATH".
+func TestApplyDefaultEnvInjectsPATH(t *testing.T) {
+	t.Setenv("PATH", "/Users/me/.local/bin:/opt/homebrew/bin:/usr/bin:/bin")
+	got := applyDefaultEnv(nil)
+	if got["PATH"] != "/Users/me/.local/bin:/opt/homebrew/bin:/usr/bin:/bin" {
+		t.Errorf("PATH = %q, want install-time PATH", got["PATH"])
+	}
+	if got["HOME"] == "" {
+		t.Errorf("HOME should default to user home, got empty")
+	}
+}
+
+// TestApplyDefaultEnvRespectsCallerPATH guards against the helper
+// stomping on an explicit PATH the caller passed in.
+func TestApplyDefaultEnvRespectsCallerPATH(t *testing.T) {
+	in := map[string]string{
+		"HOME": "/Users/elsewhere",
+		"PATH": "/explicit:/path",
+	}
+	got := applyDefaultEnv(in)
+	if got["PATH"] != "/explicit:/path" {
+		t.Errorf("PATH should be preserved, got %q", got["PATH"])
+	}
+	if got["HOME"] != "/Users/elsewhere" {
+		t.Errorf("HOME should be preserved, got %q", got["HOME"])
+	}
+}
+
+// TestApplyDefaultEnvFallback covers the unusual case where the
+// install-time process runs without any PATH at all (CI sandbox,
+// stripped shell). The helper falls back to a known-good list rather
+// than leaving PATH unset.
+func TestApplyDefaultEnvFallback(t *testing.T) {
+	// Save and clear PATH for this test.
+	old := os.Getenv("PATH")
+	t.Cleanup(func() { _ = os.Setenv("PATH", old) })
+	_ = os.Unsetenv("PATH")
+	got := applyDefaultEnv(nil)
+	if got["PATH"] != fallbackUnitPATH {
+		t.Errorf("PATH = %q, want fallback %q", got["PATH"], fallbackUnitPATH)
+	}
+}
 
 // fakeRunner is the cross-platform commandRunner stub. It records
 // every (name, args) pair so tests can assert the right supervisor

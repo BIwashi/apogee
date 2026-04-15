@@ -15,8 +15,49 @@ package daemon
 import (
 	"context"
 	"errors"
+	"os"
 	"time"
 )
+
+// fallbackUnitPATH is the PATH baked into a freshly-rendered launchd
+// plist or systemd service file when the install-time process has no
+// PATH set (rare, but possible if the user runs apogee from a CI job
+// or a stripped shell). It covers the common locations where the
+// `claude` CLI, node, brew binaries, and the apogee binary itself
+// tend to live on macOS and Linux. Without this, launchd starts the
+// daemon with `/usr/bin:/bin:/usr/sbin:/sbin` and the summarizer
+// subprocess that shells out to `claude` fails with
+// "executable file not found in $PATH".
+const fallbackUnitPATH = "/Users/$USER/.local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/local/sbin:/usr/bin:/bin:/usr/sbin:/sbin"
+
+// applyDefaultEnv fills in HOME and PATH on the unit's environment
+// map when the caller hasn't provided them explicitly. We snapshot
+// the install-time process PATH so whatever Homebrew prefix, asdf
+// shim directory, mise dir, or `~/.local/bin` the user actually has
+// on their interactive shell carries over to the supervised process.
+// The OS supervisor (launchd / systemd --user) otherwise inherits
+// only a minimal PATH and the summarizer worker can't find `claude`.
+//
+// Returns the same map pointer the caller passed in (or a fresh map
+// if env was nil) so callers can chain.
+func applyDefaultEnv(env map[string]string) map[string]string {
+	if env == nil {
+		env = map[string]string{}
+	}
+	if _, ok := env["HOME"]; !ok {
+		if home, err := os.UserHomeDir(); err == nil && home != "" {
+			env["HOME"] = home
+		}
+	}
+	if _, ok := env["PATH"]; !ok {
+		if p := os.Getenv("PATH"); p != "" {
+			env["PATH"] = p
+		} else {
+			env["PATH"] = fallbackUnitPATH
+		}
+	}
+	return env
+}
 
 // DefaultLabel is the stable identifier used for the launchd plist and
 // the systemd unit. Callers can override it via Config.Label.
