@@ -139,25 +139,49 @@ midpoint slightly inward so the red does not dominate over a white page:
 
 ## Typography
 
-### Display — Space Grotesk
+### Display — Space Grotesk (general) + Artemis Inter (brand accent)
+
+apogee pairs two uppercase display faces. Space Grotesk does the
+workhorse display load — every small ALL-CAPS label, section header,
+caption, and button — because it stays legible at 10–14 px. Artemis
+Inter reserves the heavy, tighter face for brand moments where the
+extra weight reads as impact rather than noise.
+
+#### Space Grotesk — the everyday display
 
 - Files: `web/public/fonts/SpaceGrotesk-Medium.ttf` (weight 500) and
   `web/public/fonts/SpaceGrotesk-Bold.ttf` (weight 700), both instanced
   from the upstream variable font.
-- License: SIL Open Font License 1.1. A verbatim copy of the license ships
-  alongside the TTFs at `web/public/fonts/SpaceGrotesk-OFL.txt`. Space
-  Grotesk is by Florian Karsten (upstream:
-  https://github.com/floriankarsten/space-grotesk). The OFL allows
-  redistribution inside apogee as long as the license file travels with
-  the font binaries.
-- Weight: `700` for hero/section headers, `500` for the smaller ALL-CAPS
-  labels (10–12 px).
+- License: SIL Open Font License 1.1. A verbatim copy of the license
+  ships alongside the TTFs at `web/public/fonts/SpaceGrotesk-OFL.txt`.
+  Space Grotesk is by Florian Karsten (upstream:
+  https://github.com/floriankarsten/space-grotesk).
+- CSS class: `.font-display` → resolves via `--font-display`.
+- Use for: all section headers, caption labels, button text, facet
+  titles, drawer headers, KPI labels. Default choice unless you are
+  specifically reaching for the brand accent.
+
+#### Artemis Inter — the brand accent
+
+- File: `web/public/fonts/Artemis_Inter.otf`.
+- Weight: `700`.
+- CSS class: `.font-display-accent` → resolves via
+  `--font-display-accent` (falls back to Space Grotesk if the file
+  fails to load).
+- Use for: the **APOGEE wordmark** (sidebar brand slot, TopRibbon home
+  link) and a small number of hero-sized page h1s (Live, Events,
+  Styleguide). At 3xl / 4xl / 5xl the tighter letterforms read as a
+  confident brand voice; at caption sizes they get muddy, so do not
+  reach for this class on small text.
+- Rule: keep display strings short. One to three words per block. If
+  the text runs longer, it belongs on `.font-display` (or below).
+
+#### Shared mechanics
+
 - `text-transform: uppercase`
-- `letter-spacing: 0.12em` (bump to `0.16em`–`0.20em` for hero treatments)
-- CSS class: `.font-display`
-- Rule: display font is for **headings only** — uppercase, one to three
-  words, at display sizes. Long headlines (recap blobs, prompt text) and
-  every label longer than a few words should use the body stack.
+- `letter-spacing: 0.12em` for Space Grotesk, `0.14em` for Artemis
+  (bump to `0.16em`–`0.20em` for hero treatments).
+- Both classes set `font-weight: 700`.
 
 ### Body — system stack
 
@@ -178,7 +202,7 @@ Use for event ids, session ids, timestamps, and any code-shaped value.
 
 | Level   | Size     | Weight        | Role               |
 | ------- | -------- | ------------- | ------------------ |
-| Display | 20–60 px | 700 (Space Grotesk) | Hero, page title |
+| Display | 20–60 px | 700 (Space Grotesk / Artemis for brand) | Hero, page title |
 | Heading | 14–16 px | 600           | Section headers    |
 | Body    | 13 px    | 400           | Default text       |
 | Caption | 11 px    | 400           | Labels, timestamps |

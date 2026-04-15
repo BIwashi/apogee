@@ -295,7 +295,7 @@ export default function EventsPage() {
         <Breadcrumb segments={[{ label: "Events" }]} />
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
-            <h1 className="font-display text-4xl tracking-[0.16em] text-[var(--artemis-white)]">
+            <h1 className="font-display-accent text-4xl tracking-[0.16em] text-[var(--artemis-white)]">
               EVENTS
             </h1>
             <div className="accent-gradient-bar mt-3 h-[3px] w-32 rounded-full" />

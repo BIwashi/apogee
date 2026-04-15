@@ -443,7 +443,7 @@ internal/
 web/                Next.js 16 dashboard (App Router, Tailwind v4)
   app/              routes and React components
   app/lib/          typed API client, SWR hooks, design tokens
-  public/fonts/     Space Grotesk display font (SIL OFL 1.1)
+  public/fonts/     Space Grotesk display font (SIL OFL 1.1) + Artemis Inter brand accent
 assets/branding/    apogee banner, logo, and icon
 assets/screenshots/ committed dashboard screenshots
 scripts/            screenshot capture (playwright) and fixtures
@@ -663,13 +663,11 @@ If `hook_install` reports `partial` or `missing`, run `apogee init --force` to r
 
 ## Credits
 
-- **Display font**: [Space Grotesk](https://github.com/floriankarsten/space-grotesk) by Florian Karsten, [SIL Open Font License 1.1](https://scripts.sil.org/OFL).
+- **Display fonts**: [Space Grotesk](https://github.com/floriankarsten/space-grotesk) by Florian Karsten ([SIL Open Font License 1.1](https://scripts.sil.org/OFL)) for the everyday display workload, and Artemis Inter (`web/public/fonts/Artemis_Inter.otf`) as a brand accent reserved for the APOGEE wordmark and a handful of hero h1s.
 - **Body font**: system stack (San Francisco / Segoe UI / Helvetica Neue).
 - **Icons**: [lucide](https://lucide.dev) (ISC).
 - **Go libraries**: see [`docs/credits.md`](docs/credits.md) for the full list.
 - **Inspirations**: [aperion](https://github.com/BIwashi/aperion), [mitou-adv](https://github.com/MichinokuAI/mitou-adv), [disler's observability prototype](https://github.com/disler/claude-code-hooks-multi-agent-observability), and Datadog APM's control plane.
-
-apogee does not bundle any NASA brand asset. The color palette is inspired by NASA Artemis-program hues but uses generic hex values and makes no affiliation claim.
 
 ---
 

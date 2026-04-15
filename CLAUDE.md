@@ -15,7 +15,7 @@ internal/...        Internal Go packages (attention, cli, collector,
 web/                Next.js 16 dashboard (App Router, Tailwind v4)
   app/              Routes and React components
   app/lib/          Typed API client, SWR helpers, design tokens
-  public/fonts/     Space Grotesk display font (SIL OFL 1.1)
+  public/fonts/     Space Grotesk (general display) + Artemis Inter (brand accent)
 semconv/            OpenTelemetry semantic conventions for claude_code.*
 docs/               Architecture, CLI, hooks, data-model, design-tokens,
                     daemon, menubar, interventions, otel-semconv, plus
@@ -54,8 +54,9 @@ make build                     # build Go binary and Next.js bundle
 The visual identity is the product's competitive advantage and is documented in
 [`docs/design-tokens.md`](docs/design-tokens.md). Do not introduce alternate
 color scales, emoji, or component libraries. lucide-react is the only icon set.
-Space Grotesk is the only display font (SIL OFL 1.1); body text uses the
-native OS stack.
+Space Grotesk (SIL OFL 1.1) is the everyday display font; Artemis Inter is
+a brand accent reserved for the APOGEE wordmark and a handful of hero h1s.
+Body text uses the native OS stack.
 
 ## Architecture
 
