@@ -35,7 +35,18 @@ fix(web): debounce attention rescore broadcasts
 docs(readme): refresh screenshots after rollup landing
 ```
 
-PR titles are written in **English**. PR descriptions are written in **Japanese** (maintainer preference). Commit messages are written in **English**. There is exactly one exception to the language rule: PR descriptions may be Japanese.
+PR titles, PR descriptions, and commit messages are **all written in
+English**. apogee is a public OSS project and the commit history has
+to be readable to every visitor, not just the maintainers.
+
+PR descriptions are **impersonal and self-contained**. Describe the
+motivation, the change, and the test plan in language a maintainer
+would use a year from now reading the diff in isolation. Do not
+reference interactive coding-agent sessions, live conversations, or
+"the user" as a singular participant — phrases like "at the top of
+the session", "the user asked earlier", or "per our scoping
+conversation" have no meaning in a public commit log and will be
+rewritten on review.
 
 ## Testing expectations
 
