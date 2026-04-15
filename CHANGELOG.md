@@ -5,6 +5,12 @@ All notable changes to apogee will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.1.16](https://github.com/BIwashi/apogee/compare/v0.1.15...v0.1.16) - 2026-04-15
+- fix(ui): apply font-display-accent to every page h1 for consistency by @BIwashi in https://github.com/BIwashi/apogee/pull/65
+- feat(turn): live key steps panel while the turn is running by @BIwashi in https://github.com/BIwashi/apogee/pull/67
+- fix(live): plumb TimeRangePicker selection into Live page SWR keys by @BIwashi in https://github.com/BIwashi/apogee/pull/68
+- fix(ui): footer version from /v1/info, drop PR #37 trailer by @BIwashi in https://github.com/BIwashi/apogee/pull/69
+
 ## [v0.1.15](https://github.com/BIwashi/apogee/compare/v0.1.14...v0.1.15) - 2026-04-15
 - fix(agents): JOIN sessions for source_app filter by @BIwashi in https://github.com/BIwashi/apogee/pull/63
 
