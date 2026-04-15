@@ -1,7 +1,13 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { AlertOctagon, AlertTriangle, Info, Radar } from "lucide-react";
+import {
+  AlertOctagon,
+  AlertTriangle,
+  ArrowUpRight,
+  Info,
+  Radar,
+} from "lucide-react";
 import {
   Area,
   AreaChart,
@@ -59,6 +65,48 @@ const SEVERITY_VAR: Record<WatchdogSeverity, string> = {
   warning: "var(--status-warning)",
   critical: "var(--status-critical)",
 };
+
+// watchdogDeepLink computes where a SignalCard click should take the
+// operator. The goal is "what else was happening when this anomaly
+// fired?" — so the preferred destination is whichever page will show
+// the most context for the specific signal:
+//
+//   - When the signal's labels carry a session_id, jump straight to
+//     the Mission Map of that session. The anomaly almost always has
+//     a clear trigger phase we want visible in context.
+//   - Otherwise, fall back to /events scoped to a ±5 minute window
+//     around detected_at. We carry through any source_app /
+//     hook_event / severity facets pulled from the labels so the
+//     events page pre-filters to the right slice instead of dumping
+//     the whole firehose on the operator.
+//
+// The result is always a relative path so it honours Next.js'
+// output: "export" routing and works inside both the hosted web
+// dashboard and the Wails desktop webview.
+function watchdogDeepLink(signal: WatchdogSignal): string {
+  const labels = signal.labels ?? {};
+  const sid = labels.session_id;
+  if (sid) {
+    return `/session?id=${encodeURIComponent(sid)}&tab=mission`;
+  }
+  const detected = new Date(signal.detected_at);
+  const windowMs = 5 * 60 * 1000;
+  const since = new Date(detected.getTime() - windowMs).toISOString();
+  const until = new Date(detected.getTime() + windowMs).toISOString();
+  const params = new URLSearchParams();
+  params.set("since", since);
+  params.set("until", until);
+  const facetKeys: Array<{ label: string; facet: string }> = [
+    { label: "source_app", facet: "facets.source_app" },
+    { label: "hook_event", facet: "facets.hook_event" },
+    { label: "severity", facet: "facets.severity" },
+  ];
+  for (const { label, facet } of facetKeys) {
+    const v = labels[label];
+    if (v) params.set(facet, v);
+  }
+  return `/events?${params.toString()}`;
+}
 
 export default function WatchdogDrawer({
   open,
@@ -194,6 +242,10 @@ function SignalCard({ signal, onAcknowledged }: SignalCardProps) {
     value: p.value,
   }));
   const labels = Object.entries(signal.labels ?? {});
+  const deepLink = watchdogDeepLink(signal);
+  const linkTitle = (signal.labels ?? {}).session_id
+    ? "Open the session's Mission Map"
+    : "Show what else was happening around this anomaly";
 
   const ack = async () => {
     if (busy || signal.acknowledged) return;
@@ -215,9 +267,17 @@ function SignalCard({ signal, onAcknowledged }: SignalCardProps) {
     }
   };
 
+  // Clicking anywhere on the card that is NOT inside the Ack button
+  // (or any other interactive control we add later) navigates to the
+  // computed deep link. We use a plain anchor for the whole card so
+  // keyboard / middle-click / Cmd+Click all work, and stop the
+  // anchor bubble on the Ack button's click so ack does not also
+  // trigger a navigation.
   return (
-    <article
-      className="surface-card-raised flex flex-col gap-2 p-3"
+    <a
+      href={deepLink}
+      title={linkTitle}
+      className="surface-card-raised flex flex-col gap-2 p-3 transition-colors hover:bg-[var(--bg-overlay)] focus:bg-[var(--bg-overlay)] focus:outline-none"
       style={{ borderLeft: `2px solid ${tint}` }}
     >
       <header className="flex items-start justify-between gap-2">
@@ -227,8 +287,9 @@ function SignalCard({ signal, onAcknowledged }: SignalCardProps) {
             {signal.severity}
           </span>
         </div>
-        <span className="font-mono text-[11px] text-[var(--text-muted)]">
+        <span className="inline-flex items-center gap-1 font-mono text-[11px] text-[var(--text-muted)]">
           {timeAgo(signal.detected_at)}
+          <ArrowUpRight size={11} strokeWidth={1.75} className="opacity-60" />
         </span>
       </header>
       <p className="text-[13px] text-[var(--artemis-white)]">{signal.headline}</p>
@@ -287,7 +348,14 @@ function SignalCard({ signal, onAcknowledged }: SignalCardProps) {
         ) : (
           <button
             type="button"
-            onClick={ack}
+            onClick={(ev) => {
+              // Do not let the click bubble into the card's anchor —
+              // otherwise acknowledging would also navigate the drawer
+              // away to the deep link.
+              ev.preventDefault();
+              ev.stopPropagation();
+              void ack();
+            }}
             disabled={busy}
             className="rounded border border-[var(--border)] bg-[var(--bg-raised)] px-2 py-1 font-mono text-[11px] text-[var(--artemis-white)] hover:bg-[var(--bg-overlay)] disabled:opacity-50"
           >
@@ -298,6 +366,6 @@ function SignalCard({ signal, onAcknowledged }: SignalCardProps) {
       {error && (
         <p className="font-mono text-[10px] text-[var(--status-warning)]">{error}</p>
       )}
-    </article>
+    </a>
   );
 }
