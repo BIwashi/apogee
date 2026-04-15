@@ -1,17 +1,32 @@
--- Sessions: one row per Claude Code session_id seen.
+-- Sessions: one row per Claude Code session_id seen. The *_live columns
+-- below cache the fleet-view health of a session so the Live dashboard can
+-- render one row per terminal without scanning turns on every poll. They
+-- are written back by the attention engine via UpdateSessionAttention, and
+-- by the summarizer's live_status worker (live_status_text). All default
+-- to NULL so pre-engine / pre-summarizer rows degrade gracefully.
 CREATE SEQUENCE IF NOT EXISTS sessions_row_id_seq;
 CREATE TABLE IF NOT EXISTS sessions (
-  session_id      VARCHAR PRIMARY KEY,
-  source_app      VARCHAR NOT NULL,
-  started_at      TIMESTAMP NOT NULL,
-  ended_at        TIMESTAMP,
-  last_seen_at    TIMESTAMP NOT NULL,
-  turn_count      INTEGER NOT NULL DEFAULT 0,
-  model           VARCHAR,
-  machine_id      VARCHAR
+  session_id        VARCHAR PRIMARY KEY,
+  source_app        VARCHAR NOT NULL,
+  started_at        TIMESTAMP NOT NULL,
+  ended_at          TIMESTAMP,
+  last_seen_at      TIMESTAMP NOT NULL,
+  turn_count        INTEGER NOT NULL DEFAULT 0,
+  model             VARCHAR,
+  machine_id        VARCHAR,
+  attention_state   VARCHAR,
+  attention_reason  VARCHAR,
+  attention_score   DOUBLE,
+  current_turn_id   VARCHAR,
+  current_phase     VARCHAR,
+  live_state        VARCHAR,
+  live_status_text  VARCHAR,
+  live_status_at    TIMESTAMP,
+  live_status_model VARCHAR
 );
 CREATE INDEX IF NOT EXISTS idx_sessions_last_seen ON sessions(last_seen_at DESC);
 CREATE INDEX IF NOT EXISTS idx_sessions_source_app ON sessions(source_app);
+CREATE INDEX IF NOT EXISTS idx_sessions_attention ON sessions(attention_state);
 
 -- Turns: one row per user turn (one trace).
 CREATE TABLE IF NOT EXISTS turns (

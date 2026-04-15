@@ -43,6 +43,15 @@ func (s *Store) applyColumnAdditions(ctx context.Context) error {
 		{"turns", "recap_json", `ALTER TABLE turns ADD COLUMN recap_json VARCHAR`},
 		{"turns", "recap_generated_at", `ALTER TABLE turns ADD COLUMN recap_generated_at TIMESTAMP`},
 		{"turns", "recap_model", `ALTER TABLE turns ADD COLUMN recap_model VARCHAR`},
+		{"sessions", "attention_state", `ALTER TABLE sessions ADD COLUMN attention_state VARCHAR`},
+		{"sessions", "attention_reason", `ALTER TABLE sessions ADD COLUMN attention_reason VARCHAR`},
+		{"sessions", "attention_score", `ALTER TABLE sessions ADD COLUMN attention_score DOUBLE`},
+		{"sessions", "current_turn_id", `ALTER TABLE sessions ADD COLUMN current_turn_id VARCHAR`},
+		{"sessions", "current_phase", `ALTER TABLE sessions ADD COLUMN current_phase VARCHAR`},
+		{"sessions", "live_state", `ALTER TABLE sessions ADD COLUMN live_state VARCHAR`},
+		{"sessions", "live_status_text", `ALTER TABLE sessions ADD COLUMN live_status_text VARCHAR`},
+		{"sessions", "live_status_at", `ALTER TABLE sessions ADD COLUMN live_status_at TIMESTAMP`},
+		{"sessions", "live_status_model", `ALTER TABLE sessions ADD COLUMN live_status_model VARCHAR`},
 	}
 	for _, a := range additions {
 		var count int
