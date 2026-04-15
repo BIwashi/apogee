@@ -17,6 +17,14 @@ interface RawLogsPanelProps {
   logs: LogRow[];
   title?: string;
   defaultOpen?: boolean;
+  /**
+   * Optional CSS max-height for the expanded log list. PR #30 adds this so
+   * the session-detail Logs tab can cap the panel at 60vh and let the user
+   * scroll within it instead of pushing the rest of the page down. Defaults
+   * to undefined, which preserves the original unbounded behaviour for the
+   * turn-detail page where the panel is the last thing on the page.
+   */
+  maxHeight?: string;
 }
 
 const SEVERITY_COLOR: Record<string, string> = {
@@ -41,6 +49,7 @@ export default function RawLogsPanel({
   logs,
   title = "Raw logs",
   defaultOpen = false,
+  maxHeight,
 }: RawLogsPanelProps) {
   const [open, setOpen] = useState(defaultOpen);
   const [expandedId, setExpandedId] = useState<number | null>(null);
@@ -67,7 +76,10 @@ export default function RawLogsPanel({
         </span>
       </button>
       {open && (
-        <div className="border-t border-[var(--border)]">
+        <div
+          className={`border-t border-[var(--border)] ${maxHeight ? "overflow-y-auto" : ""}`}
+          style={maxHeight ? { maxHeight } : undefined}
+        >
           {logs.length === 0 ? (
             <p className="px-4 py-6 text-center text-[12px] text-[var(--text-muted)]">
               No log records.
