@@ -169,3 +169,4 @@ In flight (may or may not be merged by the time you read this):
 - PR #26 — Persistent SSE via a layout-scoped provider
 - PR #27 — Docs refresh + full Japanese translations
 - PR #31 — `apogee onboard` interactive setup wizard (huh-backed, idempotent, `--yes`/`--dry-run`)
+- PR #32 — phase narrative (summarizer tier 3) + Timeline tab on session detail. Adds `phases[]` to `session_rollups.rollup_json`, chains off the tier-2 rollup worker, exposes `POST /v1/sessions/:id/narrative` for manual refresh. See [`docs/narrative.md`](docs/narrative.md).

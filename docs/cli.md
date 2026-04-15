@@ -539,14 +539,15 @@ apogee 0.1.3 (commit abcdef1, built 2026-04-15)
 
 ## Summarizer preferences
 
-The LLM recap (Haiku) and rollup (Sonnet) workers honour a small set of
+The three LLM tiers — recap (Haiku, per turn), rollup (Sonnet, per
+session), and narrative (Sonnet, per session) — honour a small set of
 operator-controlled preferences persisted in the `user_preferences` DuckDB
 table. They are read at the top of every job, so updates land without a
 restart. Two ways to manage them:
 
 1. The **Settings** page (`/settings`) has a "Summarizer" section with a
-   language toggle, recap / rollup model overrides, and two system-prompt
-   text areas. Save persists via `PATCH /v1/preferences`.
+   language toggle, recap / rollup / narrative model overrides, and three
+   system-prompt text areas. Save persists via `PATCH /v1/preferences`.
 2. The compact **language picker** on the top ribbon flips
    `summarizer.language` between `EN` and `JA` in one click.
 
@@ -570,10 +571,23 @@ curl -s -X PATCH http://localhost:4100/v1/preferences \
 curl -s -X DELETE http://localhost:4100/v1/preferences
 ```
 
-Validation rules: `summarizer.language` must be `"en"` or `"ja"`, the two
-system prompts are capped at 2048 characters each, and the model overrides
-must look like a `claude-{haiku,sonnet,opus}-…` alias. Empty strings clear
-the override and fall back to `~/.apogee/config.toml`.
+Validation rules: `summarizer.language` must be `"en"` or `"ja"`, the
+three system prompts are capped at 2048 characters each, and the model
+overrides must look like a `claude-{haiku,sonnet,opus}-…` alias. Empty
+strings clear the override and fall back to `~/.apogee/config.toml`.
+
+### Phase narrative (tier 3)
+
+The narrative worker chains off the rollup worker and writes a
+`phases[]` array onto the same `session_rollups` row. To trigger a
+manual refresh:
+
+```sh
+curl -s -X POST http://localhost:4100/v1/sessions/<id>/narrative
+```
+
+The response is `202 Accepted` with `{"enqueued": true}`. See
+[`docs/narrative.md`](narrative.md) for the full tier-3 walkthrough.
 
 ---
 

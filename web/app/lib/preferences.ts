@@ -56,6 +56,8 @@ export const DEFAULT_SUMMARIZER_PREFERENCES: Required<SummarizerPreferences> = {
   "summarizer.language": "en",
   "summarizer.recap_system_prompt": "",
   "summarizer.rollup_system_prompt": "",
+  "summarizer.narrative_system_prompt": "",
   "summarizer.recap_model": "",
   "summarizer.rollup_model": "",
+  "summarizer.narrative_model": "",
 };

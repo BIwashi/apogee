@@ -98,8 +98,47 @@ export interface RecapResponse {
 }
 
 /**
+ * PhaseKind mirrors internal/summarizer PhaseKind* constants. Used by the
+ * tier-3 narrative worker to classify each semantic phase of a session
+ * timeline. The set is intentionally small so the web UI can map each kind
+ * to a fixed color + icon.
+ */
+export type PhaseKind =
+  | "implement"
+  | "review"
+  | "debug"
+  | "plan"
+  | "test"
+  | "commit"
+  | "delegate"
+  | "explore"
+  | "other";
+
+/**
+ * PhaseBlock mirrors internal/summarizer.PhaseBlock. One semantic chunk of
+ * a session timeline produced by the tier-3 narrative worker. Covers one
+ * or more consecutive turns and carries an LLM-written headline, narrative
+ * paragraph, and key-step bullets so the web UI can render it as a
+ * clickable timeline card.
+ */
+export interface PhaseBlock {
+  index: number;
+  started_at: string;
+  ended_at: string;
+  headline: string;
+  narrative: string;
+  key_steps: string[];
+  kind: PhaseKind;
+  turn_ids: string[];
+  turn_count: number;
+  duration_ms: number;
+  tool_summary: Record<string, number>;
+}
+
+/**
  * Rollup mirrors internal/summarizer.Rollup. Populated by the Sonnet-powered
- * session rollup worker; one row per session.
+ * session rollup worker; one row per session. The optional `phases` array is
+ * populated by the tier-3 narrative worker after the rollup lands.
  */
 export interface Rollup {
   headline: string;
@@ -107,6 +146,12 @@ export interface Rollup {
   highlights: string[];
   patterns: string[];
   open_threads: string[];
+  /** Tier-3 phase narrative. Undefined until the narrative worker runs. */
+  phases?: PhaseBlock[];
+  /** When the narrative worker last wrote phases. Absent pre-tier-3. */
+  narrative_generated_at?: string;
+  /** Model alias the narrative worker used. Absent pre-tier-3. */
+  narrative_model?: string;
   generated_at: string;
   model: string;
   turn_count: number;
@@ -675,8 +720,10 @@ export interface SummarizerPreferences {
   "summarizer.language"?: SummarizerLanguage;
   "summarizer.recap_system_prompt"?: string;
   "summarizer.rollup_system_prompt"?: string;
+  "summarizer.narrative_system_prompt"?: string;
   "summarizer.recap_model"?: string;
   "summarizer.rollup_model"?: string;
+  "summarizer.narrative_model"?: string;
 }
 
 /** PreferencesResponse mirrors the GET /v1/preferences response body. */

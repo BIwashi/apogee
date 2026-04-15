@@ -248,6 +248,7 @@ func (s *Server) buildRouter() chi.Router {
 	r.Get("/v1/sessions/{id}/logs", s.listSessionLogs)
 	r.Get("/v1/sessions/{id}/rollup", s.getSessionRollup)
 	r.Post("/v1/sessions/{id}/rollup", s.postSessionRollup)
+	r.Post("/v1/sessions/{id}/narrative", s.postSessionNarrative)
 	r.Get("/v1/turns/recent", s.listRecentTurns)
 	r.Get("/v1/turns/active", s.listActiveTurns)
 	r.Get("/v1/turns/{turn_id}", s.getTurn)
@@ -797,6 +798,26 @@ func (s *Server) postSessionRollup(w http.ResponseWriter, r *http.Request) {
 	}
 	if s.summarizer != nil {
 		s.summarizer.EnqueueRollup(id, summarizer.RollupReasonManual)
+	}
+	writeJSON(w, http.StatusAccepted, map[string]any{"session_id": id, "enqueued": true})
+}
+
+// postSessionNarrative enqueues a manual tier-3 phase narrative refresh
+// for a session. Returns 202 immediately; the narrative worker broadcasts
+// a session.updated SSE event when the phases land.
+func (s *Server) postSessionNarrative(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	sess, err := s.store.GetSession(r.Context(), id)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if sess == nil {
+		writeJSONError(w, http.StatusNotFound, "session not found")
+		return
+	}
+	if s.summarizer != nil {
+		s.summarizer.EnqueueNarrative(id, summarizer.NarrativeReasonManual)
 	}
 	writeJSON(w, http.StatusAccepted, map[string]any{"session_id": id, "enqueued": true})
 }

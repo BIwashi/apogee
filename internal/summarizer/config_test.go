@@ -14,6 +14,7 @@ func TestDefaultConfig(t *testing.T) {
 	require.True(t, cfg.Enabled)
 	require.Equal(t, "claude-haiku-4-5", cfg.RecapModel)
 	require.Equal(t, "claude-sonnet-4-6", cfg.RollupModel)
+	require.Equal(t, "claude-sonnet-4-6", cfg.NarrativeModel)
 	require.Equal(t, 1, cfg.Concurrency)
 	require.Equal(t, 120*time.Second, cfg.Timeout)
 	require.Equal(t, "claude", cfg.CLIPath)
@@ -94,6 +95,7 @@ func allEnvVars() []string {
 		"APOGEE_SUMMARIZER_ENABLED",
 		"APOGEE_RECAP_MODEL",
 		"APOGEE_ROLLUP_MODEL",
+		"APOGEE_NARRATIVE_MODEL",
 		"APOGEE_SUMMARIZER_CONCURRENCY",
 		"APOGEE_SUMMARIZER_TIMEOUT_SECONDS",
 		"APOGEE_SUMMARIZER_CLI_PATH",

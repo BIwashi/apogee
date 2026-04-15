@@ -26,6 +26,9 @@ type Config struct {
 	RecapModel string
 	// RollupModel is reserved for the per-session rollup (PR #11).
 	RollupModel string
+	// NarrativeModel is the model alias used by the tier-3 phase narrative
+	// worker (PR #32). Defaults to the same alias as RollupModel.
+	NarrativeModel string
 	// Concurrency is the number of worker goroutines consuming the queue.
 	Concurrency int
 	// Timeout bounds each individual CLI invocation.
@@ -57,6 +60,7 @@ func Default() Config {
 		Enabled:           true,
 		RecapModel:        "claude-haiku-4-5",
 		RollupModel:       "claude-sonnet-4-6",
+		NarrativeModel:    "claude-sonnet-4-6",
 		Concurrency:       1,
 		Timeout:           120 * time.Second,
 		CLIPath:           "claude",
@@ -76,6 +80,7 @@ type tomlFile struct {
 		Enabled           *bool   `toml:"enabled"`
 		RecapModel        string  `toml:"recap_model"`
 		RollupModel       string  `toml:"rollup_model"`
+		NarrativeModel    string  `toml:"narrative_model"`
 		Concurrency       int     `toml:"concurrency"`
 		TimeoutSeconds    float64 `toml:"timeout_seconds"`
 		QueueSize         int     `toml:"queue_size"`
@@ -132,6 +137,9 @@ func applyTOML(cfg *Config, tf tomlFile) {
 	if v := strings.TrimSpace(s.RollupModel); v != "" {
 		cfg.RollupModel = v
 	}
+	if v := strings.TrimSpace(s.NarrativeModel); v != "" {
+		cfg.NarrativeModel = v
+	}
 	if s.Concurrency > 0 {
 		cfg.Concurrency = s.Concurrency
 	}
@@ -166,6 +174,9 @@ func applyEnv(cfg *Config) {
 	}
 	if v := strings.TrimSpace(os.Getenv("APOGEE_ROLLUP_MODEL")); v != "" {
 		cfg.RollupModel = v
+	}
+	if v := strings.TrimSpace(os.Getenv("APOGEE_NARRATIVE_MODEL")); v != "" {
+		cfg.NarrativeModel = v
 	}
 	if v := strings.TrimSpace(os.Getenv("APOGEE_SUMMARIZER_CONCURRENCY")); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 {
