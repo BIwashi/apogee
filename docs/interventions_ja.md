@@ -1,4 +1,4 @@
-[English version / 英語版](../interventions.md)
+[English version / 英語版](./interventions.md)
 
 # Operator Interventions
 
@@ -84,7 +84,7 @@ queued → claimed → delivered → consumed
 
 ## hook 側の契約
 
-Go ネイティブの `apogee hook` サブコマンド（実装は [`internal/cli/hook.go`](../../internal/cli/hook.go)）がクライアント側を担当します。バイナリ自身が Claude Code の hook エントリポイントで、`.claude/settings.json` には次のような行が並び、
+Go ネイティブの `apogee hook` サブコマンド（実装は [`internal/cli/hook.go`](../internal/cli/hook.go)）がクライアント側を担当します。バイナリ自身が Claude Code の hook エントリポイントで、`.claude/settings.json` には次のような行が並び、
 
 ```
 apogee hook --event PreToolUse --server-url http://localhost:4100/v1/events

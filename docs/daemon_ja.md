@@ -1,4 +1,4 @@
-[English version / 英語版](../daemon.md)
+[English version / 英語版](./daemon.md)
 
 # Daemon コア
 

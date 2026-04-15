@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **PR #31 — `apogee onboard` interactive setup wizard.** New top-level
+  `apogee onboard [flags]` subcommand that chains the four install steps
+  (hooks + daemon + summarizer preferences + OTLP config) into a single
+  walk-through backed by [`charmbracelet/huh`](https://github.com/charmbracelet/huh).
+  Every prompt's default is loaded from the live state on disk — existing
+  `~/.claude/settings.json` entries, `daemon.Manager.Status(ctx)`, DuckDB
+  `user_preferences` rows, and the `[telemetry]` block in
+  `~/.apogee/config.toml` — so re-runs are safe and only propose the
+  deltas that actually change. Passing `--yes` (or
+  `--non-interactive`, or `APOGEE_ONBOARD_NONINTERACTIVE=1`, or piping into a
+  non-TTY stdin) drops every prompt for the CI / docker path. Non-interactive
+  mode never overwrites a non-empty existing summarizer system prompt with
+  an empty default, and never opens the browser. `--dry-run` prints the plan
+  box and exits without writing. Skip flags (`--skip-hooks`,
+  `--skip-daemon`, `--skip-summarizer`, `--skip-telemetry`) let each step be
+  individually disabled. Every apply step is idempotent and delegated to the
+  existing package-level helpers (`init.Init`, `daemon.Manager.Install`,
+  `duckdb.Store.UpsertPreference`, `openURL`), so the onboard wizard is a
+  thin orchestration layer rather than a parallel implementation. First
+  failing step aborts with a styled error box; earlier successes are **not**
+  rolled back. New files: `internal/cli/onboard.go`,
+  `internal/cli/onboard_test.go`, `internal/cli/preferences_adapter.go`,
+  `docs/onboard.md`, `docs/ja/onboard.md`. README, README.ja, docs/cli.md,
+  docs/ja/cli.md, CLAUDE.md PR arc updated. `github.com/charmbracelet/huh`
+  added as a direct dependency (v0.6.0). `github.com/charmbracelet/x/cellbuf`
+  and adjacent x/ansi / colorprofile pins were bumped to satisfy the huh
+  v0.6.0 → lipgloss v0.13.0 dep graph cleanly alongside `lipgloss/v2`.
+
 ### Changed
 
 - **PR #28 — daemon polish + DB lock safety + doctor expansion.** The `apogee daemon {install,uninstall,start,stop,restart,status}` subcommand tree now prints styled lipgloss boxes with semantic color on success / warning / error, and `apogee status` gains the same treatment. The DuckDB `Open` path grows a pre-flight via a new sidecar `<db>.apogee.lock` file — when another apogee process already holds the DB, the collector exits with a styled error box showing the holder's path and PID (best-effort via `lsof`) and a three-step fix instead of the raw DuckDB driver error. `apogee doctor` adds DuckDB lock, collector reachability, and hook install checks (7 checks total), and gains a `--json` flag so CI / scripts / `apogee menubar` can consume them. README, README.ja, docs/cli.md, docs/ja/cli.md, docs/daemon.md, docs/ja/daemon.md, and a new docs/doctor.md all audited and updated so every new affordance is documented with sample output. New file: `internal/store/duckdb/lock.go` — exposes `CheckDBLockHolder`, `AcquireDBLock`, `ErrDBLocked`, `LockedError`. Lipgloss/v2 (`charm.land/lipgloss/v2`) is now a direct dependency.

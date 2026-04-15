@@ -15,6 +15,7 @@ Usage:
 Available Commands:
   serve       Run the collector and embedded dashboard
   init        Install apogee hooks into .claude/settings.json
+  onboard     Interactive setup wizard (hooks + daemon + summarizer + dashboard)
   hook        Forward a Claude Code hook payload to the apogee collector
   daemon      Install, start, stop, and inspect the background service
   status      One-shot daemon and HTTP liveness probe
@@ -99,6 +100,57 @@ apogee init --source-app my-team --force
   No Python is involved.
 - If an older v0.1.x install left `python3 send_event.py` rows in place, the
   plan output warns about them and `--force` strips them.
+
+---
+
+## apogee onboard
+
+One-command interactive setup. Walks a new machine through the four install
+steps — hooks, daemon, summarizer preferences, OTLP export — and starts the
+daemon + opens the dashboard at the end. Every prompt's default is loaded
+from the live state on disk, so re-runs are safe and only propose the
+deltas you actually want.
+
+### Flags
+
+| Flag | Default | Description |
+| --- | --- | --- |
+| `--yes`, `-y` | `false` | Accept every default without prompting |
+| `--non-interactive` | `false` | Alias for `--yes`, clearer in scripts |
+| `--config` | `~/.apogee/config.toml` | Config file to write |
+| `--db` | `~/.apogee/apogee.duckdb` | DuckDB file for preferences |
+| `--addr` | `127.0.0.1:4100` | Collector bind address |
+| `--skip-daemon` | `false` | Do not install / start the daemon |
+| `--skip-hooks` | `false` | Do not install hooks |
+| `--skip-summarizer` | `false` | Do not write summarizer preferences |
+| `--skip-telemetry` | `false` | Do not configure OTLP export |
+| `--dry-run` | `false` | Show the plan without writing anything |
+
+### Example
+
+```sh
+# Fully interactive: walk through every section.
+apogee onboard
+
+# CI / docker provisioning: accept every default silently.
+apogee onboard --yes
+
+# Preview the plan without touching disk.
+apogee onboard --dry-run
+```
+
+### Notes
+
+- `APOGEE_ONBOARD_NONINTERACTIVE=1` is equivalent to `--yes`, useful inside
+  Docker `RUN` steps.
+- Non-interactive mode never overwrites a non-empty existing system prompt
+  with an empty default.
+- The wizard drives the same package-level helpers that `apogee init` and
+  `apogee daemon install` use, so every step is idempotent.
+- First failing step aborts with a styled error box; earlier successes are
+  **not** rolled back.
+- See [`onboard.md`](onboard.md) for the full walkthrough, plan format, and
+  failure semantics.
 
 ---
 

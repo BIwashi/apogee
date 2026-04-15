@@ -1,8 +1,8 @@
-[English version / 英語版](../otel-semconv.md)
+[English version / 英語版](./otel-semconv.md)
 
 # apogee OpenTelemetry セマンティック規約
 
-apogee は、Claude Code の実行を記述する `claude_code.*` という小さなセマンティック規約名前空間を所有しています。正式なソースは [`semconv/model/registry.yaml`](../../semconv/model/registry.yaml) にあり、[`semconv/attrs.go`](../../semconv/attrs.go) の Go 定数はそのファイルと 1 対 1 で対応し、drift を防ぐためのユニットテストを備えています。
+apogee は、Claude Code の実行を記述する `claude_code.*` という小さなセマンティック規約名前空間を所有しています。正式なソースは [`semconv/model/registry.yaml`](../semconv/model/registry.yaml) にあり、[`semconv/attrs.go`](../semconv/attrs.go) の Go 定数はそのファイルと 1 対 1 で対応し、drift を防ぐためのユニットテストを備えています。
 
 本ドキュメントは人間向けのインデックスです。属性を追加・改名する際は、YAML を編集し、Go 定数を手で再生成し、`go test ./semconv/...` で整合性を確認してください。
 

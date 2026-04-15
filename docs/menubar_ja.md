@@ -1,8 +1,8 @@
-[English version / 英語版](../menubar.md)
+[English version / 英語版](./menubar.md)
 
 # apogee menubar (macOS)
 
-ローカルの apogee コレクターをポーリングしてメニューバーにライブカウントを表示する、小さな macOS のステータスアイテムです。実装は [`internal/cli/menubar_darwin.go`](../../internal/cli/menubar_darwin.go) にあり、[`caseymrm/menuet`](https://github.com/caseymrm/menuet) を使っています。非 darwin ビルドでは「macOS only」と明示して非 0 で終わるスタブにコンパイルされます。
+ローカルの apogee コレクターをポーリングしてメニューバーにライブカウントを表示する、小さな macOS のステータスアイテムです。実装は [`internal/cli/menubar_darwin.go`](../internal/cli/menubar_darwin.go) にあり、[`caseymrm/menuet`](https://github.com/caseymrm/menuet) を使っています。非 darwin ビルドでは「macOS only」と明示して非 0 で終わるスタブにコンパイルされます。
 
 手動で起動する場合:
 

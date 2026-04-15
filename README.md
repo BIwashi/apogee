@@ -70,7 +70,8 @@ for the full HTTP contract and validation rules.
 | Background service | `apogee daemon {install,uninstall,start,stop,restart,status}` — launchd (macOS) / systemd `--user` (Linux), styled lipgloss output |
 | macOS menu bar | `apogee menubar` — native status item polling the local collector |
 | Doctor | `apogee doctor` — 7 environment checks (home, claude CLI, db path, config, DB lock, collector, hook install) with `--json` for scripts |
-| CLI | `serve`, `init`, `hook`, `daemon`, `status`, `logs`, `open`, `uninstall`, `menubar`, `doctor`, `version` — one binary, no Node or Python runtime |
+| CLI | `serve`, `init`, `onboard`, `hook`, `daemon`, `status`, `logs`, `open`, `uninstall`, `menubar`, `doctor`, `version` — one binary, no Node or Python runtime |
+| Interactive setup | `apogee onboard` — one-command wizard chaining hooks + daemon + summarizer + OTel + browser, re-runnable safely, with a `--yes` non-interactive path for CI / Docker provisioning |
 
 <p align="center">
   <img src="assets/screenshots/session-detail.png" alt="session detail" width="49%">
@@ -195,11 +196,26 @@ brew install BIwashi/tap/apogee
 # or
 go install github.com/BIwashi/apogee/cmd/apogee@latest
 
-# 2. Start the collector and install hooks once for every project on this machine.
+# 2. Walk the one-command interactive setup wizard.
+apogee onboard
+```
+
+`apogee onboard` installs the hooks into `~/.claude/settings.json`, installs
+apogee as a launchd / systemd user service, writes the summarizer language +
+optional system prompts into DuckDB, optionally wires an OTLP endpoint, starts
+the daemon, and opens the dashboard — all in one shell prompt. Every
+default is loaded from the current state on disk, so re-runs are safe. Pass
+`--yes` for the unattended / CI path and `--dry-run` to preview. See
+[`docs/onboard.md`](docs/onboard.md) for the full walkthrough.
+
+If you prefer the explicit steps:
+
+```sh
+# Start the collector and install hooks once for every project on this machine.
 apogee serve &
 apogee init
 
-# 3. Open the dashboard.
+# Open the dashboard.
 open http://localhost:4100
 ```
 
@@ -292,7 +308,7 @@ semconv/            OpenTelemetry semantic conventions for claude_code.*
                     directory, no Python dependency)
 docs/               architecture, CLI, hooks, data-model, design-tokens,
                     daemon, menubar, interventions, otel-semconv, and
-                    Japanese mirror under docs/ja/
+                    Japanese mirror as docs/*_ja.md siblings
 .github/workflows/  CI (Go vet/build/test, web typecheck/lint/build)
 ```
 

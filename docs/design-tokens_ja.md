@@ -1,4 +1,4 @@
-[English version / 英語版](../design-tokens.md)
+[English version / 英語版](./design-tokens.md)
 
 # apogee デザイントークン
 
