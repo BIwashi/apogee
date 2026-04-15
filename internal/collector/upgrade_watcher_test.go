@@ -142,3 +142,106 @@ func TestPostDaemonRestartCallsRunner(t *testing.T) {
 		t.Fatalf("restart runner never called")
 	}
 }
+
+// TestAutoRestartLoopFiresAfterDelay exercises the auto-restart
+// goroutine: a watcher pre-seeded with a detected upgrade and a very
+// short grace window should call restartRunner once within the test
+// timeout. Guards against regressions that would either fire the
+// restart instantly (no delay) or never fire (broken trigger logic).
+//
+// Not parallel: both auto-restart tests swap the package-level
+// restartRunner, so running them concurrently would let one test's
+// runner leak into the other's assertion window.
+func TestAutoRestartLoopFiresAfterDelay(t *testing.T) {
+	prev := restartRunner
+	t.Cleanup(func() { restartRunner = prev })
+
+	called := make(chan string, 4)
+	restartRunner = func(_ context.Context, label string) error {
+		called <- label
+		return nil
+	}
+
+	w := &upgradeWatcher{
+		binaryPath:     "/tmp/apogee-test-auto-restart",
+		runningVersion: "0.1.9",
+		tick:           time.Hour,
+		versionCmd:     nil,
+	}
+	// Pre-seed the snapshot so the first tick in autoRestartLoop
+	// already sees an upgrade that is older than the delay window.
+	w.mu.Lock()
+	w.available = "0.2.0"
+	w.availableDetected = time.Now().Add(-1 * time.Hour)
+	w.mu.Unlock()
+
+	srv := &Server{
+		logger:         slog.New(slog.NewTextHandler(io.Discard, nil)),
+		upgradeWatcher: w,
+		cfg: Config{
+			AutoRestart:      true,
+			AutoRestartDelay: 10 * time.Millisecond,
+		},
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	// Run the loop directly with a sub-tick override is not exposed;
+	// the production loop polls every 15s. To keep the test fast we
+	// rely on the fact that the first select iteration will fire the
+	// ticker after the tick duration — so we override tick via a
+	// dedicated helper rather than waiting 15s.
+	go srv.autoRestartLoopWithTick(ctx, 10*time.Millisecond)
+
+	select {
+	case got := <-called:
+		if got != "dev.biwashi.apogee" {
+			t.Fatalf("label=%q", got)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatalf("auto-restart loop never fired")
+	}
+}
+
+// TestAutoRestartLoopWaitsForDelay verifies the grace window — a
+// watcher whose upgrade was detected only 5 ms ago, with a 2 s
+// delay, must NOT fire the restart inside a 200 ms observation
+// window. Not parallel (see note on TestAutoRestartLoopFiresAfterDelay).
+func TestAutoRestartLoopWaitsForDelay(t *testing.T) {
+	prev := restartRunner
+	t.Cleanup(func() { restartRunner = prev })
+
+	called := make(chan string, 1)
+	restartRunner = func(_ context.Context, label string) error {
+		called <- label
+		return nil
+	}
+
+	w := &upgradeWatcher{
+		binaryPath:     "/tmp/apogee-test-auto-restart",
+		runningVersion: "0.1.9",
+	}
+	w.mu.Lock()
+	w.available = "0.2.0"
+	w.availableDetected = time.Now()
+	w.mu.Unlock()
+
+	srv := &Server{
+		logger:         slog.New(slog.NewTextHandler(io.Discard, nil)),
+		upgradeWatcher: w,
+		cfg: Config{
+			AutoRestart:      true,
+			AutoRestartDelay: 2 * time.Second,
+		},
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+	go srv.autoRestartLoopWithTick(ctx, 20*time.Millisecond)
+
+	select {
+	case <-called:
+		t.Fatalf("auto-restart fired before grace window elapsed")
+	case <-ctx.Done():
+		// Expected — no restart within the observation window.
+	}
+}

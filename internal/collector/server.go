@@ -16,6 +16,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 
 	"github.com/BIwashi/apogee/internal/attention"
+	"github.com/BIwashi/apogee/internal/daemon"
 	"github.com/BIwashi/apogee/internal/hitl"
 	"github.com/BIwashi/apogee/internal/ingest"
 	"github.com/BIwashi/apogee/internal/interventions"
@@ -206,7 +207,77 @@ func (s *Server) StartBackground(ctx context.Context) {
 		if s.upgradeWatcher != nil {
 			s.upgradeWatcher.Start(ctx)
 		}
+		if s.cfg.AutoRestart && s.upgradeWatcher != nil {
+			go s.autoRestartLoop(ctx)
+		}
 	})
+}
+
+// autoRestartLoop watches the upgrade-watcher for a detected new
+// version and, after the configured grace window, hands off to the
+// same restartRunner the POST /v1/daemon/restart endpoint uses. The
+// loop exits cleanly on ctx.Done.
+//
+// Semantics:
+//
+//   - The first tick after a new version is detected is a no-op — we
+//     wait until at least one full delay window has elapsed so the
+//     operator sees the banner + countdown before the process dies.
+//   - Polling cadence is 15s which is plenty for a 3 min default
+//     delay and cheap enough to not matter.
+//   - We fire `restartRunner` at most once. A successful launchctl
+//     kickstart / systemctl restart kills this process, so the "at
+//     most once" invariant is enforced by death. If the restart fails
+//     we log and let the next tick try again, so a transient
+//     launchctl glitch (e.g. the unit being reloaded) does not
+//     permanently skip the auto-restart.
+func (s *Server) autoRestartLoop(ctx context.Context) {
+	s.autoRestartLoopWithTick(ctx, 15*time.Second)
+}
+
+// autoRestartLoopWithTick is the tick-injectable implementation of
+// autoRestartLoop. Tests pass a short tick (~10 ms) so the loop fires
+// quickly; production calls autoRestartLoop which hard-codes 15 s.
+func (s *Server) autoRestartLoopWithTick(ctx context.Context, tick time.Duration) {
+	if s == nil || s.upgradeWatcher == nil {
+		return
+	}
+	delay := s.cfg.autoRestartDelay()
+	t := time.NewTicker(tick)
+	defer t.Stop()
+	s.logger.Info("auto-restart: watching for upgrades",
+		"delay", delay.String(),
+		"poll", tick.String())
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			available, detected := s.upgradeWatcher.Snapshot()
+			if available == "" || detected.IsZero() {
+				continue
+			}
+			elapsed := time.Since(detected)
+			if elapsed < delay {
+				s.logger.Debug("auto-restart: pending",
+					"available", available,
+					"elapsed", elapsed.String(),
+					"delay", delay.String())
+				continue
+			}
+			s.logger.Info("auto-restart: firing",
+				"available", available,
+				"waited", elapsed.Round(time.Second).String())
+			// 10s ceiling: if launchctl kickstart hangs, the loop
+			// is still responsive to ctx.Done on the next tick.
+			callCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			if err := restartRunner(callCtx, daemon.DefaultLabel); err != nil {
+				s.logger.Warn("auto-restart: restart runner failed — will retry on next tick",
+					"err", err)
+			}
+			cancel()
+		}
+	}
 }
 
 // StopBackground performs the explicit shutdown steps for the background
@@ -1060,9 +1131,23 @@ func (s *Server) getInfo(w http.ResponseWriter, _ *http.Request) {
 		body["available_version"] = available
 		if !detected.IsZero() {
 			body["available_version_detected_at"] = detected.Format(time.RFC3339)
+			if s.cfg.AutoRestart {
+				delay := s.cfg.autoRestartDelay()
+				deadline := detected.Add(delay)
+				body["auto_restart_enabled"] = true
+				body["auto_restart_at"] = deadline.Format(time.RFC3339)
+				remaining := time.Until(deadline)
+				if remaining < 0 {
+					remaining = 0
+				}
+				body["auto_restart_in_seconds"] = int64(remaining.Seconds())
+			}
 		}
 	} else {
 		body["update_available"] = false
+		if s.cfg.AutoRestart {
+			body["auto_restart_enabled"] = true
+		}
 	}
 	writeJSON(w, http.StatusOK, body)
 }
