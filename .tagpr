@@ -26,3 +26,4 @@
         # the actual Release body. Letting tagpr also create a release
         # would race goreleaser and leave half-empty release pages.
         release = false
+	releaseBranch = main
