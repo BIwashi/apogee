@@ -22,6 +22,7 @@ type Agent struct {
 	LastSeen        time.Time      `json:"last_seen"`
 	InvocationCount int64          `json:"invocation_count"`
 	TotalDurationMs int64          `json:"total_duration_ms"`
+	SummaryText     string         `json:"summary_text,omitempty"`
 }
 
 // MarshalJSON projects Agent into the on-the-wire shape expected by
@@ -37,6 +38,7 @@ func (a Agent) MarshalJSON() ([]byte, error) {
 		LastSeen        time.Time `json:"last_seen"`
 		InvocationCount int64     `json:"invocation_count"`
 		TotalDurationMs int64     `json:"total_duration_ms"`
+		SummaryText     string    `json:"summary_text,omitempty"`
 	}
 	var parent *string
 	if a.ParentAgentID.Valid && a.ParentAgentID.String != "" {
@@ -52,6 +54,7 @@ func (a Agent) MarshalJSON() ([]byte, error) {
 		LastSeen:        a.LastSeen,
 		InvocationCount: a.InvocationCount,
 		TotalDurationMs: a.TotalDurationMs,
+		SummaryText:     a.SummaryText,
 	})
 }
 
@@ -70,26 +73,43 @@ func normaliseAgentKind(kind, agentType string) string {
 	return "subagent"
 }
 
+// AgentFilter constrains the ListRecentAgents result set. All fields are
+// optional — a zero-value filter returns everything.
+type AgentFilter struct {
+	Since *time.Time
+	Until *time.Time
+}
+
 // ListRecentAgents returns up to limit agent aggregates ordered by
 // last_seen DESC. The result is computed entirely from the spans table;
-// it does not require any new schema.
-func (s *Store) ListRecentAgents(ctx context.Context, limit int) ([]Agent, error) {
+// it does not require any new schema. The optional filter constrains
+// the time window so the TopRibbon "Last 5m" etc. presets work on the
+// /agents page.
+func (s *Store) ListRecentAgents(ctx context.Context, filter AgentFilter, limit int) ([]Agent, error) {
 	if limit <= 0 {
 		limit = 100
 	}
 	if limit > 500 {
 		limit = 500
 	}
-	// Hide agent rows whose owning session was created by the
-	// summarizer feedback loop. The `spans` table has no `source_app`
-	// column of its own — that field only lives on `sessions` and
-	// `turns` — so we LEFT JOIN sessions and filter by the session's
-	// source_app. The earlier single-table filter in v0.1.14 returned
-	// HTTP 500 on /v1/agents/recent because DuckDB rejected the
-	// unknown column; this query fixes that regression and preserves
-	// the feedback-loop cleanup. Real source_app values never start
-	// with a dot so the filter is a safe global cleanup.
-	const q = `
+
+	// Build WHERE clause dynamically so since/until are only applied
+	// when the caller provides them.
+	where := `sp.agent_id IS NOT NULL AND sp.agent_id <> ''
+  AND (s.source_app IS NULL OR s.source_app NOT LIKE '.%')`
+	args := make([]any, 0, 3)
+
+	if filter.Since != nil {
+		where += ` AND sp.start_time >= ?`
+		args = append(args, *filter.Since)
+	}
+	if filter.Until != nil {
+		where += ` AND sp.start_time <= ?`
+		args = append(args, *filter.Until)
+	}
+	args = append(args, limit)
+
+	q := `
 SELECT
   sp.agent_id,
   COALESCE(sp.agent_kind, '') AS kind,
@@ -98,16 +118,22 @@ SELECT
   COALESCE(sp.session_id, '') AS session_id,
   MAX(sp.start_time) AS last_seen,
   COUNT(*) AS invocation_count,
-  CAST(COALESCE(SUM(sp.duration_ns), 0) / 1000000 AS BIGINT) AS total_duration_ms
+  CAST(COALESCE(SUM(sp.duration_ns), 0) / 1000000 AS BIGINT) AS total_duration_ms,
+  COALESCE(
+    (SELECT t.headline FROM turns t
+     WHERE t.session_id = sp.session_id
+     AND t.headline IS NOT NULL AND t.headline <> ''
+     ORDER BY t.started_at DESC LIMIT 1),
+    ''
+  ) AS summary_text
 FROM spans sp
 LEFT JOIN sessions s ON s.session_id = sp.session_id
-WHERE sp.agent_id IS NOT NULL AND sp.agent_id <> ''
-  AND (s.source_app IS NULL OR s.source_app NOT LIKE '.%')
+WHERE ` + where + `
 GROUP BY sp.agent_id, sp.agent_kind, sp.session_id
 ORDER BY last_seen DESC
 LIMIT ?
 `
-	rows, err := s.db.QueryContext(ctx, q, limit)
+	rows, err := s.db.QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list recent agents: %w", err)
 	}
@@ -129,6 +155,7 @@ LIMIT ?
 			&a.LastSeen,
 			&a.InvocationCount,
 			&a.TotalDurationMs,
+			&a.SummaryText,
 		); err != nil {
 			return nil, fmt.Errorf("scan agent row: %w", err)
 		}

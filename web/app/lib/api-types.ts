@@ -766,6 +766,8 @@ export interface Agent {
   last_seen: string;
   invocation_count: number;
   total_duration_ms: number;
+  /** Latest turn headline from the agent's session. Empty when no headline exists. */
+  summary_text?: string;
 }
 
 export interface AgentsResponse {
