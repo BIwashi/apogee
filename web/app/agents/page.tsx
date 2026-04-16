@@ -10,6 +10,7 @@ import type { Agent, AgentsResponse, FilterOptions } from "../lib/api-types";
 import { drawerLinkProps, useDrawerState } from "../lib/drawer";
 import { useApi } from "../lib/swr";
 import { timeAgo } from "../lib/time";
+import { buildQuery, useSelection } from "../lib/url-state";
 
 /**
  * `/agents` — a per-agent catalog page. Renders one row per
@@ -53,10 +54,11 @@ export default function AgentsPage() {
   // the tree naturally expresses. Flat view stays available via the
   // checkbox for operators who want a sortable catalog.
   const [tree, setTree] = useState(true);
+  const { apiParams } = useSelection();
 
   const { data: filterOpts } = useApi<FilterOptions>("/v1/filter-options");
   const { data, error, isLoading } = useApi<AgentsResponse>(
-    "/v1/agents/recent?limit=200",
+    "/v1/agents/recent" + buildQuery(apiParams, { limit: 200 }),
     { refreshInterval: 5_000 },
   );
 
@@ -354,13 +356,22 @@ function TreeRow({
             <span className="inline-block w-[12px]" />
           )}
           <AgentIcon agent={agent} />
-          <span className="font-mono text-[11px] text-[var(--artemis-white)]">
-            {shortId(agent.agent_id)}
+          <span className="flex min-w-0 flex-col gap-0.5">
+            <span className="flex items-center gap-2">
+              <span className="font-mono text-[11px] text-[var(--artemis-white)]">
+                {shortId(agent.agent_id)}
+              </span>
+              <span className="font-mono text-[11px] text-[var(--text-muted)]">
+                {agent.agent_type || "main"}
+              </span>
+            </span>
+            {agent.summary_text ? (
+              <span className="truncate text-[11px] text-[var(--text-muted)]">
+                {agent.summary_text}
+              </span>
+            ) : null}
           </span>
-          <span className="font-mono text-[11px] text-[var(--text-muted)]">
-            {agent.agent_type || "main"}
-          </span>
-          <span className="ml-auto flex items-center gap-3 font-mono text-[11px] text-[var(--text-muted)]">
+          <span className="ml-auto flex flex-shrink-0 items-center gap-3 font-mono text-[11px] text-[var(--text-muted)]">
             <span>{agent.invocation_count} calls</span>
             <span>{humanDuration(agent.total_duration_ms)}</span>
             <span>{timeAgo(agent.last_seen)}</span>

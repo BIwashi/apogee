@@ -1217,7 +1217,18 @@ func projectHITLList(rows []duckdb.HITLEvent) []sse.HITLSnapshot {
 // other list endpoints.
 func (s *Server) listRecentAgents(w http.ResponseWriter, r *http.Request) {
 	limit := parseLimit(r, 100, 500)
-	out, err := s.store.ListRecentAgents(r.Context(), limit)
+	var filter duckdb.AgentFilter
+	if raw := r.URL.Query().Get("since"); raw != "" {
+		if t, err := time.Parse(time.RFC3339, raw); err == nil {
+			filter.Since = &t
+		}
+	}
+	if raw := r.URL.Query().Get("until"); raw != "" {
+		if t, err := time.Parse(time.RFC3339, raw); err == nil {
+			filter.Until = &t
+		}
+	}
+	out, err := s.store.ListRecentAgents(r.Context(), filter, limit)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, err.Error())
 		return
