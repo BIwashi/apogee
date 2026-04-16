@@ -5,6 +5,11 @@ All notable changes to apogee will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.1.21](https://github.com/BIwashi/apogee/compare/v0.1.20...v0.1.21) - 2026-04-16
+- fix(ui): reverse Mission chronology, hide Live empty state, fix Sessions table by @BIwashi in https://github.com/BIwashi/apogee/pull/89
+- feat(agents): wire time-range filter and surface turn headline summary by @BIwashi in https://github.com/BIwashi/apogee/pull/91
+- fix(desktop): resolve apogee binary in GUI context and detect existing service by @BIwashi in https://github.com/BIwashi/apogee/pull/92
+
 ## [v0.1.20](https://github.com/BIwashi/apogee/compare/v0.1.19...v0.1.20) - 2026-04-16
 - fix(store): move attention index to post-migration to fix onboard on older DBs by @BIwashi in https://github.com/BIwashi/apogee/pull/87
 
