@@ -91,6 +91,11 @@ import SectionHeader from "./SectionHeader";
 interface MissionMapProps {
   sessionId: string;
   turns: Turn[];
+  /** When true, return null instead of the MissionEmpty placeholder.
+   *  Used on the Live page where the empty state is distracting —
+   *  the Mission section should appear silently once the narrative
+   *  worker produces a rollup, not advertise its absence. */
+  hideEmpty?: boolean;
 }
 
 // Icon per PhaseKind — reuses the vocabulary already in the tier-3
@@ -212,7 +217,11 @@ function formatDuration(ms: number): string {
   return remMin ? `${hours}h${remMin}m` : `${hours}h`;
 }
 
-export default function MissionMap({ sessionId, turns }: MissionMapProps) {
+export default function MissionMap({
+  sessionId,
+  turns,
+  hideEmpty,
+}: MissionMapProps) {
   const { data: rollupData, mutate } = useApi<RollupResponse>(
     sessionId ? `/v1/sessions/${sessionId}/rollup` : null,
     { refreshInterval: 10_000 },
@@ -279,6 +288,7 @@ export default function MissionMap({ sessionId, turns }: MissionMapProps) {
   }, []);
 
   if (!rollup) {
+    if (hideEmpty) return null;
     return (
       <MissionEmpty
         title="Mission not yet charted"
@@ -291,6 +301,7 @@ export default function MissionMap({ sessionId, turns }: MissionMapProps) {
   }
 
   if (phases.length === 0) {
+    if (hideEmpty) return null;
     return (
       <MissionEmpty
         title="No phase narrative yet"
@@ -359,19 +370,21 @@ export default function MissionMap({ sessionId, turns }: MissionMapProps) {
             </div>
           </div>
 
-          {/* The graph itself. One row per real phase, then one row
-              per forecast entry. Each row is a flex layout with a
-              fixed-width graph column on the left and a fluid card
-              on the right. The graph column is drawn as inline SVG
-              so the spine + node + branch lines connect pixel-perfect. */}
+          {/* The graph itself. Reverse chronological: newest phase
+              at the top so the operator sees "what just happened"
+              without scrolling, then older phases, then TodoWrite
+              plan items, then the forecast tail.
+
+              Each row is a flex layout with a fixed-width graph
+              column on the left and a fluid card on the right. */}
           <ol className="flex flex-col">
-            {phases.map((phase, i) => {
-              // The running-turn indicator attaches to the trailing
-              // real phase unless a TodoRow is going to take over the
-              // "current foothold" role right below. If there's an
-              // in_progress todo, let the todo row show the pulse so
-              // the cue lines up with Claude's own self-reported step.
-              const phaseIsLast = i === phases.length - 1;
+            {[...phases].reverse().map((phase, i, arr) => {
+              // In reverse order the "newest" phase (originally the
+              // last one) is now at index 0. That is also where the
+              // running-turn pulse belongs unless a TodoRow is going
+              // to take over.
+              const isNewest = i === 0;
+              const isOldest = i === arr.length - 1;
               const todoTakesOverPulse = activeTodos.some(
                 (t) => t.status === "in_progress",
               );
@@ -379,16 +392,16 @@ export default function MissionMap({ sessionId, turns }: MissionMapProps) {
                 <PhaseRow
                   key={phase.index}
                   phase={phase}
-                  index={i}
-                  isFirst={i === 0}
+                  index={phases.length - 1 - i}
+                  isFirst={isNewest}
                   isLast={
-                    phaseIsLast &&
+                    isOldest &&
                     activeTodos.length === 0 &&
                     forecast.length === 0
                   }
-                  branches={branchesByPhase.get(i) ?? []}
+                  branches={branchesByPhase.get(phases.length - 1 - i) ?? []}
                   runningTurn={
-                    phaseIsLast && !todoTakesOverPulse ? runningTurn : null
+                    isNewest && !todoTakesOverPulse ? runningTurn : null
                   }
                   onClick={() => onPhaseClick(phase)}
                 />
