@@ -367,7 +367,11 @@ export default function LivePage() {
        */}
       {focusedSessionId && (
         <section>
-          <MissionMap sessionId={focusedSessionId} turns={sessionTurns} />
+          <MissionMap
+            sessionId={focusedSessionId}
+            turns={sessionTurns}
+            hideEmpty
+          />
         </section>
       )}
 

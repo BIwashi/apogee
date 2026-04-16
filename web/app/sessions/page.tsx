@@ -109,28 +109,28 @@ export default function SessionsPage() {
               No matching sessions.
             </p>
           ) : (
-            <table className="w-full border-collapse text-[12px]">
+            <table className="w-full table-fixed border-collapse text-[12px]">
               <thead>
                 <tr className="text-left text-[10px] uppercase tracking-[0.14em] text-[var(--text-muted)]">
-                  <th className="border-b border-[var(--border)] px-3 py-2 font-medium">
+                  <th className="w-[52px] border-b border-[var(--border)] px-3 py-2 font-medium">
                     Attention
                   </th>
-                  <th className="border-b border-[var(--border)] px-3 py-2 font-medium">
+                  <th className="w-[22%] border-b border-[var(--border)] px-3 py-2 font-medium">
                     Session
                   </th>
-                  <th className="border-b border-[var(--border)] px-3 py-2 font-medium">
+                  <th className="w-[12%] border-b border-[var(--border)] px-3 py-2 font-medium">
                     Source App
                   </th>
                   <th className="border-b border-[var(--border)] px-3 py-2 font-medium">
                     Headline
                   </th>
-                  <th className="border-b border-[var(--border)] px-3 py-2 font-medium">
+                  <th className="w-[10%] border-b border-[var(--border)] px-3 py-2 font-medium">
                     Last Seen
                   </th>
-                  <th className="border-b border-[var(--border)] px-3 py-2 text-right font-medium">
+                  <th className="w-[60px] border-b border-[var(--border)] px-3 py-2 text-right font-medium">
                     Turns
                   </th>
-                  <th className="border-b border-[var(--border)] px-3 py-2 font-medium"></th>
+                  <th className="w-[72px] border-b border-[var(--border)] px-3 py-2 font-medium"></th>
                 </tr>
               </thead>
               <tbody>
@@ -159,7 +159,7 @@ export default function SessionsPage() {
                         <AttentionDot state={hit.attention_state} />
                       </td>
                       <td
-                        className="px-3 py-2"
+                        className="overflow-hidden px-3 py-2"
                         onClick={(e) => e.stopPropagation()}
                       >
                         <SessionLabel
@@ -173,11 +173,11 @@ export default function SessionsPage() {
                           size="md"
                         />
                       </td>
-                      <td className="px-3 py-2 text-[var(--artemis-white)]">
+                      <td className="overflow-hidden truncate px-3 py-2 text-[var(--artemis-white)]">
                         {hit.source_app || "—"}
                       </td>
-                      <td className="px-3 py-2 text-[11px] text-[var(--text-muted)]">
-                        <span className="line-clamp-1">
+                      <td className="overflow-hidden px-3 py-2 text-[11px] text-[var(--text-muted)]">
+                        <span className="line-clamp-1 break-all">
                           {hit.latest_headline ||
                             hit.latest_prompt_snippet ||
                             "—"}
