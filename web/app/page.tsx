@@ -6,6 +6,7 @@ import CountPills from "./components/CountPills";
 import EventTicker from "./components/EventTicker";
 import FocusCard from "./components/FocusCard";
 import KpiStrip from "./components/KpiStrip";
+import MissionMap from "./components/MissionMap";
 import SectionHeader from "./components/SectionHeader";
 import TriageRail from "./components/TriageRail";
 import VersionTag from "./components/VersionTag";
@@ -267,6 +268,14 @@ export default function LivePage() {
     [turns],
   );
 
+  // Turns scoped to the focused session — MissionMap uses the turns
+  // array only to detect the currently-running turn, so feeding it
+  // the full cross-session list would light up the wrong phase node.
+  const sessionTurns = useMemo(
+    () => turns.filter((t) => t.session_id === focusedSessionId),
+    [turns, focusedSessionId],
+  );
+
   return (
     <div className="mx-auto flex max-w-7xl flex-col gap-6">
       <header className="flex flex-wrap items-end justify-between gap-4 pt-6">
@@ -345,6 +354,22 @@ export default function LivePage() {
           />
         </div>
       </section>
+
+      {/*
+       * Session Mission — the git-graph view of the focused session's
+       * arc, rendered inline on the Live page. This gives operators
+       * "where are we in the plan" without navigating to session detail.
+       * The rollup, TodoWrite plan, and forecast tail all come from the
+       * same endpoints MissionMap already fetches internally, gated on
+       * focusedSessionId so the section is invisible until a turn is
+       * focused. The session-scoped turns subset ensures the running-turn
+       * indicator only lights up on the correct phase node.
+       */}
+      {focusedSessionId && (
+        <section>
+          <MissionMap sessionId={focusedSessionId} turns={sessionTurns} />
+        </section>
+      )}
 
       <section>
         <SectionHeader
