@@ -5,6 +5,15 @@ All notable changes to apogee will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.1.19](https://github.com/BIwashi/apogee/compare/v0.1.18...v0.1.19) - 2026-04-16
+- feat(mission): rebuild Mission tab as a vertical git graph by @BIwashi in https://github.com/BIwashi/apogee/pull/79
+- chore(tooling): bootstrap formatter + linter environment by @BIwashi in https://github.com/BIwashi/apogee/pull/81
+- feat(mission): surface TodoWrite plan as upcoming nodes on the Mission view by @BIwashi in https://github.com/BIwashi/apogee/pull/83
+- refactor(session): retire Timeline tab, consolidate into Mission by @BIwashi in https://github.com/BIwashi/apogee/pull/85
+- feat(live): surface session Mission graph on the Live page by @BIwashi in https://github.com/BIwashi/apogee/pull/86
+- feat(live): session-scoped attention + fleet endpoint by @BIwashi in https://github.com/BIwashi/apogee/pull/82
+- feat(live): live-status summarizer worker by @BIwashi in https://github.com/BIwashi/apogee/pull/84
+
 ## [v0.1.18](https://github.com/BIwashi/apogee/compare/v0.1.17...v0.1.18) - 2026-04-15
 - docs(contributing): English-only PRs + no session framing in bodies by @BIwashi in https://github.com/BIwashi/apogee/pull/74
 - chore: ignore CLAUDE.md so dev-only meta stays local by @BIwashi in https://github.com/BIwashi/apogee/pull/77
