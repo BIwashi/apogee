@@ -179,6 +179,13 @@ type Reconstructor struct {
 	// to enqueue a final per-session digest. Must not block.
 	OnSessionEnded func(sessionID string)
 
+	// OnSessionLiveTick, when non-nil, fires after bubbleSessionLive
+	// writes a session row that is still "live" (has a running turn).
+	// Used by the live-status summarizer worker to enqueue a refresh of
+	// the session's "currently <verb>-ing <noun>" blurb. Must not block —
+	// the worker's internal debounce handles the rate.
+	OnSessionLiveTick func(sessionID string)
+
 	// OnHITLRequested, when non-nil, is invoked after the reconstructor
 	// inserts a fresh hitl_events row for an inbound permission request.
 	// Wire this to the hitl.Service so the SSE hub broadcasts a
@@ -1604,6 +1611,15 @@ func (r *Reconstructor) bubbleSessionLive(ctx context.Context, sessionID string)
 	liveState := "idle"
 	if rep.Status == "running" {
 		liveState = "live"
+	}
+	// Live-status tick: fire the callback on every bubble call where the
+	// session has a running turn, regardless of whether anything else
+	// changed. The summarizer worker has its own 10-second debounce so
+	// this does not burn LLM calls — but we want the "currently X-ing"
+	// blurb to reflect fresh spans even when the attention bucket stays
+	// the same. Idle bubbles do not tick: there is nothing to describe.
+	if liveState == "live" && r.OnSessionLiveTick != nil {
+		r.OnSessionLiveTick(sessionID)
 	}
 	var score float64
 	if rep.AttentionScore != nil {
