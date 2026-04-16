@@ -5,10 +5,18 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 )
 
 // Session is a row in the sessions table.
+//
+// The Attention*, Current*, and LiveStatus* fields are the fleet-view
+// projection written back by the attention engine and the summarizer's
+// live-status worker. They let the Live dashboard render one row per
+// terminal without scanning turns and spans on every poll. All are
+// optional: pre-engine rows surface with empty strings and the UI
+// degrades gracefully.
 type Session struct {
 	SessionID  string     `json:"session_id"`
 	SourceApp  string     `json:"source_app"`
@@ -18,6 +26,113 @@ type Session struct {
 	TurnCount  int        `json:"turn_count"`
 	Model      string     `json:"model,omitempty"`
 	MachineID  string     `json:"machine_id,omitempty"`
+	// AttentionState mirrors the currently-representative turn's
+	// attention bucket (intervene_now|watch|watchlist|healthy).
+	AttentionState  string   `json:"attention_state,omitempty"`
+	AttentionReason string   `json:"attention_reason,omitempty"`
+	AttentionScore  *float64 `json:"attention_score,omitempty"`
+	CurrentTurnID   string   `json:"current_turn_id,omitempty"`
+	CurrentPhase    string   `json:"current_phase,omitempty"`
+	// LiveState is "live" when the session has a currently-running turn,
+	// "idle" when it has recent activity but no running turn, and empty
+	// for pre-engine rows. The fleet view uses this to decide whether
+	// to grey out the card.
+	LiveState       string     `json:"live_state,omitempty"`
+	LiveStatusText  string     `json:"live_status_text,omitempty"`
+	LiveStatusAt    *time.Time `json:"live_status_at,omitempty"`
+	LiveStatusModel string     `json:"live_status_model,omitempty"`
+}
+
+// selectSessionColumns is the column list used by every SELECT against
+// the sessions table so adding a column is a one-line change in this
+// file. Matches the order consumed by scanSession.
+const selectSessionColumns = `SELECT
+  session_id, source_app, started_at, ended_at, last_seen_at, turn_count,
+  model, machine_id,
+  attention_state, attention_reason, attention_score,
+  current_turn_id, current_phase, live_state,
+  live_status_text, live_status_at, live_status_model
+FROM sessions`
+
+// scanSession reads one session row off a *sql.Row or *sql.Rows. The
+// argument is typed as rowScanner so both work.
+func scanSession(r rowScanner) (Session, error) {
+	var (
+		out             Session
+		endedAt         sql.NullTime
+		model           sql.NullString
+		machineID       sql.NullString
+		attentionState  sql.NullString
+		attentionReason sql.NullString
+		attentionScore  sql.NullFloat64
+		currentTurnID   sql.NullString
+		currentPhase    sql.NullString
+		liveState       sql.NullString
+		liveStatusText  sql.NullString
+		liveStatusAt    sql.NullTime
+		liveStatusModel sql.NullString
+	)
+	if err := r.Scan(
+		&out.SessionID,
+		&out.SourceApp,
+		&out.StartedAt,
+		&endedAt,
+		&out.LastSeenAt,
+		&out.TurnCount,
+		&model,
+		&machineID,
+		&attentionState,
+		&attentionReason,
+		&attentionScore,
+		&currentTurnID,
+		&currentPhase,
+		&liveState,
+		&liveStatusText,
+		&liveStatusAt,
+		&liveStatusModel,
+	); err != nil {
+		return Session{}, err
+	}
+	if endedAt.Valid {
+		t := endedAt.Time
+		out.EndedAt = &t
+	}
+	if model.Valid {
+		out.Model = model.String
+	}
+	if machineID.Valid {
+		out.MachineID = machineID.String
+	}
+	if attentionState.Valid {
+		out.AttentionState = attentionState.String
+	}
+	if attentionReason.Valid {
+		out.AttentionReason = attentionReason.String
+	}
+	if attentionScore.Valid {
+		v := attentionScore.Float64
+		out.AttentionScore = &v
+	}
+	if currentTurnID.Valid {
+		out.CurrentTurnID = currentTurnID.String
+	}
+	if currentPhase.Valid {
+		out.CurrentPhase = currentPhase.String
+	}
+	if liveState.Valid {
+		out.LiveState = liveState.String
+	}
+	if liveStatusText.Valid {
+		out.LiveStatusText = liveStatusText.String
+	}
+	if liveStatusAt.Valid {
+		t := liveStatusAt.Time
+		out.LiveStatusAt = &t
+	}
+	if liveStatusModel.Valid {
+		out.LiveStatusModel = liveStatusModel.String
+	}
+	return out, nil
 }
 
 // UpsertSession inserts or refreshes a sessions row. started_at is preserved
@@ -67,31 +182,15 @@ func (s *Store) IncrementSessionTurnCount(ctx context.Context, sessionID string)
 
 // GetSession fetches one session row by id.
 func (s *Store) GetSession(ctx context.Context, sessionID string) (*Session, error) {
-	const q = `SELECT session_id, source_app, started_at, ended_at, last_seen_at, turn_count, model, machine_id FROM sessions WHERE session_id = ?`
-	row := s.db.QueryRowContext(ctx, q, sessionID)
-	var (
-		out       Session
-		endedAt   sql.NullTime
-		model     sql.NullString
-		machineID sql.NullString
-	)
-	if err := row.Scan(&out.SessionID, &out.SourceApp, &out.StartedAt, &endedAt, &out.LastSeenAt, &out.TurnCount, &model, &machineID); err != nil {
+	row := s.db.QueryRowContext(ctx, selectSessionColumns+` WHERE session_id = ?`, sessionID)
+	sess, err := scanSession(row)
+	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
 		}
 		return nil, fmt.Errorf("get session: %w", err)
 	}
-	if endedAt.Valid {
-		t := endedAt.Time
-		out.EndedAt = &t
-	}
-	if model.Valid {
-		out.Model = model.String
-	}
-	if machineID.Valid {
-		out.MachineID = machineID.String
-	}
-	return &out, nil
+	return &sess, nil
 }
 
 // ListRecentSessions returns up to limit sessions ordered by last_seen_at DESC.
@@ -109,36 +208,329 @@ func (s *Store) ListRecentSessions(ctx context.Context, limit int) ([]Session, e
 	if limit <= 0 {
 		limit = 100
 	}
-	const q = `SELECT session_id, source_app, started_at, ended_at, last_seen_at, turn_count, model, machine_id FROM sessions WHERE source_app NOT LIKE '.%' ORDER BY last_seen_at DESC LIMIT ?`
-	rows, err := s.db.QueryContext(ctx, q, limit)
+	rows, err := s.db.QueryContext(ctx, selectSessionColumns+` WHERE source_app NOT LIKE '.%' ORDER BY last_seen_at DESC LIMIT ?`, limit)
 	if err != nil {
 		return nil, fmt.Errorf("list sessions: %w", err)
 	}
 	defer rows.Close()
 	var out []Session
 	for rows.Next() {
-		var (
-			sess      Session
-			endedAt   sql.NullTime
-			model     sql.NullString
-			machineID sql.NullString
-		)
-		if err := rows.Scan(&sess.SessionID, &sess.SourceApp, &sess.StartedAt, &endedAt, &sess.LastSeenAt, &sess.TurnCount, &model, &machineID); err != nil {
+		sess, err := scanSession(rows)
+		if err != nil {
 			return nil, fmt.Errorf("scan session: %w", err)
-		}
-		if endedAt.Valid {
-			t := endedAt.Time
-			sess.EndedAt = &t
-		}
-		if model.Valid {
-			sess.Model = model.String
-		}
-		if machineID.Valid {
-			sess.MachineID = machineID.String
 		}
 		out = append(out, sess)
 	}
 	return out, rows.Err()
+}
+
+// SessionFilter captures the optional filters accepted by the fleet-view
+// endpoints. Zero fields are ignored. Since clamps the last_seen_at window,
+// which is how the Live page's global "display period" selector is applied.
+type SessionFilter struct {
+	SourceApp string
+	Since     *time.Time
+	Until     *time.Time
+}
+
+// ListActiveSessions returns sessions whose last_seen_at falls within the
+// filter window, sorted by attention priority then recency. It is the
+// data source for the /v1/sessions/active fleet endpoint. Sessions are
+// returned whether or not they have a running turn — LiveState ("live" |
+// "idle") distinguishes the two so the UI can grey out idle ones.
+func (s *Store) ListActiveSessions(ctx context.Context, f SessionFilter, limit int) ([]Session, error) {
+	if limit <= 0 {
+		limit = 200
+	}
+	if limit > 500 {
+		limit = 500
+	}
+	clauses := []string{`source_app NOT LIKE '.%'`}
+	args := []any{}
+	if f.SourceApp != "" {
+		clauses = append(clauses, `source_app = ?`)
+		args = append(args, f.SourceApp)
+	}
+	if f.Since != nil {
+		clauses = append(clauses, `last_seen_at >= ?`)
+		args = append(args, *f.Since)
+	}
+	if f.Until != nil {
+		clauses = append(clauses, `last_seen_at <= ?`)
+		args = append(args, *f.Until)
+	}
+	where := ` WHERE ` + strings.Join(clauses, ` AND `)
+	order := `
+ORDER BY
+  CASE attention_state
+    WHEN 'intervene_now' THEN 0
+    WHEN 'watch'         THEN 1
+    WHEN 'watchlist'     THEN 2
+    WHEN 'healthy'       THEN 3
+    ELSE 4
+  END ASC,
+  last_seen_at DESC
+`
+	q := selectSessionColumns + where + order + ` LIMIT ?`
+	args = append(args, limit)
+	rows, err := s.db.QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, fmt.Errorf("list active sessions: %w", err)
+	}
+	defer rows.Close()
+	var out []Session
+	for rows.Next() {
+		sess, err := scanSession(rows)
+		if err != nil {
+			return nil, fmt.Errorf("scan active session: %w", err)
+		}
+		out = append(out, sess)
+	}
+	return out, rows.Err()
+}
+
+// SessionCard wraps a Session with the aggregate fields the Live fleet
+// view needs per card: the currently-running tool name, the timestamp of
+// the newest span, and pending HITL / intervention counts. The embedded
+// Session flattens through to the JSON wire format so the frontend sees
+// one flat object per card.
+type SessionCard struct {
+	Session
+	CurrentTool              string     `json:"current_tool,omitempty"`
+	LastSpanAt               *time.Time `json:"last_span_at,omitempty"`
+	HITLPendingCount         int        `json:"hitl_pending_count"`
+	InterventionPendingCount int        `json:"intervention_pending_count"`
+}
+
+// ListActiveSessionCards returns the fleet-view payload for the Live
+// dashboard: the filtered session rows plus the aggregate fields that
+// would otherwise require N round-trips from the frontend. Aggregates
+// are fetched in three batch queries keyed by session id so the cost
+// stays linear in the card count.
+func (s *Store) ListActiveSessionCards(ctx context.Context, f SessionFilter, limit int) ([]SessionCard, error) {
+	sessions, err := s.ListActiveSessions(ctx, f, limit)
+	if err != nil {
+		return nil, err
+	}
+	cards := make([]SessionCard, len(sessions))
+	for i, sess := range sessions {
+		cards[i] = SessionCard{Session: sess}
+	}
+	if len(cards) == 0 {
+		return cards, nil
+	}
+	ids := make([]string, len(cards))
+	placeholders := make([]string, len(cards))
+	args := make([]any, len(cards))
+	for i, c := range cards {
+		ids[i] = c.SessionID
+		placeholders[i] = "?"
+		args[i] = c.SessionID
+	}
+	inClause := strings.Join(placeholders, ",")
+	idx := make(map[string]int, len(cards))
+	for i, id := range ids {
+		idx[id] = i
+	}
+
+	// Current tool and last-span timestamp per session. The latest span
+	// with a non-null tool_name wins, ranked by start_time desc.
+	toolQ := `
+SELECT session_id, tool_name, start_time
+FROM (
+  SELECT session_id, tool_name, start_time,
+         ROW_NUMBER() OVER (PARTITION BY session_id ORDER BY start_time DESC) AS rn
+  FROM spans
+  WHERE session_id IN (` + inClause + `) AND tool_name IS NOT NULL AND tool_name <> ''
+) t
+WHERE rn = 1
+`
+	rows, err := s.db.QueryContext(ctx, toolQ, args...)
+	if err != nil {
+		return nil, fmt.Errorf("session cards tool query: %w", err)
+	}
+	for rows.Next() {
+		var sid, tool string
+		var ts time.Time
+		if err := rows.Scan(&sid, &tool, &ts); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		if i, ok := idx[sid]; ok {
+			cards[i].CurrentTool = tool
+			t := ts
+			cards[i].LastSpanAt = &t
+		}
+	}
+	rows.Close()
+
+	// Pending HITL per session.
+	hitlQ := `SELECT session_id, COUNT(*) FROM hitl_events WHERE session_id IN (` + inClause + `) AND status = 'pending' GROUP BY session_id`
+	rows, err = s.db.QueryContext(ctx, hitlQ, args...)
+	if err != nil {
+		return nil, fmt.Errorf("session cards hitl query: %w", err)
+	}
+	for rows.Next() {
+		var sid string
+		var n int
+		if err := rows.Scan(&sid, &n); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		if i, ok := idx[sid]; ok {
+			cards[i].HITLPendingCount = n
+		}
+	}
+	rows.Close()
+
+	// Pending interventions per session. Any intervention that has not
+	// yet been consumed / cancelled / expired counts as pending so the
+	// badge reflects "there is still work queued for this terminal".
+	ivQ := `SELECT session_id, COUNT(*) FROM interventions WHERE session_id IN (` + inClause + `) AND status IN ('queued','claimed','delivered') GROUP BY session_id`
+	rows, err = s.db.QueryContext(ctx, ivQ, args...)
+	if err != nil {
+		return nil, fmt.Errorf("session cards intervention query: %w", err)
+	}
+	for rows.Next() {
+		var sid string
+		var n int
+		if err := rows.Scan(&sid, &n); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		if i, ok := idx[sid]; ok {
+			cards[i].InterventionPendingCount = n
+		}
+	}
+	rows.Close()
+
+	return cards, nil
+}
+
+// CountSessionAttention returns the per-bucket count of sessions scoped by
+// the filter window. It mirrors CountAttentionFiltered on the turns table
+// so the Live page's CountPills can switch to session scope.
+func (s *Store) CountSessionAttention(ctx context.Context, f SessionFilter) (AttentionCounts, error) {
+	clauses := []string{`source_app NOT LIKE '.%'`}
+	args := []any{}
+	if f.SourceApp != "" {
+		clauses = append(clauses, `source_app = ?`)
+		args = append(args, f.SourceApp)
+	}
+	if f.Since != nil {
+		clauses = append(clauses, `last_seen_at >= ?`)
+		args = append(args, *f.Since)
+	}
+	if f.Until != nil {
+		clauses = append(clauses, `last_seen_at <= ?`)
+		args = append(args, *f.Until)
+	}
+	q := `SELECT COALESCE(attention_state, 'healthy') AS state, COUNT(*) FROM sessions WHERE ` + strings.Join(clauses, ` AND `) + ` GROUP BY 1`
+	rows, err := s.db.QueryContext(ctx, q, args...)
+	if err != nil {
+		return AttentionCounts{}, fmt.Errorf("count session attention: %w", err)
+	}
+	defer rows.Close()
+	var out AttentionCounts
+	for rows.Next() {
+		var state string
+		var c int
+		if err := rows.Scan(&state, &c); err != nil {
+			return AttentionCounts{}, err
+		}
+		switch state {
+		case "intervene_now":
+			out.InterveneNow = c
+		case "watch":
+			out.Watch = c
+		case "watchlist":
+			out.Watchlist = c
+		default:
+			out.Healthy += c
+		}
+		out.Total += c
+	}
+	return out, rows.Err()
+}
+
+// UpdateSessionAttention writes the fleet-view projection of the
+// currently-representative turn onto the session row. Called by the
+// reconstructor after rescoring a turn so the Live endpoint can render
+// one row per terminal without having to pick the "right" turn on every
+// poll. liveState is "live" when the representative turn is still
+// running, "idle" when it has closed.
+func (s *Store) UpdateSessionAttention(ctx context.Context, sessionID string, state, reason string, score float64, currentTurnID, phase, liveState string) error {
+	const q = `
+UPDATE sessions SET
+  attention_state  = ?,
+  attention_reason = ?,
+  attention_score  = ?,
+  current_turn_id  = ?,
+  current_phase    = ?,
+  live_state       = ?
+WHERE session_id = ?
+`
+	_, err := s.db.ExecContext(ctx, q,
+		nullString(state),
+		nullString(reason),
+		score,
+		nullString(currentTurnID),
+		nullString(phase),
+		nullString(liveState),
+		sessionID,
+	)
+	if err != nil {
+		return fmt.Errorf("update session attention: %w", err)
+	}
+	return nil
+}
+
+// UpdateSessionLiveStatus writes the summarizer's live-status blurb onto
+// the session row. PR B's worker calls this once the LLM returns a
+// "currently <verb>-ing <noun>" string. text is allowed to be empty,
+// which clears the field (e.g., when a session transitions to idle).
+func (s *Store) UpdateSessionLiveStatus(ctx context.Context, sessionID, text, model string, at time.Time) error {
+	const q = `
+UPDATE sessions SET
+  live_status_text  = ?,
+  live_status_at    = ?,
+  live_status_model = ?
+WHERE session_id = ?
+`
+	_, err := s.db.ExecContext(ctx, q,
+		nullString(text),
+		at,
+		nullString(model),
+		sessionID,
+	)
+	if err != nil {
+		return fmt.Errorf("update session live status: %w", err)
+	}
+	return nil
+}
+
+// RepresentativeTurn returns the turn that should drive the session's
+// fleet-view projection: the oldest still-running turn (highest-priority
+// attention first) if any, else the most recently closed turn. It
+// returns (nil, nil) when the session has no turns at all.
+func (s *Store) RepresentativeTurn(ctx context.Context, sessionID string) (*Turn, error) {
+	running := selectTurn + ` WHERE session_id = ? AND status = 'running' ` + attentionOrder + ` LIMIT 1`
+	t, err := scanTurn(s.db.QueryRowContext(ctx, running, sessionID))
+	if err == nil {
+		return t, nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return nil, fmt.Errorf("representative running turn: %w", err)
+	}
+	latest := selectTurn + ` WHERE session_id = ? ORDER BY started_at DESC LIMIT 1`
+	t, err = scanTurn(s.db.QueryRowContext(ctx, latest, sessionID))
+	if err == nil {
+		return t, nil
+	}
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	return nil, fmt.Errorf("representative latest turn: %w", err)
 }
 
 // SessionSearchHit is one row in the /v1/sessions/search response. It is

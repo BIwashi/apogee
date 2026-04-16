@@ -386,6 +386,8 @@ func (s *Server) buildRouter() chi.Router {
 	r.Post("/v1/events", handler.ReceiveEvent)
 	r.Get("/v1/sessions/recent", s.listRecentSessions)
 	r.Get("/v1/sessions/search", s.searchSessions)
+	r.Get("/v1/sessions/active", s.listActiveSessions)
+	r.Get("/v1/sessions/attention/counts", s.getSessionAttentionCounts)
 	r.Get("/v1/sessions/{id}", s.getSession)
 	r.Get("/v1/sessions/{id}/summary", s.getSessionSummary)
 	r.Get("/v1/sessions/{id}/turns", s.listSessionTurns)
@@ -513,6 +515,52 @@ func (s *Server) listRecentSessions(w http.ResponseWriter, r *http.Request) {
 		out = []duckdb.Session{}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"sessions": out})
+}
+
+// parseSessionFilter extracts the fleet-view filter from query params.
+// Supports the same source_app / since / until window as the turns
+// endpoints so the global display-period selector drives both views
+// through the same wire shape.
+func parseSessionFilter(r *http.Request) duckdb.SessionFilter {
+	q := r.URL.Query()
+	f := duckdb.SessionFilter{
+		SourceApp: q.Get("source_app"),
+	}
+	if raw := q.Get("since"); raw != "" {
+		if t, err := time.Parse(time.RFC3339, raw); err == nil {
+			f.Since = &t
+		}
+	}
+	if raw := q.Get("until"); raw != "" {
+		if t, err := time.Parse(time.RFC3339, raw); err == nil {
+			f.Until = &t
+		}
+	}
+	return f
+}
+
+func (s *Server) listActiveSessions(w http.ResponseWriter, r *http.Request) {
+	limit := parseLimit(r, 200, 500)
+	filter := parseSessionFilter(r)
+	out, err := s.store.ListActiveSessionCards(r.Context(), filter, limit)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if out == nil {
+		out = []duckdb.SessionCard{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"sessions": out})
+}
+
+func (s *Server) getSessionAttentionCounts(w http.ResponseWriter, r *http.Request) {
+	filter := parseSessionFilter(r)
+	counts, err := s.store.CountSessionAttention(r.Context(), filter)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, counts)
 }
 
 func (s *Server) getSession(w http.ResponseWriter, r *http.Request) {

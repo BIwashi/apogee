@@ -444,6 +444,15 @@ func (r *Reconstructor) rescoreAttention(ctx context.Context, turnID string, evT
 		return
 	}
 
+	// Bubble the projection up to the session row so the fleet view can
+	// render one card per terminal without scanning turns on every poll.
+	// Only broadcast session.updated if the bubble actually changed
+	// anything meaningful — otherwise every span insert would fan out a
+	// no-op session event.
+	if changed := r.bubbleSessionLive(ctx, turn.SessionID); changed {
+		r.broadcastSession(ctx, turn.SessionID)
+	}
+
 	// If the turn just ended, record the pattern outcome in the history.
 	if r.HistoryWrite != nil && turn.Status != "running" && turn.Status != "" {
 		pattern := attention.ToolNamesForPattern(spans)
@@ -1563,6 +1572,64 @@ func (r *Reconstructor) broadcastSession(ctx context.Context, sessionID string) 
 		return
 	}
 	r.Hub.Broadcast(sse.NewSessionEvent(r.clock(), *sess))
+}
+
+// bubbleSessionLive copies the "representative turn" projection (attention
+// bucket, reason, score, phase, current_turn_id, live_state) onto the
+// session row. The representative turn is the oldest still-running turn
+// (so a fresh span mid-stream wins over a stale closed turn), or the
+// most recently closed turn if no running turn exists. live_state is
+// "live" in the running case and "idle" in the closed case, driving the
+// fleet view's grey-out rule. Returns true when a meaningful field
+// changed so the caller can decide whether to broadcast session.updated.
+func (r *Reconstructor) bubbleSessionLive(ctx context.Context, sessionID string) bool {
+	if r.store == nil || sessionID == "" {
+		return false
+	}
+	rep, err := r.store.RepresentativeTurn(ctx, sessionID)
+	if err != nil {
+		r.logger.Debug("bubble session: representative", "err", err)
+		return false
+	}
+	if rep == nil {
+		return false
+	}
+	current, err := r.store.GetSession(ctx, sessionID)
+	if err != nil || current == nil {
+		if err != nil {
+			r.logger.Debug("bubble session: load", "err", err)
+		}
+		return false
+	}
+	liveState := "idle"
+	if rep.Status == "running" {
+		liveState = "live"
+	}
+	var score float64
+	if rep.AttentionScore != nil {
+		score = *rep.AttentionScore
+	}
+	if current.AttentionState == rep.AttentionState &&
+		current.AttentionReason == rep.AttentionReason &&
+		current.CurrentTurnID == rep.TurnID &&
+		current.CurrentPhase == rep.Phase &&
+		current.LiveState == liveState {
+		return false
+	}
+	if err := r.store.UpdateSessionAttention(
+		ctx,
+		sessionID,
+		rep.AttentionState,
+		rep.AttentionReason,
+		score,
+		rep.TurnID,
+		rep.Phase,
+		liveState,
+	); err != nil {
+		r.logger.Debug("bubble session: update", "err", err)
+		return false
+	}
+	return true
 }
 
 // broadcastTurn loads the turn row and publishes a turn.* event using the
