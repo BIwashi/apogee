@@ -16,25 +16,42 @@ import (
 	"github.com/BIwashi/apogee/internal/version"
 )
 
-// runBootstrap is the first-run path: the daemon is not reachable, so
-// offer to run `apogee onboard --yes` on the user's behalf. On
-// success, transition to proxy mode. On cancel, exit cleanly. On
-// failure, show a native error dialog and exit non-zero.
+// runBootstrap is called when the daemon is not reachable at launch.
+// It first checks whether the daemon service is already installed
+// (launchd knows about dev.biwashi.apogee) — if so, it tries to
+// start the service without asking the user to re-onboard. Only when
+// the service doesn't exist at all does it offer full first-run setup.
 //
-// The flow is:
+// Flow (existing service):
+//  1. Kick the launchd service via `launchctl kickstart`.
+//  2. Poll /v1/healthz until the daemon answers.
+//  3. Fall through to runProxy.
 //
+// Flow (first-run):
 //  1. Confirm with a native Cocoa dialog (osascript).
-//  2. Post a "Setting up apogee…" notification so the user sees
-//     progress in Notification Center.
-//  3. Spawn `apogee onboard --yes` as a subprocess. onboard is
-//     smart about non-interactive stdin: with --yes set, it accepts
-//     every default and never prompts, so a headless spawn works.
-//  4. Poll /v1/healthz until the new daemon answers or we hit the
-//     timeout.
-//  5. Touch ~/.apogee/installed-by-desktop so the Homebrew cask
-//     knows it owns the daemon on uninstall.
+//  2. Post a "Setting up apogee…" notification.
+//  3. Spawn `apogee onboard --yes` as a subprocess.
+//  4. Poll /v1/healthz until the daemon answers.
+//  5. Touch ~/.apogee/installed-by-desktop marker.
 //  6. Fall through to runProxy.
 func runBootstrap(logger *slog.Logger, daemonAddr string) error {
+	// Fast path: the daemon service is registered with launchd but
+	// just isn't running right now (e.g. after a reboot before the
+	// KeepAlive fires, or the user manually unloaded it). Kick it
+	// back up without showing a setup dialog.
+	if launchdServiceExists() {
+		logger.Info("bootstrap: launchd service exists, kicking it")
+		if err := kickLaunchdService(logger); err != nil {
+			logger.Warn("bootstrap: kickstart failed, falling through to full onboard", "err", err)
+		} else {
+			if err := waitForDaemon(daemonAddr, 10*time.Second); err == nil {
+				logger.Info("bootstrap: daemon came up after kickstart")
+				return runProxy(logger, daemonAddr)
+			}
+			logger.Warn("bootstrap: daemon did not come up after kickstart, falling through to full onboard")
+		}
+	}
+
 	ok := showConfirmDialog(
 		"apogee is not set up on this machine yet. Set it up now?\n\n"+
 			"This will:\n"+
@@ -74,10 +91,6 @@ func runBootstrap(logger *slog.Logger, daemonAddr string) error {
 	}
 
 	if err := writeInstalledByDesktopMarker(version.Version); err != nil {
-		// Non-fatal: the daemon is up, the window can still open.
-		// A missing marker just means the cask uninstall path will
-		// leave the daemon in place on removal, which is the safer
-		// direction anyway.
 		logger.Warn("bootstrap: could not finalise installed-by-desktop marker", "err", err)
 	}
 
@@ -85,17 +98,34 @@ func runBootstrap(logger *slog.Logger, daemonAddr string) error {
 	return runProxy(logger, daemonAddr)
 }
 
+// launchdServiceExists checks whether the dev.biwashi.apogee service
+// is known to launchd. Uses `launchctl print` which exits 0 when the
+// service exists (running or not) and non-zero otherwise.
+func launchdServiceExists() bool {
+	uid := fmt.Sprintf("%d", os.Getuid())
+	return exec.Command("launchctl", "print", "gui/"+uid+"/dev.biwashi.apogee").Run() == nil
+}
+
+// kickLaunchdService tries to start the daemon via launchctl kickstart.
+func kickLaunchdService(logger *slog.Logger) error {
+	uid := fmt.Sprintf("%d", os.Getuid())
+	target := "gui/" + uid + "/dev.biwashi.apogee"
+	out, err := exec.Command("launchctl", "kickstart", target).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("launchctl kickstart %s: %s: %w", target, string(out), err)
+	}
+	logger.Info("bootstrap: kickstart succeeded", "target", target)
+	return nil
+}
+
 // runOnboardSubprocess execs `apogee onboard --yes` and waits for it
 // to finish. Stdout and stderr are wired to the desktop process's
 // own stdout/stderr so the output is visible in Console.app (or in a
 // terminal if the user launched the .app from `open -a`).
-//
-// Relies on the `apogee` CLI being on PATH. The Homebrew cask enforces
-// this by declaring a formula dependency on BIwashi/tap/apogee.
 func runOnboardSubprocess(ctx context.Context, logger *slog.Logger) error {
-	bin, err := exec.LookPath("apogee")
+	bin, err := findApogeeBinary()
 	if err != nil {
-		return fmt.Errorf("apogee CLI not found on PATH (is BIwashi/tap/apogee installed?): %w", err)
+		return fmt.Errorf("apogee CLI not found (is BIwashi/tap/apogee installed?): %w", err)
 	}
 	logger.Info("bootstrap: running onboard", "bin", bin)
 
@@ -206,6 +236,28 @@ func showNotification(title, message string) {
 		applescriptString(title),
 	)
 	_ = exec.Command("osascript", "-e", script).Run()
+}
+
+// findApogeeBinary locates the apogee CLI binary. macOS GUI apps
+// launched from Finder or Dock inherit a minimal PATH
+// (/usr/bin:/bin:/usr/sbin:/sbin) that excludes Homebrew prefixes.
+// We check PATH first, then probe well-known Homebrew install
+// locations so the bootstrap flow works even when the shell PATH
+// isn't inherited.
+func findApogeeBinary() (string, error) {
+	if bin, err := exec.LookPath("apogee"); err == nil {
+		return bin, nil
+	}
+	// Well-known Homebrew paths on Apple Silicon and Intel Macs.
+	for _, candidate := range []string{
+		"/opt/homebrew/bin/apogee",
+		"/usr/local/bin/apogee",
+	} {
+		if _, err := os.Stat(candidate); err == nil {
+			return candidate, nil
+		}
+	}
+	return "", fmt.Errorf("apogee binary not found in PATH or Homebrew prefixes (/opt/homebrew/bin, /usr/local/bin)")
 }
 
 // applescriptString escapes a Go string into an AppleScript string
