@@ -196,6 +196,22 @@ function shortHeadline(input: string, max = 90): string {
   return s.slice(0, max - 1).trimEnd() + "…";
 }
 
+// Compact duration string. Mirrors the helper the retired PhaseCard
+// used so a phase's wall-clock span still surfaces next to its turn
+// count on the Mission graph.
+function formatDuration(ms: number): string {
+  if (!ms || ms < 0) return "";
+  if (ms < 1000) return `${ms}ms`;
+  const seconds = Math.round(ms / 1000);
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  const remSec = seconds % 60;
+  if (minutes < 60) return remSec ? `${minutes}m${remSec}s` : `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  const remMin = minutes % 60;
+  return remMin ? `${hours}h${remMin}m` : `${hours}h`;
+}
+
 export default function MissionMap({ sessionId, turns }: MissionMapProps) {
   const { data: rollupData, mutate } = useApi<RollupResponse>(
     sessionId ? `/v1/sessions/${sessionId}/rollup` : null,
@@ -602,7 +618,12 @@ function PhaseRow({
               {tone.label}
             </span>
             <span className="font-mono text-[10px] text-[var(--text-muted)]">
-              {phase.turn_count} turns · {timeAgo(phase.started_at)}
+              {phase.turn_count} turn{phase.turn_count === 1 ? "" : "s"}
+              {formatDuration(phase.duration_ms)
+                ? ` · ${formatDuration(phase.duration_ms)}`
+                : ""}
+              {" · "}
+              {timeAgo(phase.started_at)}
             </span>
           </div>
           <p className="text-[13px] leading-snug text-[var(--artemis-white)]">
@@ -621,6 +642,11 @@ function PhaseRow({
                   <span>{step}</span>
                 </li>
               ))}
+              {phase.key_steps.length > 3 ? (
+                <li className="ml-2 font-mono text-[10px] text-[var(--text-muted)]">
+                  +{phase.key_steps.length - 3} more
+                </li>
+              ) : null}
             </ul>
           ) : null}
         </button>

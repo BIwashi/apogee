@@ -11,13 +11,11 @@ import {
   Orbit,
   ScrollText,
   Send,
-  Sparkles,
 } from "lucide-react";
 import Breadcrumb from "../components/Breadcrumb";
 import Card from "../components/Card";
 import KpiStrip from "../components/KpiStrip";
 import MissionMap from "../components/MissionMap";
-import PhaseTimeline from "../components/PhaseTimeline";
 import RawLogsPanel from "../components/RawLogsPanel";
 import RecentTurnsTable from "../components/RecentTurnsTable";
 import RollupPanel from "../components/RollupPanel";
@@ -41,10 +39,12 @@ import { formatClock, timeAgo } from "../lib/time";
 import { useSelection } from "../lib/url-state";
 
 /**
- * `/session?id=<id>` — tabbed session detail page. The five tabs mirror
- * Datadog APM's service detail: Overview / Turns / Trace / Logs / Metrics.
- * The active tab is stored in the `tab` URL param so deep links land on the
- * right surface.
+ * `/session?id=<id>` — tabbed session detail page. Mission is the default
+ * tab: it renders the session as a vertical git graph with a phase spine,
+ * operator intervention branches, TodoWrite plan, and tier-3 forecast
+ * tail. The remaining tabs mirror Datadog APM's service detail: Overview /
+ * Turns / Trace / Logs / Metrics. The active tab is stored in the `tab`
+ * URL param so deep links land on the right surface.
  *
  * This route is a flat query-string page, not a dynamic segment. That lets
  * `next.config.ts` use `output: "export"` (which forbids dynamic params that
@@ -53,18 +53,10 @@ import { useSelection } from "../lib/url-state";
  * of data is fetched client-side exactly like the old dynamic route.
  */
 
-type TabKey =
-  | "mission"
-  | "timeline"
-  | "overview"
-  | "turns"
-  | "trace"
-  | "logs"
-  | "metrics";
+type TabKey = "mission" | "overview" | "turns" | "trace" | "logs" | "metrics";
 
 const TABS: TabItem<TabKey>[] = [
   { key: "mission", label: "Mission", icon: Orbit },
-  { key: "timeline", label: "Timeline", icon: Sparkles },
   { key: "overview", label: "Overview", icon: Layers },
   { key: "turns", label: "Turns", icon: List },
   { key: "trace", label: "Trace", icon: Activity },
@@ -216,7 +208,6 @@ export default function SessionDetailPage() {
       <Tabs items={TABS} active={active} onSelect={setActive} />
 
       {active === "mission" && <MissionMap sessionId={id} turns={turns} />}
-      {active === "timeline" && <PhaseTimeline sessionId={id} turns={turns} />}
       {active === "overview" && (
         <OverviewTab
           id={id}
