@@ -70,6 +70,18 @@ func (s *Store) applyColumnAdditions(ctx context.Context) error {
 			return fmt.Errorf("add column %s.%s: %w", a.table, a.column, err)
 		}
 	}
+
+	// Post-column indexes — these reference columns that only exist after
+	// the additions above, so they cannot live in schema.sql (which runs
+	// before applyColumnAdditions on existing databases).
+	postIndexes := []string{
+		`CREATE INDEX IF NOT EXISTS idx_sessions_attention ON sessions(attention_state)`,
+	}
+	for _, idx := range postIndexes {
+		if _, err := s.db.ExecContext(ctx, idx); err != nil {
+			return fmt.Errorf("create post-migration index: %w", err)
+		}
+	}
 	return nil
 }
 

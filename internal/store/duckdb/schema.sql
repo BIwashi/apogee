@@ -26,7 +26,9 @@ CREATE TABLE IF NOT EXISTS sessions (
 );
 CREATE INDEX IF NOT EXISTS idx_sessions_last_seen ON sessions(last_seen_at DESC);
 CREATE INDEX IF NOT EXISTS idx_sessions_source_app ON sessions(source_app);
-CREATE INDEX IF NOT EXISTS idx_sessions_attention ON sessions(attention_state);
+-- idx_sessions_attention is created in applyColumnAdditions (migrate.go)
+-- because attention_state is a late-added column that may not exist when
+-- schema.sql runs against an older database for the first time.
 
 -- Turns: one row per user turn (one trace).
 CREATE TABLE IF NOT EXISTS turns (
