@@ -2,15 +2,15 @@
 
 import { useMemo } from "react";
 import Link from "next/link";
-import type { PhaseBlock, Turn } from "../lib/api-types";
+import type { PhaseBlock, PhaseKind, Turn } from "../lib/api-types";
 import { formatClock, timeAgo } from "../lib/time";
-import { PHASE_COLORS } from "./PhaseCard";
 import SideDrawer from "./SideDrawer";
 
 /**
  * PhaseDrawer — the full-detail side drawer that opens when an operator
- * clicks a PhaseCard. Reuses the PR #29 SideDrawer primitive for the
- * slide animation, focus trap, Esc handler, and click-outside dismissal.
+ * clicks a phase on the Mission git graph. Reuses the PR #29 SideDrawer
+ * primitive for the slide animation, focus trap, Esc handler, and
+ * click-outside dismissal.
  *
  * Contents:
  *   - Headline + time range + kind chip + duration
@@ -19,6 +19,23 @@ import SideDrawer from "./SideDrawer";
  *   - Tool summary as a horizontal bar chart
  *   - The list of turns in this phase, each a link to /turn/
  */
+
+// Drawer accent colour per PhaseKind. Intentionally uses status tokens
+// rather than MissionMap's Artemis-palette KIND_TONE so the drawer's
+// chrome reads as "detail panel" rather than "graph node zoom-in". The
+// kind chip stays distinct enough to recognise, but the drawer doesn't
+// try to visually merge with the graph node it opened from.
+const PHASE_COLORS: Record<PhaseKind, string> = {
+  implement: "var(--status-info)",
+  review: "var(--artemis-earth)",
+  debug: "var(--status-warning)",
+  plan: "var(--text-muted)",
+  test: "var(--status-warning)",
+  commit: "var(--status-success)",
+  delegate: "var(--accent)",
+  explore: "var(--status-info)",
+  other: "var(--text-muted)",
+};
 
 interface PhaseDrawerProps {
   open: boolean;
