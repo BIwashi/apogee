@@ -159,7 +159,7 @@ export default function SessionsPage() {
                         <AttentionDot state={hit.attention_state} />
                       </td>
                       <td
-                        className="max-w-0 overflow-hidden px-3 py-2"
+                        className="overflow-hidden px-3 py-2"
                         onClick={(e) => e.stopPropagation()}
                       >
                         <SessionLabel
@@ -173,13 +173,15 @@ export default function SessionsPage() {
                           size="md"
                         />
                       </td>
-                      <td className="max-w-0 overflow-hidden truncate px-3 py-2 text-[var(--artemis-white)]">
+                      <td className="overflow-hidden truncate px-3 py-2 text-[var(--artemis-white)]">
                         {hit.source_app || "—"}
                       </td>
-                      <td className="max-w-0 overflow-hidden truncate px-3 py-2 text-[11px] text-[var(--text-muted)]">
-                        {hit.latest_headline ||
-                          hit.latest_prompt_snippet ||
-                          "—"}
+                      <td className="overflow-hidden px-3 py-2 text-[11px] text-[var(--text-muted)]">
+                        <span className="line-clamp-1 break-all">
+                          {hit.latest_headline ||
+                            hit.latest_prompt_snippet ||
+                            "—"}
+                        </span>
                       </td>
                       <td className="px-3 py-2 font-mono text-[11px] text-[var(--text-muted)]">
                         {timeAgo(hit.last_seen_at)}
