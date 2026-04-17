@@ -38,7 +38,12 @@ if [ ! -f "$BIN_PATH" ]; then
 fi
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-ICON_SRC="$REPO_ROOT/assets/branding/apogee-icon-256.png"
+# Prefer the 1024 px master; fall back to the legacy 256 px file so
+# older checkouts that have not re-run generate-branding.sh still work.
+ICON_SRC="$REPO_ROOT/assets/branding/apogee-icon-1024.png"
+if [ ! -f "$ICON_SRC" ]; then
+  ICON_SRC="$REPO_ROOT/assets/branding/apogee-icon-256.png"
+fi
 
 BIN_DIR="$(cd "$(dirname "$BIN_PATH")" && pwd)"
 APP_DIR="$BIN_DIR/Apogee.app"
@@ -58,24 +63,35 @@ mkdir -p "$MACOS_DIR" "$RES_DIR"
 cp "$BIN_PATH" "$MACOS_DIR/apogee-desktop"
 chmod +x "$MACOS_DIR/apogee-desktop"
 
-# Build an .icns from the 256px branding PNG. sips + iconutil ship with
-# every macOS install, so we do not pull in extra tooling. If the source
-# PNG is missing (e.g. a stripped release checkout) we skip the icon
-# rather than failing — the .app still launches without one.
+# Build an .icns from the branding PNG. sips + iconutil ship with every
+# macOS install, so we do not pull in extra tooling. If the source PNG
+# is missing (e.g. a stripped release checkout) we skip the icon rather
+# than failing — the .app still launches without one.
+#
+# Apple's iconset requires these 10 entries:
+#   icon_16x16.png      (16px)    icon_16x16@2x.png    (32px)
+#   icon_32x32.png      (32px)    icon_32x32@2x.png    (64px)
+#   icon_128x128.png    (128px)   icon_128x128@2x.png  (256px)
+#   icon_256x256.png    (256px)   icon_256x256@2x.png  (512px)
+#   icon_512x512.png    (512px)   icon_512x512@2x.png  (1024px)
 if [ -f "$ICON_SRC" ]; then
   ICONSET="$(mktemp -d)/apogee.iconset"
   mkdir -p "$ICONSET"
-  # Apple wants 10 sizes in the iconset. Downscaling from 256 to anything
-  # larger is a no-op (sips would upscale), so we only populate the sizes
-  # <= 256 and let macOS interpolate the rest. The Dock still picks a
-  # reasonable icon from what we provide.
-  for size in 16 32 64 128 256; do
+  for size in 16 32 64 128 256 512 1024; do
     sips -z "$size" "$size" "$ICON_SRC" \
-      --out "$ICONSET/icon_${size}x${size}.png" >/dev/null
+      --out "$ICONSET/_${size}.png" >/dev/null
   done
-  cp "$ICONSET/icon_16x16.png"   "$ICONSET/icon_16x16@2x.png"   2>/dev/null || true
-  cp "$ICONSET/icon_32x32.png"   "$ICONSET/icon_32x32@2x.png"   2>/dev/null || true
-  cp "$ICONSET/icon_128x128.png" "$ICONSET/icon_128x128@2x.png" 2>/dev/null || true
+  cp "$ICONSET/_16.png"   "$ICONSET/icon_16x16.png"
+  cp "$ICONSET/_32.png"   "$ICONSET/icon_16x16@2x.png"
+  cp "$ICONSET/_32.png"   "$ICONSET/icon_32x32.png"
+  cp "$ICONSET/_64.png"   "$ICONSET/icon_32x32@2x.png"
+  cp "$ICONSET/_128.png"  "$ICONSET/icon_128x128.png"
+  cp "$ICONSET/_256.png"  "$ICONSET/icon_128x128@2x.png"
+  cp "$ICONSET/_256.png"  "$ICONSET/icon_256x256.png"
+  cp "$ICONSET/_512.png"  "$ICONSET/icon_256x256@2x.png"
+  cp "$ICONSET/_512.png"  "$ICONSET/icon_512x512.png"
+  cp "$ICONSET/_1024.png" "$ICONSET/icon_512x512@2x.png"
+  rm -f "$ICONSET"/_*.png
   iconutil -c icns "$ICONSET" -o "$RES_DIR/apogee.icns"
   rm -rf "$(dirname "$ICONSET")"
   ICON_KEY="<key>CFBundleIconFile</key><string>apogee</string>"
