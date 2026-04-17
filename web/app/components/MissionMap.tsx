@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  AlertTriangle,
   Bug,
   CheckCheck,
   Compass,
@@ -21,6 +22,7 @@ import {
 import type { LucideIcon } from "lucide-react";
 import { apiUrl } from "../lib/api";
 import type {
+  ApogeeEvent,
   ForecastPhase,
   Intervention,
   InterventionListResponse,
@@ -28,10 +30,13 @@ import type {
   PhaseKind,
   Rollup,
   RollupResponse,
+  SessionPayload,
   SessionTodosResponse,
   TodoItem,
   Turn,
 } from "../lib/api-types";
+import { SSE_EVENT_TYPES } from "../lib/api-types";
+import { useEventStream } from "../lib/sse";
 import { useApi } from "../lib/swr";
 import { timeAgo } from "../lib/time";
 import Card from "./Card";
@@ -201,6 +206,182 @@ function shortHeadline(input: string, max = 90): string {
   return s.slice(0, max - 1).trimEnd() + "…";
 }
 
+/**
+ * NarrativeGenerationState — the observable state of the tier-3 narrative
+ * worker, as seen from the Mission UI.
+ *
+ *   - `generating`: true from the moment the POST kicks off until one of
+ *     the exit signals fires. The spinning Re-chart button and the
+ *     full-page "Charting mission" card both watch this flag.
+ *   - `elapsedSeconds`: integer seconds since the POST. Drives the
+ *     "12s elapsed" counter so operators can see the worker is still
+ *     making progress through Sonnet's 5–30s call.
+ *   - `error`: human-readable string when the POST fails outright, the
+ *     safety timeout expires, or the narrative worker reports an error
+ *     upstream. `null` otherwise.
+ *   - `start()`: kick off a new generation. No-op while `generating`.
+ */
+interface NarrativeGenerationState {
+  generating: boolean;
+  elapsedSeconds: number;
+  error: string | null;
+  start: () => void;
+}
+
+// Safety timeout — how long to wait for the narrative worker before
+// deciding it is wedged and flipping the UI back to the error state.
+// The Sonnet call itself is bounded by summarizer.Config.Timeout
+// (120s default on the server), so 150s leaves headroom for the rollup
+// to write + SSE to propagate before the UI gives up.
+const NARRATIVE_SAFETY_TIMEOUT_MS = 150_000;
+
+/**
+ * useNarrativeGeneration — tracks the lifecycle of a tier-3 narrative
+ * generation request against a single session. The worker is
+ * asynchronous: POST /v1/sessions/:id/narrative returns 202 immediately
+ * but the actual Sonnet call happens in the background. This hook
+ * bridges that gap for the UI.
+ *
+ * Signals that flip `generating` back to false:
+ *
+ *   1. The rollup's `narrative_generated_at` timestamp advances past
+ *      the baseline captured at POST time. Detected via SWR polling
+ *      on `/v1/sessions/:id/rollup` plus an SSE-triggered revalidate
+ *      when the collector broadcasts a `session.updated` event for
+ *      this session.
+ *   2. The safety timeout (150s) expires.
+ *   3. The POST itself errors (network failure, 500, etc.).
+ *
+ * The elapsed-time counter is driven by a 1Hz setInterval while
+ * `generating` is true. Counter is reset to 0 when a new generation
+ * starts, and left at its final value after completion so operators
+ * can see "took 17s" briefly before the graph renders.
+ */
+interface NarrativeRequest {
+  /** rollup.narrative_generated_at value captured at POST time. The
+   *  request is considered complete once the current value differs. */
+  baseline: string | null;
+  /** Date.now() when the POST was sent. Drives the elapsed counter
+   *  and the safety timeout deadline. */
+  startedAt: number;
+}
+
+function useNarrativeGeneration({
+  sessionId,
+  currentGeneratedAt,
+  revalidate,
+}: {
+  sessionId: string;
+  currentGeneratedAt: string | null;
+  revalidate: () => void;
+}): NarrativeGenerationState {
+  // The active request. `null` when idle. Set by start(), cleared by
+  // the timeout callback or the fetch-error callback. Completion via
+  // baseline-advance is handled as a *derived* state below — we do not
+  // clear `request` on completion so `elapsedSeconds` stays on its
+  // final value for a beat ("took 17s") before the graph renders.
+  const [request, setRequest] = useState<NarrativeRequest | null>(null);
+  // Wall-clock ticker. Re-rendered every 1Hz while a request is live
+  // so the elapsed-time counter updates. Decoupled from `request` so
+  // we do not have to call setState from the completion-checking
+  // render path.
+  const [now, setNow] = useState(() => Date.now());
+  const [error, setError] = useState<string | null>(null);
+
+  // Derived: is the request still in flight? True while we have an
+  // active request whose baseline has not yet been displaced by a
+  // newer rollup. This is computed each render from current props
+  // and state, so baseline-advance completion needs no setState
+  // (and therefore no react-hooks/set-state-in-effect warning).
+  const generating =
+    request !== null && currentGeneratedAt === request.baseline;
+
+  const elapsedSeconds = request
+    ? Math.max(0, Math.floor((now - request.startedAt) / 1000))
+    : 0;
+
+  // 1Hz ticker — only runs while a request is active. Updates the
+  // `now` clock which in turn drives `elapsedSeconds` above. The
+  // first tick fires a second after start() so the first render
+  // briefly shows "0s elapsed"; that is fine — it is honest.
+  useEffect(() => {
+    if (!request) return;
+    const id = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => {
+      window.clearInterval(id);
+    };
+  }, [request]);
+
+  // Safety timeout: when the worker never reports a new rollup within
+  // the grace window, flip to the error state so the button does not
+  // stay permanently disabled.
+  useEffect(() => {
+    if (!request) return;
+    const timer = window.setTimeout(() => {
+      setRequest(null);
+      setError(
+        "Narrative worker did not respond within 150s. It may still finish in the background — try Re-chart again in a moment.",
+      );
+    }, NARRATIVE_SAFETY_TIMEOUT_MS);
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [request]);
+
+  // SSE booster: when the collector broadcasts `session.updated` for
+  // this session, poke SWR to revalidate the rollup immediately
+  // instead of waiting for the next 10s poll tick. This shaves most
+  // of the detection latency off the "clicked Re-chart → graph
+  // appears" loop. Polling remains the fallback for operators whose
+  // SSE stream is down.
+  const sessionFilter = useMemo(
+    () => (sessionId ? { sessionId } : undefined),
+    [sessionId],
+  );
+  const { subscribe } =
+    useEventStream<ApogeeEvent<SessionPayload>>(sessionFilter);
+  useEffect(() => {
+    if (!generating) return;
+    return subscribe((event) => {
+      if (event.type === SSE_EVENT_TYPES.SessionUpdated) {
+        revalidate();
+      }
+    });
+  }, [generating, subscribe, revalidate]);
+
+  const start = useCallback(() => {
+    if (!sessionId) return;
+    // Ignore clicks that land while a request is already in flight.
+    // Intentionally using a closure over currentGeneratedAt rather
+    // than the derived `generating` flag so we do not need to list
+    // `generating` in the dependency array and re-create the
+    // callback on every tick.
+    setRequest((prev) => {
+      if (prev !== null) return prev;
+      return { baseline: currentGeneratedAt, startedAt: Date.now() };
+    });
+    setError(null);
+    void fetch(apiUrl(`/v1/sessions/${sessionId}/narrative`), {
+      method: "POST",
+    })
+      .then((res) => {
+        if (!res.ok) {
+          throw new Error(`POST /narrative returned HTTP ${res.status}`);
+        }
+      })
+      .catch((err: unknown) => {
+        setRequest(null);
+        setError(
+          err instanceof Error
+            ? err.message
+            : "Failed to enqueue narrative generation.",
+        );
+      });
+  }, [sessionId, currentGeneratedAt]);
+
+  return { generating, elapsedSeconds, error, start };
+}
+
 // Compact duration string. Mirrors the helper the retired PhaseCard
 // used so a phase's wall-clock span still surfaces next to its turn
 // count on the Mission graph.
@@ -265,22 +446,25 @@ export default function MissionMap({
     [turns],
   );
 
-  const [pending, setPending] = useState(false);
   const [active, setActive] = useState<PhaseBlock | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
 
-  const onGenerate = useCallback(async () => {
-    if (!sessionId || pending) return;
-    setPending(true);
-    try {
-      await fetch(apiUrl(`/v1/sessions/${sessionId}/narrative`), {
-        method: "POST",
-      });
-      window.setTimeout(() => void mutate(), 1500);
-    } finally {
-      setPending(false);
-    }
-  }, [sessionId, pending, mutate]);
+  // Narrative generation progress tracking. The tier-3 narrative worker
+  // runs asynchronously — the POST returns 202 immediately, the actual
+  // Sonnet call takes 5-30s in the background. We keep `generating` true
+  // from the moment the POST kicks off until one of three exit signals
+  // fires: (a) the rollup's narrative_generated_at timestamp advances
+  // past the baseline we captured at POST time (detected via SWR polling
+  // + SSE-triggered revalidation), (b) a safety timeout expires so a
+  // wedged worker cannot permanently disable the button, or (c) the POST
+  // itself errors. `startedAt` drives the elapsed-time counter so
+  // operators see visible progress; `error` surfaces the timeout /
+  // network failure state to the empty-state card.
+  const narrative = useNarrativeGeneration({
+    sessionId,
+    currentGeneratedAt: rollup?.narrative_generated_at ?? null,
+    revalidate: mutate,
+  });
 
   const onPhaseClick = useCallback((phase: PhaseBlock) => {
     setActive(phase);
@@ -294,8 +478,7 @@ export default function MissionMap({
         title="Mission not yet charted"
         body="A session rollup is needed before the mission map can render. The rollup worker runs automatically once at least two turns have closed, or you can trigger it manually."
         buttonLabel="Generate narrative"
-        pending={pending}
-        onGenerate={onGenerate}
+        narrative={narrative}
       />
     );
   }
@@ -307,8 +490,7 @@ export default function MissionMap({
         title="No phase narrative yet"
         body="The mission graph plots one node per semantic phase from the tier-3 narrative. That worker has not run for this session yet."
         buttonLabel="Generate narrative"
-        pending={pending}
-        onGenerate={onGenerate}
+        narrative={narrative}
       />
     );
   }
@@ -326,13 +508,23 @@ export default function MissionMap({
         actions={
           <button
             type="button"
-            onClick={onGenerate}
-            disabled={pending}
+            onClick={narrative.start}
+            disabled={narrative.generating}
             className="inline-flex items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--bg-raised)] px-3 py-1.5 font-display text-[10px] uppercase tracking-[0.16em] text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-overlay)] hover:text-[var(--artemis-white)] disabled:cursor-not-allowed disabled:opacity-60"
-            title="Re-run the tier-3 narrative worker"
+            title={
+              narrative.error
+                ? `Last attempt failed: ${narrative.error}`
+                : "Re-run the tier-3 narrative worker"
+            }
           >
-            <Sparkles size={12} strokeWidth={1.75} />
-            {pending ? "Re-charting…" : "Re-chart"}
+            {narrative.generating ? (
+              <Loader size={12} strokeWidth={1.75} className="animate-spin" />
+            ) : (
+              <Sparkles size={12} strokeWidth={1.75} />
+            )}
+            {narrative.generating
+              ? `Re-charting… ${narrative.elapsedSeconds}s`
+              : "Re-chart"}
           </button>
         }
       />
@@ -1005,15 +1197,14 @@ function MissionEmpty({
   title,
   body,
   buttonLabel,
-  pending,
-  onGenerate,
+  narrative,
 }: {
   title: string;
   body: string;
   buttonLabel: string;
-  pending: boolean;
-  onGenerate: () => void;
+  narrative: NarrativeGenerationState;
 }) {
+  const { generating, elapsedSeconds, error, start } = narrative;
   return (
     <div className="flex flex-col gap-4">
       <SectionHeader title="Mission" subtitle="Git graph of the session arc." />
@@ -1023,24 +1214,70 @@ function MissionEmpty({
           aria-hidden="true"
         />
         <div className="relative z-10 mx-auto flex max-w-[520px] flex-col items-center gap-4 text-center">
-          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-[var(--bg-raised)] text-[var(--artemis-earth)]">
-            <CheckCheck size={28} strokeWidth={1.5} />
-          </div>
-          <p className="font-display text-[11px] uppercase tracking-[0.16em] text-[var(--artemis-white)]">
-            {title}
-          </p>
-          <p className="text-[12px] leading-relaxed text-[var(--text-muted)]">
-            {body}
-          </p>
-          <button
-            type="button"
-            onClick={onGenerate}
-            disabled={pending}
-            className="mt-2 inline-flex items-center gap-2 rounded border border-[var(--accent)]/40 bg-[var(--accent)]/15 px-4 py-2 font-display text-[11px] uppercase tracking-[0.16em] text-[var(--artemis-white)] transition-colors hover:bg-[var(--accent)]/25 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            <Sparkles size={12} strokeWidth={1.75} />
-            {pending ? "Charting…" : buttonLabel}
-          </button>
+          {generating ? (
+            <>
+              {/* Active-generation state. Big spinner + elapsed-time
+                  counter so operators can see the worker is still
+                  running during the 5–30s Sonnet call. */}
+              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-[var(--accent)]/15 text-[var(--accent)]">
+                <Loader size={28} strokeWidth={1.5} className="animate-spin" />
+              </div>
+              <p className="font-display text-[11px] uppercase tracking-[0.16em] text-[var(--artemis-white)]">
+                Charting mission
+              </p>
+              <p className="text-[12px] leading-relaxed text-[var(--text-muted)]">
+                The tier-3 narrative worker is reading the session turns and
+                generating the phase story. Sonnet usually takes
+                5–30&nbsp;seconds. The graph will appear as soon as the worker
+                finishes.
+              </p>
+              <p className="font-mono text-[11px] text-[var(--text-muted)]">
+                {elapsedSeconds}s elapsed
+              </p>
+            </>
+          ) : error ? (
+            <>
+              {/* Error state. Shown when the POST fails outright or
+                  the safety timeout expires without a rollup refresh. */}
+              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-[var(--status-critical)]/15 text-[var(--status-critical)]">
+                <AlertTriangle size={24} strokeWidth={1.5} />
+              </div>
+              <p className="font-display text-[11px] uppercase tracking-[0.16em] text-[var(--artemis-white)]">
+                Narrative generation failed
+              </p>
+              <p className="text-[12px] leading-relaxed text-[var(--text-muted)]">
+                {error}
+              </p>
+              <button
+                type="button"
+                onClick={start}
+                className="mt-2 inline-flex items-center gap-2 rounded border border-[var(--accent)]/40 bg-[var(--accent)]/15 px-4 py-2 font-display text-[11px] uppercase tracking-[0.16em] text-[var(--artemis-white)] transition-colors hover:bg-[var(--accent)]/25"
+              >
+                <Sparkles size={12} strokeWidth={1.75} />
+                Retry
+              </button>
+            </>
+          ) : (
+            <>
+              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-[var(--bg-raised)] text-[var(--artemis-earth)]">
+                <CheckCheck size={28} strokeWidth={1.5} />
+              </div>
+              <p className="font-display text-[11px] uppercase tracking-[0.16em] text-[var(--artemis-white)]">
+                {title}
+              </p>
+              <p className="text-[12px] leading-relaxed text-[var(--text-muted)]">
+                {body}
+              </p>
+              <button
+                type="button"
+                onClick={start}
+                className="mt-2 inline-flex items-center gap-2 rounded border border-[var(--accent)]/40 bg-[var(--accent)]/15 px-4 py-2 font-display text-[11px] uppercase tracking-[0.16em] text-[var(--artemis-white)] transition-colors hover:bg-[var(--accent)]/25"
+              >
+                <Sparkles size={12} strokeWidth={1.75} />
+                {buttonLabel}
+              </button>
+            </>
+          )}
         </div>
       </Card>
     </div>
