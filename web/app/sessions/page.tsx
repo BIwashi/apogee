@@ -112,22 +112,22 @@ export default function SessionsPage() {
             <table className="w-full table-fixed border-collapse text-[12px]">
               <thead>
                 <tr className="text-left text-[10px] uppercase tracking-[0.14em] text-[var(--text-muted)]">
-                  <th className="w-[140px] border-b border-[var(--border)] px-3 py-2 font-medium">
+                  <th className="w-[52px] border-b border-[var(--border)] px-3 py-2 font-medium">
                     Attention
                   </th>
-                  <th className="w-[20%] border-b border-[var(--border)] px-3 py-2 font-medium">
+                  <th className="w-[22%] border-b border-[var(--border)] px-3 py-2 font-medium">
                     Session
                   </th>
-                  <th className="w-[11%] border-b border-[var(--border)] px-3 py-2 font-medium">
+                  <th className="w-[12%] border-b border-[var(--border)] px-3 py-2 font-medium">
                     Source App
                   </th>
                   <th className="border-b border-[var(--border)] px-3 py-2 font-medium">
                     Headline
                   </th>
-                  <th className="w-[90px] border-b border-[var(--border)] px-3 py-2 font-medium">
+                  <th className="w-[10%] border-b border-[var(--border)] px-3 py-2 font-medium">
                     Last Seen
                   </th>
-                  <th className="w-[64px] border-b border-[var(--border)] px-3 py-2 text-right font-medium">
+                  <th className="w-[60px] border-b border-[var(--border)] px-3 py-2 text-right font-medium">
                     Turns
                   </th>
                   <th className="w-[72px] border-b border-[var(--border)] px-3 py-2 font-medium"></th>
@@ -155,7 +155,7 @@ export default function SessionsPage() {
                       }
                       className="group cursor-pointer border-b border-[var(--border)] transition-colors hover:bg-[var(--bg-raised)]"
                     >
-                      <td className="overflow-hidden px-3 py-2">
+                      <td className="px-3 py-2">
                         <AttentionDot state={hit.attention_state} />
                       </td>
                       <td
