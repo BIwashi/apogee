@@ -768,6 +768,18 @@ export interface Agent {
   total_duration_ms: number;
   /** Latest turn headline from the agent's session. Empty when no headline exists. */
   summary_text?: string;
+  /**
+   * LLM-generated short label describing what this agent is doing in the
+   * session — produced by the summarizer's agent worker. Replaces
+   * agent_type/agent_id as the primary display string when present.
+   */
+  title?: string;
+  /** One-sentence description of the agent's responsibility in the session. */
+  role?: string;
+  /** Model alias that produced the title/role. */
+  summary_model?: string;
+  /** When the title/role was generated. */
+  summary_at?: string;
 }
 
 export interface AgentsResponse {

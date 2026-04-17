@@ -99,6 +99,12 @@ func New(cfg Config, store *duckdb.Store, logger *slog.Logger) *Server {
 	}
 	rec.OnSessionEnded = func(sessionID string) {
 		summarizerSvc.EnqueueRollup(sessionID, summarizer.RollupReasonSessionEnd)
+		// Per-agent labels are independent of the session rollup but fired
+		// on the same trigger so the /agents catalog refreshes alongside
+		// the session detail page. The fan-out is also wired off the
+		// rollup-written callback for live sessions where no SessionEnd
+		// hook fires.
+		summarizerSvc.EnqueueAgentSummariesForSession(context.Background(), sessionID, summarizer.AgentSummaryReasonSessionEnd)
 	}
 	rec.OnSessionLiveTick = func(sessionID string) {
 		summarizerSvc.EnqueueLiveStatus(sessionID, summarizer.LiveStatusReasonSpanInserted)
@@ -383,6 +389,8 @@ func (s *Server) buildRouter() chi.Router {
 	r.Get("/v1/agents/recent", s.listRecentAgents)
 	// PR #36: cross-cutting AgentDrawer detail endpoint.
 	r.Get("/v1/agents/{id}/detail", s.getAgentDetail)
+	// Manual agent-summary regeneration. Body: optional {"reason": "..."}.
+	r.Post("/v1/agents/{id}/summarize", s.summarizeAgent)
 	// PR #36: cross-cutting SpanDrawer detail endpoint.
 	r.Get("/v1/spans/{trace_id}/{span_id}/detail", s.getSpanDetail)
 	r.Get("/v1/insights/overview", s.getInsightsOverview)

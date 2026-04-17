@@ -177,6 +177,25 @@ CREATE TABLE IF NOT EXISTS session_rollups (
 );
 CREATE INDEX IF NOT EXISTS idx_rollups_generated ON session_rollups(generated_at DESC);
 
+-- Agent summaries: per-(agent, session) LLM-generated label produced by the
+-- summarizer's agent worker (Haiku tier). Surfaced in the /agents catalog
+-- so each row carries a "what is this agent doing?" headline instead of the
+-- generic agent_type label. One row per (agent_id, session_id), replaced
+-- in place by the worker when activity grows past the staleness threshold.
+CREATE TABLE IF NOT EXISTS agent_summaries (
+  agent_id        VARCHAR NOT NULL,
+  session_id      VARCHAR NOT NULL,
+  generated_at    TIMESTAMP NOT NULL,
+  model           VARCHAR NOT NULL,
+  title           VARCHAR NOT NULL,
+  role            VARCHAR,
+  summary_json    VARCHAR NOT NULL,
+  invocation_count_at_generation BIGINT NOT NULL,
+  PRIMARY KEY (agent_id, session_id)
+);
+CREATE INDEX IF NOT EXISTS idx_agent_summaries_session ON agent_summaries(session_id);
+CREATE INDEX IF NOT EXISTS idx_agent_summaries_generated ON agent_summaries(generated_at DESC);
+
 -- Interventions: operator-initiated messages pushed into a live Claude Code
 -- session. The lifecycle is queued -> claimed -> delivered -> consumed,
 -- with cancelled / expired as terminal off-ramps. A claim is an atomic

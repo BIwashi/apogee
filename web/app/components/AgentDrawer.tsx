@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { Users } from "lucide-react";
+import { useCallback, useMemo, useState } from "react";
+import { RefreshCw, Users } from "lucide-react";
 import type { Agent, Turn } from "../lib/api-types";
+import { apiFetch } from "../lib/api";
 import { useDrawerState } from "../lib/drawer";
 import { useApi } from "../lib/swr";
 import { formatClock, timeAgo } from "../lib/time";
@@ -62,6 +63,7 @@ function humanDuration(ms: number | undefined | null): string {
 
 export default function AgentDrawer({ agentID }: AgentDrawerProps) {
   const [tab, setTab] = useState<TabKey>("details");
+  const [regenerating, setRegenerating] = useState(false);
   const { open } = useDrawerState();
 
   const detailQuery = useApi<AgentDetail>(
@@ -80,7 +82,27 @@ export default function AgentDrawer({ agentID }: AgentDrawerProps) {
   );
 
   const kindLabel = agent?.kind === "main" ? "Main agent" : "Subagent";
-  const title = agent?.agent_type || "main";
+  // Prefer the LLM-generated title; fall back to agent_type or "main" so the
+  // drawer header still reads sensibly before the summarizer has run.
+  const title = agent?.title || agent?.agent_type || "main";
+
+  const regenerate = useCallback(async () => {
+    if (!agentID || regenerating) return;
+    setRegenerating(true);
+    try {
+      await apiFetch(`/v1/agents/${encodeURIComponent(agentID)}/summarize`, {
+        method: "POST",
+      });
+      // SSE refreshes the SWR cache once the summary lands; we still revalidate
+      // so the user sees the staleness indicator drop quickly.
+      await detailQuery.mutate();
+    } catch (err) {
+      // Non-fatal — the API returns 503 when the summarizer is disabled.
+      console.warn("agent summary regenerate failed", err);
+    } finally {
+      setRegenerating(false);
+    }
+  }, [agentID, regenerating, detailQuery]);
 
   return (
     <div className="flex flex-col gap-4">
@@ -118,6 +140,54 @@ export default function AgentDrawer({ agentID }: AgentDrawerProps) {
           )}
           {agent && (
             <>
+              <DrawerSection
+                title="Summary"
+                action={
+                  <button
+                    type="button"
+                    onClick={regenerate}
+                    disabled={regenerating}
+                    className="inline-flex items-center gap-1 rounded border border-[var(--border)] px-2 py-0.5 font-mono text-[10px] uppercase tracking-wide text-[var(--text-muted)] transition hover:border-[var(--text-muted)] hover:text-[var(--artemis-white)] disabled:opacity-50"
+                    title="Regenerate this agent's summary"
+                  >
+                    <RefreshCw
+                      size={10}
+                      strokeWidth={1.5}
+                      className={regenerating ? "animate-spin" : ""}
+                    />
+                    {regenerating ? "queueing…" : "regenerate"}
+                  </button>
+                }
+              >
+                {agent.title || agent.role ? (
+                  <div className="flex flex-col gap-1">
+                    {agent.title ? (
+                      <p className="text-[12px] text-[var(--artemis-white)]">
+                        {agent.title}
+                      </p>
+                    ) : null}
+                    {agent.role ? (
+                      <p className="text-[11px] leading-relaxed text-[var(--text-muted)]">
+                        {agent.role}
+                      </p>
+                    ) : null}
+                    {agent.summary_at ? (
+                      <p className="font-mono text-[10px] text-[var(--text-faint)]">
+                        generated {timeAgo(agent.summary_at)}
+                        {agent.summary_model
+                          ? ` · ${agent.summary_model}`
+                          : ""}
+                      </p>
+                    ) : null}
+                  </div>
+                ) : (
+                  <p className="text-[11px] text-[var(--text-muted)]">
+                    No summary yet. The agent worker will label this agent
+                    after the next session rollup, or click regenerate.
+                  </p>
+                )}
+              </DrawerSection>
+
               <DrawerSection title="Identity">
                 <DrawerKeyValue
                   rows={[

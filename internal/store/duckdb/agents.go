@@ -13,6 +13,11 @@ import (
 // distinct agent the collector has seen, with counters pulled from the
 // spans table directly. Used by the /v1/agents/recent endpoint and the
 // /agents dashboard page.
+//
+// Title and Role are populated from the agent_summaries table when present.
+// Both fall back to empty strings until the summarizer's agent worker has
+// produced a row, and the catalog UI falls back to AgentType/AgentID for the
+// display name in that case.
 type Agent struct {
 	AgentID         string         `json:"agent_id"`
 	AgentType       string         `json:"agent_type"`
@@ -23,6 +28,10 @@ type Agent struct {
 	InvocationCount int64          `json:"invocation_count"`
 	TotalDurationMs int64          `json:"total_duration_ms"`
 	SummaryText     string         `json:"summary_text,omitempty"`
+	Title           string         `json:"title,omitempty"`
+	Role            string         `json:"role,omitempty"`
+	SummaryModel    string         `json:"summary_model,omitempty"`
+	SummaryAt       *time.Time     `json:"summary_at,omitempty"`
 }
 
 // MarshalJSON projects Agent into the on-the-wire shape expected by
@@ -30,15 +39,19 @@ type Agent struct {
 // underlying row has no parent.
 func (a Agent) MarshalJSON() ([]byte, error) {
 	type alias struct {
-		AgentID         string    `json:"agent_id"`
-		AgentType       string    `json:"agent_type"`
-		Kind            string    `json:"kind"`
-		ParentAgentID   *string   `json:"parent_agent_id"`
-		SessionID       string    `json:"session_id"`
-		LastSeen        time.Time `json:"last_seen"`
-		InvocationCount int64     `json:"invocation_count"`
-		TotalDurationMs int64     `json:"total_duration_ms"`
-		SummaryText     string    `json:"summary_text,omitempty"`
+		AgentID         string     `json:"agent_id"`
+		AgentType       string     `json:"agent_type"`
+		Kind            string     `json:"kind"`
+		ParentAgentID   *string    `json:"parent_agent_id"`
+		SessionID       string     `json:"session_id"`
+		LastSeen        time.Time  `json:"last_seen"`
+		InvocationCount int64      `json:"invocation_count"`
+		TotalDurationMs int64      `json:"total_duration_ms"`
+		SummaryText     string     `json:"summary_text,omitempty"`
+		Title           string     `json:"title,omitempty"`
+		Role            string     `json:"role,omitempty"`
+		SummaryModel    string     `json:"summary_model,omitempty"`
+		SummaryAt       *time.Time `json:"summary_at,omitempty"`
 	}
 	var parent *string
 	if a.ParentAgentID.Valid && a.ParentAgentID.String != "" {
@@ -55,6 +68,10 @@ func (a Agent) MarshalJSON() ([]byte, error) {
 		InvocationCount: a.InvocationCount,
 		TotalDurationMs: a.TotalDurationMs,
 		SummaryText:     a.SummaryText,
+		Title:           a.Title,
+		Role:            a.Role,
+		SummaryModel:    a.SummaryModel,
+		SummaryAt:       a.SummaryAt,
 	})
 }
 
@@ -110,27 +127,45 @@ func (s *Store) ListRecentAgents(ctx context.Context, filter AgentFilter, limit 
 	args = append(args, limit)
 
 	q := `
+WITH base AS (
+  SELECT
+    sp.agent_id,
+    COALESCE(sp.agent_kind, '') AS kind,
+    COALESCE(MAX(json_extract_string(sp.attributes_json, '$.claude_code.agent.type')), '') AS agent_type,
+    COALESCE(MAX(json_extract_string(sp.attributes_json, '$.claude_code.agent.parent_id')), '') AS parent_agent_id,
+    COALESCE(sp.session_id, '') AS session_id,
+    MAX(sp.start_time) AS last_seen,
+    COUNT(*) AS invocation_count,
+    CAST(COALESCE(SUM(sp.duration_ns), 0) / 1000000 AS BIGINT) AS total_duration_ms
+  FROM spans sp
+  LEFT JOIN sessions s ON s.session_id = sp.session_id
+  WHERE ` + where + `
+  GROUP BY sp.agent_id, sp.agent_kind, sp.session_id
+)
 SELECT
-  sp.agent_id,
-  COALESCE(sp.agent_kind, '') AS kind,
-  COALESCE(MAX(json_extract_string(sp.attributes_json, '$.claude_code.agent.type')), '') AS agent_type,
-  COALESCE(MAX(json_extract_string(sp.attributes_json, '$.claude_code.agent.parent_id')), '') AS parent_agent_id,
-  COALESCE(sp.session_id, '') AS session_id,
-  MAX(sp.start_time) AS last_seen,
-  COUNT(*) AS invocation_count,
-  CAST(COALESCE(SUM(sp.duration_ns), 0) / 1000000 AS BIGINT) AS total_duration_ms,
+  base.agent_id,
+  base.kind,
+  base.agent_type,
+  base.parent_agent_id,
+  base.session_id,
+  base.last_seen,
+  base.invocation_count,
+  base.total_duration_ms,
   COALESCE(
     (SELECT t.headline FROM turns t
-     WHERE t.session_id = sp.session_id
+     WHERE t.session_id = base.session_id
      AND t.headline IS NOT NULL AND t.headline <> ''
      ORDER BY t.started_at DESC LIMIT 1),
     ''
-  ) AS summary_text
-FROM spans sp
-LEFT JOIN sessions s ON s.session_id = sp.session_id
-WHERE ` + where + `
-GROUP BY sp.agent_id, sp.agent_kind, sp.session_id
-ORDER BY last_seen DESC
+  ) AS summary_text,
+  COALESCE(asum.title, '') AS title,
+  asum.role AS role,
+  COALESCE(asum.model, '') AS summary_model,
+  asum.generated_at AS summary_at
+FROM base
+LEFT JOIN agent_summaries asum
+  ON asum.agent_id = base.agent_id AND asum.session_id = base.session_id
+ORDER BY base.last_seen DESC
 LIMIT ?
 `
 	rows, err := s.db.QueryContext(ctx, q, args...)
@@ -142,9 +177,11 @@ LIMIT ?
 	out := make([]Agent, 0, limit)
 	for rows.Next() {
 		var (
-			a        Agent
-			kind     string
-			parentID string
+			a         Agent
+			kind      string
+			parentID  string
+			role      sql.NullString
+			summaryAt sql.NullTime
 		)
 		if err := rows.Scan(
 			&a.AgentID,
@@ -156,12 +193,23 @@ LIMIT ?
 			&a.InvocationCount,
 			&a.TotalDurationMs,
 			&a.SummaryText,
+			&a.Title,
+			&role,
+			&a.SummaryModel,
+			&summaryAt,
 		); err != nil {
 			return nil, fmt.Errorf("scan agent row: %w", err)
 		}
 		a.Kind = kind
 		if parentID != "" {
 			a.ParentAgentID = sql.NullString{String: parentID, Valid: true}
+		}
+		if role.Valid {
+			a.Role = role.String
+		}
+		if summaryAt.Valid {
+			t := summaryAt.Time
+			a.SummaryAt = &t
 		}
 		out = append(out, a)
 	}

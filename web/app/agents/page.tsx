@@ -219,6 +219,9 @@ function FlatTable({ agents }: { agents: Agent[] }) {
               Type
             </th>
             <th className="border-b border-[var(--border)] px-3 py-2 font-medium">
+              Title
+            </th>
+            <th className="border-b border-[var(--border)] px-3 py-2 font-medium">
               Agent
             </th>
             <th className="border-b border-[var(--border)] px-3 py-2 font-medium">
@@ -266,6 +269,18 @@ function FlatTable({ agents }: { agents: Agent[] }) {
                 </td>
                 <td className="px-3 py-2 font-mono text-[11px] text-[var(--artemis-white)]">
                   {a.agent_type || "main"}
+                </td>
+                <td className="max-w-[280px] px-3 py-2 text-[11px] text-[var(--artemis-white)]">
+                  <span className="block truncate">
+                    {a.title || (
+                      <span className="text-[var(--text-faint)]">—</span>
+                    )}
+                  </span>
+                  {a.role ? (
+                    <span className="block truncate text-[10px] text-[var(--text-muted)]">
+                      {a.role}
+                    </span>
+                  ) : null}
                 </td>
                 <td className="px-3 py-2 font-mono text-[11px] text-[var(--artemis-white)]">
                   {shortId(a.agent_id)}
@@ -358,14 +373,29 @@ function TreeRow({
           <AgentIcon agent={agent} />
           <span className="flex min-w-0 flex-col gap-0.5">
             <span className="flex items-center gap-2">
-              <span className="font-mono text-[11px] text-[var(--artemis-white)]">
-                {shortId(agent.agent_id)}
+              {agent.title ? (
+                <span className="truncate text-[12px] text-[var(--artemis-white)]">
+                  {agent.title}
+                </span>
+              ) : (
+                <span className="font-mono text-[11px] text-[var(--artemis-white)]">
+                  {shortId(agent.agent_id)}
+                </span>
+              )}
+              <span className="rounded-sm border border-[var(--border)] px-1 font-mono text-[10px] uppercase tracking-wide text-[var(--text-muted)]">
+                {isSubagent(agent) ? agent.agent_type || "subagent" : "main"}
               </span>
-              <span className="font-mono text-[11px] text-[var(--text-muted)]">
-                {agent.agent_type || "main"}
-              </span>
+              {agent.title ? (
+                <span className="font-mono text-[10px] text-[var(--text-faint)]">
+                  {shortId(agent.agent_id)}
+                </span>
+              ) : null}
             </span>
-            {agent.summary_text ? (
+            {agent.role ? (
+              <span className="truncate text-[11px] text-[var(--text-muted)]">
+                {agent.role}
+              </span>
+            ) : agent.summary_text ? (
               <span className="truncate text-[11px] text-[var(--text-muted)]">
                 {agent.summary_text}
               </span>
