@@ -5,6 +5,10 @@ All notable changes to apogee will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.1.23](https://github.com/BIwashi/apogee/compare/v0.1.22...v0.1.23) - 2026-04-17
+- chore: revert direct-pushed Sessions fixes (to be re-applied via PR) by @BIwashi in https://github.com/BIwashi/apogee/pull/96
+- fix(sessions): widen Attention column and truncate long text cells by @BIwashi in https://github.com/BIwashi/apogee/pull/97
+
 ## [v0.1.22](https://github.com/BIwashi/apogee/compare/v0.1.21...v0.1.22) - 2026-04-17
 - fix(desktop): generate 1024px icon and fix iconset @2x mappings by @BIwashi in https://github.com/BIwashi/apogee/pull/93
 
