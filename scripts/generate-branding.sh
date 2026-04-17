@@ -179,13 +179,15 @@ render_logo_light () {
   rm -f "$canvas" "$wordmark"
 }
 
-# ── Icon (256×256) ─────────────────────────────────────────────
+# ── Icon (1024×1024) ───────────────────────────────────────────
 # Square app icon: deep-space field, a big "A" glyph in Artemis Inter,
 # with a single NASA Red trajectory stroke behind it — a tiny nod to
-# the Artemis mark's red arc.
+# the Artemis mark's red arc. Rendered at 1024 px so macOS has enough
+# resolution for every iconset slot up to 512x512@2x (Retina Dock).
+# A 256 px variant is derived below for the web favicon chain.
 render_icon () {
   local out="$1"
-  local w=256 h=256
+  local w=1024 h=1024
   local canvas="${BRANDING_DIR}/.icon-canvas.png"
   local glyph="${BRANDING_DIR}/.icon-glyph.png"
   local trajectory="${BRANDING_DIR}/.icon-trajectory.png"
@@ -195,12 +197,12 @@ render_icon () {
   render_trajectory "$trajectory" $w $h
 
   magick -background none -fill "${WHITE}" \
-    -font "$FONT_DISPLAY" -pointsize 230 -kerning 0 \
+    -font "$FONT_DISPLAY" -pointsize 920 -kerning 0 \
     "label:A" "$glyph"
 
   magick "$canvas" \
-    "$trajectory" -gravity center -geometry +0+10 -compose over -composite \
-    "$glyph" -gravity center -geometry +0-6 -compose over -composite \
+    "$trajectory" -gravity center -geometry +0+40 -compose over -composite \
+    "$glyph" -gravity center -geometry +0-24 -compose over -composite \
     "$out"
 
   rm -f "$canvas" "$glyph" "$trajectory"
@@ -215,12 +217,15 @@ render_logo_dark "${BRANDING_DIR}/apogee-logo-dark.png"
 echo ">> regenerating assets/branding/apogee-logo-light.png"
 render_logo_light "${BRANDING_DIR}/apogee-logo-light.png"
 
-echo ">> regenerating assets/branding/apogee-icon-256.png"
-render_icon "${BRANDING_DIR}/apogee-icon-256.png"
+echo ">> regenerating assets/branding/apogee-icon-1024.png"
+render_icon "${BRANDING_DIR}/apogee-icon-1024.png"
 
-# Derive the Next.js icons from the 256 master so the favicon/apple-touch
-# icons stay in sync with the brand mark.
-ICON_MASTER="${BRANDING_DIR}/apogee-icon-256.png"
+# Derive the 256 px variant used by the web favicon chain and kept for
+# backwards compatibility with any external references.
+ICON_MASTER="${BRANDING_DIR}/apogee-icon-1024.png"
+
+echo ">> regenerating assets/branding/apogee-icon-256.png"
+magick "$ICON_MASTER" -resize 256x256 "${BRANDING_DIR}/apogee-icon-256.png"
 
 echo ">> regenerating web/app/icon.png"
 magick "$ICON_MASTER" -resize 256x256 "${WEB_APP_DIR}/icon.png"
