@@ -2,8 +2,8 @@
 
 import { useCallback, useMemo, useState } from "react";
 import { RefreshCw, Users } from "lucide-react";
-import type { Agent, Turn } from "../lib/api-types";
 import { apiFetch } from "../lib/api";
+import type { Agent, Turn } from "../lib/api-types";
 import { useDrawerState } from "../lib/drawer";
 import { useApi } from "../lib/swr";
 import { formatClock, timeAgo } from "../lib/time";
@@ -174,16 +174,14 @@ export default function AgentDrawer({ agentID }: AgentDrawerProps) {
                     {agent.summary_at ? (
                       <p className="font-mono text-[10px] text-[var(--text-faint)]">
                         generated {timeAgo(agent.summary_at)}
-                        {agent.summary_model
-                          ? ` · ${agent.summary_model}`
-                          : ""}
+                        {agent.summary_model ? ` · ${agent.summary_model}` : ""}
                       </p>
                     ) : null}
                   </div>
                 ) : (
                   <p className="text-[11px] text-[var(--text-muted)]">
-                    No summary yet. The agent worker will label this agent
-                    after the next session rollup, or click regenerate.
+                    No summary yet. The agent worker will label this agent after
+                    the next session rollup, or click regenerate.
                   </p>
                 )}
               </DrawerSection>

@@ -90,11 +90,11 @@ WHERE agent_id = ? AND session_id = ?
 // returns: enough for the worker to decide whether the agent needs a fresh
 // summary and to dispatch a job.
 type AgentSummaryCandidate struct {
-	AgentID         string
-	SessionID       string
-	LastSeen        time.Time
-	InvocationCount int64
-	LastSummaryAt   *time.Time
+	AgentID                string
+	SessionID              string
+	LastSeen               time.Time
+	InvocationCount        int64
+	LastSummaryAt          *time.Time
 	LastSummaryInvocations *int64
 }
 
