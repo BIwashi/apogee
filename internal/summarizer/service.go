@@ -14,17 +14,18 @@ import (
 // server. One Service per apogee process. Service owns the Runner and
 // Worker lifecycles for both tiers (per-turn recap and per-session rollup).
 type Service struct {
-	cfg        Config
-	runner     Runner
-	worker     *Worker
-	rollup     *RollupWorker
-	narrative  *NarrativeWorker
-	liveStatus *LiveStatusWorker
-	store      *duckdb.Store
-	hub        *sse.Hub
-	logger     *slog.Logger
-	prefs      PreferencesReader
-	stopSch    context.CancelFunc
+	cfg          Config
+	runner       Runner
+	worker       *Worker
+	rollup       *RollupWorker
+	narrative    *NarrativeWorker
+	liveStatus   *LiveStatusWorker
+	agentSummary *AgentSummaryWorker
+	store        *duckdb.Store
+	hub          *sse.Hub
+	logger       *slog.Logger
+	prefs        PreferencesReader
+	stopSch      context.CancelFunc
 }
 
 // NewService wires the Config-derived Runner (a CLIRunner) into both the
@@ -45,6 +46,7 @@ func NewServiceWithRunner(cfg Config, runner Runner, store *duckdb.Store, hub *s
 	rollup := NewRollupWorker(cfg, runner, store, hub, logger)
 	narrative := NewNarrativeWorker(cfg, runner, store, hub, logger)
 	liveStatus := NewLiveStatusWorker(cfg, runner, store, hub, logger)
+	agentSummary := NewAgentSummaryWorker(cfg, runner, store, hub, logger)
 	// Default preferences reader pulls from the DuckDB user_preferences
 	// table so language / system prompt / model overrides applied via
 	// the /v1/preferences API or the /settings page take effect on the
@@ -57,23 +59,27 @@ func NewServiceWithRunner(cfg Config, runner Runner, store *duckdb.Store, hub *s
 	worker.SetPreferencesReader(prefs)
 	rollup.SetPreferencesReader(prefs)
 	narrative.SetPreferencesReader(prefs)
+	agentSummary.SetPreferencesReader(prefs)
 	// Chain tier-2 → tier-3: after a rollup lands the narrative worker
 	// is enqueued with reason "session_rollup" so phases are computed
-	// immediately.
+	// immediately. Tier-2 → agent-summary: every agent in the session
+	// gets refreshed in parallel.
 	rollup.SetOnRollupWritten(func(sessionID string) {
 		narrative.Enqueue(sessionID, NarrativeReasonSessionRollup)
+		agentSummary.EnqueueSession(context.Background(), sessionID, AgentSummaryReasonSessionRollup)
 	})
 	return &Service{
-		cfg:        cfg,
-		runner:     runner,
-		worker:     worker,
-		rollup:     rollup,
-		narrative:  narrative,
-		liveStatus: liveStatus,
-		store:      store,
-		hub:        hub,
-		logger:     logger,
-		prefs:      prefs,
+		cfg:          cfg,
+		runner:       runner,
+		worker:       worker,
+		rollup:       rollup,
+		narrative:    narrative,
+		liveStatus:   liveStatus,
+		agentSummary: agentSummary,
+		store:        store,
+		hub:          hub,
+		logger:       logger,
+		prefs:        prefs,
 	}
 }
 
@@ -92,6 +98,9 @@ func (s *Service) SetPreferencesReader(r PreferencesReader) {
 	}
 	if s.narrative != nil {
 		s.narrative.SetPreferencesReader(r)
+	}
+	if s.agentSummary != nil {
+		s.agentSummary.SetPreferencesReader(r)
 	}
 }
 
@@ -112,6 +121,9 @@ func (s *Service) Narrative() *NarrativeWorker { return s.narrative }
 
 // LiveStatus exposes the underlying live-status worker for advanced tests.
 func (s *Service) LiveStatus() *LiveStatusWorker { return s.liveStatus }
+
+// AgentSummary exposes the underlying agent-summary worker for advanced tests.
+func (s *Service) AgentSummary() *AgentSummaryWorker { return s.agentSummary }
 
 // Runner exposes the underlying CLI runner so the /v1/models handler
 // can reuse it for the model probe. nil when the service was not
@@ -142,6 +154,9 @@ func (s *Service) SetAvailability(avail map[string]bool) {
 	if s.liveStatus != nil {
 		s.liveStatus.SetAvailability(avail)
 	}
+	if s.agentSummary != nil {
+		s.agentSummary.SetAvailability(avail)
+	}
 }
 
 // Start spawns both worker pools and the rollup scheduler. No-op when
@@ -160,6 +175,7 @@ func (s *Service) Start(ctx context.Context) {
 	s.rollup.Start(ctx)
 	s.narrative.Start(ctx)
 	s.liveStatus.Start(ctx)
+	s.agentSummary.Start(ctx)
 
 	if s.cfg.RollupSchedulerEnabled {
 		schedCtx, cancel := context.WithCancel(ctx)
@@ -180,6 +196,7 @@ func (s *Service) Stop() {
 	s.rollup.Stop()
 	s.narrative.Stop()
 	s.liveStatus.Stop()
+	s.agentSummary.Stop()
 }
 
 // EnqueueLiveStatus is the public API the reconstructor hook calls
@@ -214,6 +231,26 @@ func (s *Service) EnqueueRollup(sessionID, reason string) {
 		return
 	}
 	s.rollup.Enqueue(sessionID, reason)
+}
+
+// EnqueueAgentSummary is the public API for one-off agent label refreshes.
+// Non-blocking.
+func (s *Service) EnqueueAgentSummary(agentID, sessionID, reason string) {
+	if s == nil || !s.cfg.Enabled {
+		return
+	}
+	s.agentSummary.Enqueue(agentID, sessionID, reason)
+}
+
+// EnqueueAgentSummariesForSession fans out to every agent in the session that
+// either has no summary or whose summary is stale. Non-blocking — the actual
+// fan-out is synchronous because it queries the candidate list inline, but
+// the per-agent jobs are async.
+func (s *Service) EnqueueAgentSummariesForSession(ctx context.Context, sessionID, reason string) {
+	if s == nil || !s.cfg.Enabled {
+		return
+	}
+	s.agentSummary.EnqueueSession(ctx, sessionID, reason)
 }
 
 // rollupSchedulerInterval is the wall-clock cadence at which the background

@@ -76,28 +76,51 @@ func (s *Store) GetAgentDetail(ctx context.Context, agentID string) (*AgentDetai
 
 // getAgentRow returns the freshest aggregate row for the given agent id.
 // Sessions span the spans table, so the row is keyed by (agent_id) and
-// reports the most recent session id the agent was seen in.
+// reports the most recent session id the agent was seen in. The
+// agent_summaries row (when present) is joined in via the latest session id
+// so the title / role fields appear on the AgentDetail response without an
+// extra query round-trip.
 func (s *Store) getAgentRow(ctx context.Context, agentID string) (*Agent, error) {
 	const q = `
+WITH base AS (
+  SELECT
+    agent_id,
+    COALESCE(MAX(agent_kind), '') AS kind,
+    COALESCE(MAX(json_extract_string(attributes_json, '$.claude_code.agent.type')), '') AS agent_type,
+    COALESCE(MAX(json_extract_string(attributes_json, '$.claude_code.agent.parent_id')), '') AS parent_agent_id,
+    COALESCE(MAX(session_id), '') AS session_id,
+    MAX(start_time) AS last_seen,
+    COUNT(*) AS invocation_count,
+    CAST(COALESCE(SUM(duration_ns), 0) / 1000000 AS BIGINT) AS total_duration_ms
+  FROM spans
+  WHERE agent_id = ?
+  GROUP BY agent_id
+  LIMIT 1
+)
 SELECT
-  agent_id,
-  COALESCE(MAX(agent_kind), '') AS kind,
-  COALESCE(MAX(json_extract_string(attributes_json, '$.claude_code.agent.type')), '') AS agent_type,
-  COALESCE(MAX(json_extract_string(attributes_json, '$.claude_code.agent.parent_id')), '') AS parent_agent_id,
-  COALESCE(MAX(session_id), '') AS session_id,
-  MAX(start_time) AS last_seen,
-  COUNT(*) AS invocation_count,
-  CAST(COALESCE(SUM(duration_ns), 0) / 1000000 AS BIGINT) AS total_duration_ms
-FROM spans
-WHERE agent_id = ?
-GROUP BY agent_id
-LIMIT 1
+  base.agent_id,
+  base.kind,
+  base.agent_type,
+  base.parent_agent_id,
+  base.session_id,
+  base.last_seen,
+  base.invocation_count,
+  base.total_duration_ms,
+  COALESCE(asum.title, '') AS title,
+  asum.role AS role,
+  COALESCE(asum.model, '') AS summary_model,
+  asum.generated_at AS summary_at
+FROM base
+LEFT JOIN agent_summaries asum
+  ON asum.agent_id = base.agent_id AND asum.session_id = base.session_id
 `
 	row := s.db.QueryRowContext(ctx, q, agentID)
 	var (
-		a        Agent
-		kind     string
-		parentID string
+		a         Agent
+		kind      string
+		parentID  string
+		role      sql.NullString
+		summaryAt sql.NullTime
 	)
 	if err := row.Scan(
 		&a.AgentID,
@@ -108,6 +131,10 @@ LIMIT 1
 		&a.LastSeen,
 		&a.InvocationCount,
 		&a.TotalDurationMs,
+		&a.Title,
+		&role,
+		&a.SummaryModel,
+		&summaryAt,
 	); err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
@@ -117,6 +144,13 @@ LIMIT 1
 	a.Kind = kind
 	if parentID != "" {
 		a.ParentAgentID = sql.NullString{String: parentID, Valid: true}
+	}
+	if role.Valid {
+		a.Role = role.String
+	}
+	if summaryAt.Valid {
+		t := summaryAt.Time
+		a.SummaryAt = &t
 	}
 	return &a, nil
 }
@@ -137,21 +171,39 @@ func (s *Store) getAgentParent(ctx context.Context, child Agent) (*Agent, error)
 // agent id.
 func (s *Store) listAgentChildren(ctx context.Context, agentID string) ([]Agent, error) {
 	const q = `
+WITH base AS (
+  SELECT
+    agent_id,
+    COALESCE(MAX(agent_kind), '') AS kind,
+    COALESCE(MAX(json_extract_string(attributes_json, '$.claude_code.agent.type')), '') AS agent_type,
+    ? AS parent_agent_id,
+    COALESCE(MAX(session_id), '') AS session_id,
+    MAX(start_time) AS last_seen,
+    COUNT(*) AS invocation_count,
+    CAST(COALESCE(SUM(duration_ns), 0) / 1000000 AS BIGINT) AS total_duration_ms
+  FROM spans
+  WHERE json_extract_string(attributes_json, '$.claude_code.agent.parent_id') = ?
+    AND agent_id IS NOT NULL AND agent_id <> ''
+    AND agent_id <> ?
+  GROUP BY agent_id
+)
 SELECT
-  agent_id,
-  COALESCE(MAX(agent_kind), '') AS kind,
-  COALESCE(MAX(json_extract_string(attributes_json, '$.claude_code.agent.type')), '') AS agent_type,
-  ? AS parent_agent_id,
-  COALESCE(MAX(session_id), '') AS session_id,
-  MAX(start_time) AS last_seen,
-  COUNT(*) AS invocation_count,
-  CAST(COALESCE(SUM(duration_ns), 0) / 1000000 AS BIGINT) AS total_duration_ms
-FROM spans
-WHERE json_extract_string(attributes_json, '$.claude_code.agent.parent_id') = ?
-  AND agent_id IS NOT NULL AND agent_id <> ''
-  AND agent_id <> ?
-GROUP BY agent_id
-ORDER BY last_seen DESC
+  base.agent_id,
+  base.kind,
+  base.agent_type,
+  base.parent_agent_id,
+  base.session_id,
+  base.last_seen,
+  base.invocation_count,
+  base.total_duration_ms,
+  COALESCE(asum.title, '') AS title,
+  asum.role AS role,
+  COALESCE(asum.model, '') AS summary_model,
+  asum.generated_at AS summary_at
+FROM base
+LEFT JOIN agent_summaries asum
+  ON asum.agent_id = base.agent_id AND asum.session_id = base.session_id
+ORDER BY base.last_seen DESC
 LIMIT 50
 `
 	rows, err := s.db.QueryContext(ctx, q, agentID, agentID, agentID)
@@ -162,9 +214,11 @@ LIMIT 50
 	out := make([]Agent, 0)
 	for rows.Next() {
 		var (
-			a        Agent
-			kind     string
-			parentID string
+			a         Agent
+			kind      string
+			parentID  string
+			role      sql.NullString
+			summaryAt sql.NullTime
 		)
 		if err := rows.Scan(
 			&a.AgentID,
@@ -175,12 +229,23 @@ LIMIT 50
 			&a.LastSeen,
 			&a.InvocationCount,
 			&a.TotalDurationMs,
+			&a.Title,
+			&role,
+			&a.SummaryModel,
+			&summaryAt,
 		); err != nil {
 			return nil, fmt.Errorf("scan agent child: %w", err)
 		}
 		a.Kind = kind
 		if parentID != "" {
 			a.ParentAgentID = sql.NullString{String: parentID, Valid: true}
+		}
+		if role.Valid {
+			a.Role = role.String
+		}
+		if summaryAt.Valid {
+			t := summaryAt.Time
+			a.SummaryAt = &t
 		}
 		out = append(out, a)
 	}
