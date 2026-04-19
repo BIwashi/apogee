@@ -20,6 +20,13 @@ import StatusPill from "./StatusPill";
 
 interface RecentTurnsTableProps {
   turns: Turn[];
+  /**
+   * Optional per-topic-id → goal lookup. When supplied, each row
+   * renders a small chip beneath the phase cell linking the turn to
+   * its classifier-assigned topic. Callers that have no per-session
+   * topic context (Live page, cross-session catalog) just omit it.
+   */
+  topicGoals?: Record<string, string>;
 }
 
 function statusTone(status: string): StatusKey {
@@ -55,7 +62,10 @@ function normaliseAttention(t: Turn): AttentionState {
   }
 }
 
-export default function RecentTurnsTable({ turns }: RecentTurnsTableProps) {
+export default function RecentTurnsTable({
+  turns,
+  topicGoals,
+}: RecentTurnsTableProps) {
   const { open } = useDrawerState();
   if (turns.length === 0) {
     return (
@@ -159,7 +169,22 @@ export default function RecentTurnsTable({ turns }: RecentTurnsTableProps) {
                   {turn.source_app || "—"}
                 </td>
                 <td className="px-3 py-2 font-mono text-[11px] text-[var(--text-muted)]">
-                  {turn.phase || "—"}
+                  <div className="flex flex-col gap-0.5">
+                    <span>{turn.phase || "—"}</span>
+                    {topicGoals && turn.topic_id ? (
+                      <span
+                        className="inline-flex max-w-[200px] items-center gap-1 self-start truncate rounded-sm border border-[var(--border)] bg-[var(--bg-overlay)] px-1.5 py-[1px] text-[10px] text-[var(--text-muted)]"
+                        title={
+                          topicGoals[turn.topic_id] || `topic ${turn.topic_id}`
+                        }
+                      >
+                        <span className="h-1 w-1 rounded-full bg-[var(--artemis-red)]" />
+                        <span className="truncate">
+                          {topicGoals[turn.topic_id] || turn.topic_id}
+                        </span>
+                      </span>
+                    ) : null}
+                  </div>
                 </td>
                 <td className="px-3 py-2">
                   <StatusPill tone={statusTone(turn.status)}>

@@ -31,6 +31,7 @@ import type {
   InterventionListResponse,
   SessionLogsResponse,
   SessionSummary,
+  SessionTopicsResponse,
   SessionTurnsResponse,
   Turn,
   TurnSpansResponse,
@@ -124,8 +125,22 @@ export default function SessionDetailPage() {
     id ? `/v1/sessions/${id}/interventions?limit=200` : null,
     { refreshInterval: 5_000 },
   );
+  const { data: topicsData } = useApi<SessionTopicsResponse>(
+    id ? `/v1/sessions/${id}/topics` : null,
+    { refreshInterval: 10_000 },
+  );
 
   const turns = useMemo(() => sortTurns(turnsData?.turns ?? []), [turnsData]);
+  // topic_id → goal lookup so the Turns tab can render a small chip
+  // per row without the table making N+1 fetches. Live page and other
+  // RecentTurnsTable callers omit this prop and stay topic-free.
+  const topicGoals = useMemo<Record<string, string>>(() => {
+    const out: Record<string, string> = {};
+    for (const t of topicsData?.topics ?? []) {
+      out[t.topic_id] = t.goal;
+    }
+    return out;
+  }, [topicsData]);
   const logs = logsData?.logs ?? [];
   const latestTurnId = summary?.latest_turn_id ?? turns[0]?.turn_id ?? null;
   const interventions = useMemo(
@@ -226,7 +241,9 @@ export default function SessionDetailPage() {
           interventions={interventions}
         />
       )}
-      {active === "turns" && <TurnsTab sessionId={id} turns={turns} />}
+      {active === "turns" && (
+        <TurnsTab sessionId={id} turns={turns} topicGoals={topicGoals} />
+      )}
       {active === "topics" && <TopicsTab sessionId={id} />}
       {active === "trace" && (
         <TraceTab
@@ -350,7 +367,15 @@ function SummaryStat({
   );
 }
 
-function TurnsTab({ sessionId, turns }: { sessionId: string; turns: Turn[] }) {
+function TurnsTab({
+  sessionId,
+  turns,
+  topicGoals,
+}: {
+  sessionId: string;
+  turns: Turn[];
+  topicGoals?: Record<string, string>;
+}) {
   const runningTurns = useMemo(
     () => turns.filter((t) => t.status === "running"),
     [turns],
@@ -395,7 +420,7 @@ function TurnsTab({ sessionId, turns }: { sessionId: string; turns: Turn[] }) {
         </Card>
       )}
       <Card className="p-0">
-        <RecentTurnsTable turns={turns} />
+        <RecentTurnsTable turns={turns} topicGoals={topicGoals} />
       </Card>
     </section>
   );
