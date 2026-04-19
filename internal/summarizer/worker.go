@@ -565,17 +565,14 @@ func newTopicID(turn duckdb.Turn) string {
 }
 
 // parseRecentRef parses the "recent:N" form the LLM emits as
-// `target_topic_ref`. Tolerates a bare integer for forgiving parsing.
+// `target_topic_ref`. Tolerates a bare integer too — strings that
+// already lack the prefix go straight to strconv.Atoi.
 func parseRecentRef(ref string) (int, bool) {
 	ref = strings.TrimSpace(ref)
 	if ref == "" {
 		return 0, false
 	}
-	rest := strings.TrimPrefix(ref, "recent:")
-	if rest == ref {
-		// No prefix — fall through to plain int parse.
-	}
-	n, err := strconv.Atoi(rest)
+	n, err := strconv.Atoi(strings.TrimPrefix(ref, "recent:"))
 	if err != nil {
 		return 0, false
 	}
