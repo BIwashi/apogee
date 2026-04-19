@@ -198,16 +198,56 @@ LIMIT ?
 // JSON so a later re-run of the classifier (different model, refined
 // prompt) can replay history side-by-side with new decisions.
 type TopicTransition struct {
-	TurnID        string         `json:"turn_id"`
-	SessionID     string         `json:"session_id"`
-	FromTopicID   sql.NullString `json:"-"`
-	ToTopicID     sql.NullString `json:"-"`
-	Kind          string         `json:"kind"` // new | continue | resume | unknown
-	Confidence    sql.NullFloat64
-	Model         string    `json:"model"`
-	PromptVersion string    `json:"prompt_version"`
-	DecisionJSON  string    `json:"decision_json"`
-	CreatedAt     time.Time `json:"created_at"`
+	TurnID        string          `json:"turn_id"`
+	SessionID     string          `json:"session_id"`
+	FromTopicID   sql.NullString  `json:"-"`
+	ToTopicID     sql.NullString  `json:"-"`
+	Kind          string          `json:"kind"` // new | continue | resume | unknown
+	Confidence    sql.NullFloat64 `json:"-"`
+	Model         string          `json:"model"`
+	PromptVersion string          `json:"prompt_version"`
+	DecisionJSON  string          `json:"decision_json"`
+	CreatedAt     time.Time       `json:"created_at"`
+}
+
+// MarshalJSON projects TopicTransition into the on-the-wire shape so
+// nullable columns become typed null/value pairs the typescript
+// client can branch on.
+func (t TopicTransition) MarshalJSON() ([]byte, error) {
+	type alias struct {
+		TurnID        string    `json:"turn_id"`
+		SessionID     string    `json:"session_id"`
+		FromTopicID   *string   `json:"from_topic_id"`
+		ToTopicID     *string   `json:"to_topic_id"`
+		Kind          string    `json:"kind"`
+		Confidence    *float64  `json:"confidence"`
+		Model         string    `json:"model"`
+		PromptVersion string    `json:"prompt_version"`
+		DecisionJSON  string    `json:"decision_json"`
+		CreatedAt     time.Time `json:"created_at"`
+	}
+	out := alias{
+		TurnID:        t.TurnID,
+		SessionID:     t.SessionID,
+		Kind:          t.Kind,
+		Model:         t.Model,
+		PromptVersion: t.PromptVersion,
+		DecisionJSON:  t.DecisionJSON,
+		CreatedAt:     t.CreatedAt,
+	}
+	if t.FromTopicID.Valid && t.FromTopicID.String != "" {
+		s := t.FromTopicID.String
+		out.FromTopicID = &s
+	}
+	if t.ToTopicID.Valid && t.ToTopicID.String != "" {
+		s := t.ToTopicID.String
+		out.ToTopicID = &s
+	}
+	if t.Confidence.Valid {
+		v := t.Confidence.Float64
+		out.Confidence = &v
+	}
+	return json.Marshal(out)
 }
 
 // RecordTopicTransition writes one transition row. Idempotent on
