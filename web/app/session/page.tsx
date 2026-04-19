@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import {
   Activity,
   BarChart3,
+  GitBranch,
   Layers,
   List,
   Orbit,
@@ -23,6 +24,7 @@ import SectionHeader from "../components/SectionHeader";
 import SpanTree from "../components/SpanTree";
 import SwimLane from "../components/SwimLane";
 import Tabs, { type TabItem } from "../components/Tabs";
+import TopicsTab from "../components/TopicsTab";
 import VersionTag from "../components/VersionTag";
 import type {
   Intervention,
@@ -53,12 +55,20 @@ import { useSelection } from "../lib/url-state";
  * of data is fetched client-side exactly like the old dynamic route.
  */
 
-type TabKey = "mission" | "overview" | "turns" | "trace" | "logs" | "metrics";
+type TabKey =
+  | "mission"
+  | "overview"
+  | "turns"
+  | "topics"
+  | "trace"
+  | "logs"
+  | "metrics";
 
 const TABS: TabItem<TabKey>[] = [
   { key: "mission", label: "Mission", icon: Orbit },
   { key: "overview", label: "Overview", icon: Layers },
   { key: "turns", label: "Turns", icon: List },
+  { key: "topics", label: "Topics", icon: GitBranch },
   { key: "trace", label: "Trace", icon: Activity },
   { key: "logs", label: "Logs", icon: ScrollText },
   { key: "metrics", label: "Metrics", icon: BarChart3 },
@@ -217,6 +227,7 @@ export default function SessionDetailPage() {
         />
       )}
       {active === "turns" && <TurnsTab sessionId={id} turns={turns} />}
+      {active === "topics" && <TopicsTab sessionId={id} />}
       {active === "trace" && (
         <TraceTab
           latestTurn={latestTurn}

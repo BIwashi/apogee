@@ -220,6 +220,31 @@ export interface SessionTopicsResponse {
   topics: SessionTopic[];
 }
 
+/**
+ * TopicTransition is one append-only audit row from the per-turn
+ * topic classifier — preserved verbatim so a refined classifier can
+ * later be evaluated side-by-side against historical decisions. The
+ * Mission UI's Topics tab renders these as a per-turn table so the
+ * operator can sanity-check the classifier's output.
+ */
+export interface TopicTransition {
+  turn_id: string;
+  session_id: string;
+  from_topic_id: string | null;
+  to_topic_id: string | null;
+  /** new | continue | resume | unknown */
+  kind: "new" | "continue" | "resume" | "unknown" | string;
+  confidence: number | null;
+  model: string;
+  prompt_version: string;
+  decision_json: string;
+  created_at: string;
+}
+
+export interface SessionTopicTransitionsResponse {
+  transitions: TopicTransition[];
+}
+
 export interface Turn {
   turn_id: string;
   trace_id: string;
