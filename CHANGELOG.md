@@ -5,6 +5,17 @@ All notable changes to apogee will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.1.25](https://github.com/BIwashi/apogee/compare/v0.1.24...v0.1.25) - 2026-04-19
+- docs: sync README + docs with Mission git graph, tier-4 summarizer, fleet endpoints by @BIwashi in https://github.com/BIwashi/apogee/pull/102
+- fix(mission): chronological spine, bounded scroll, jump-to-now, current-step pulse by @BIwashi in https://github.com/BIwashi/apogee/pull/101
+- feat(topics): per-turn LLM topic classifier (phase 1) by @BIwashi in https://github.com/BIwashi/apogee/pull/104
+- feat(topics): apogee topics backfill CLI (phase 2) by @BIwashi in https://github.com/BIwashi/apogee/pull/105
+- feat(topics): per-topic Mission Goal banners on Mission UI (phase 3a) by @BIwashi in https://github.com/BIwashi/apogee/pull/106
+- feat(topics): apogee topics list / show inspectors by @BIwashi in https://github.com/BIwashi/apogee/pull/108
+- chore(docs): anonymize personal identifiers in public docs by @BIwashi in https://github.com/BIwashi/apogee/pull/107
+- feat(topics): Topics tab on the session detail page by @BIwashi in https://github.com/BIwashi/apogee/pull/109
+- feat(topics): topic-goal chip in the Phase cell of the Turns tab by @BIwashi in https://github.com/BIwashi/apogee/pull/110
+
 ## [v0.1.24](https://github.com/BIwashi/apogee/compare/v0.1.23...v0.1.24) - 2026-04-17
 - feat(mission): surface narrative generation progress with elapsed counter by @BIwashi in https://github.com/BIwashi/apogee/pull/98
 - feat(agents): LLM-generated title and role per agent by @BIwashi in https://github.com/BIwashi/apogee/pull/100
