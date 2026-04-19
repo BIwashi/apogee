@@ -505,3 +505,47 @@ body {
     animation: none;
   }
 }
+
+/* ── Mission spine: current step pulse ─────── */
+/*
+ * The MissionMap right-hand card belonging to the "current" step
+ * (running turn living on the latest phase, or in-progress todo) gets
+ * a soft border + glow pulse so operators can spot the foothold while
+ * scrolling through a long timeline. Animation is disabled for
+ * prefers-reduced-motion users — the static border colour change still
+ * marks the row clearly.
+ */
+.mission-current-pulse {
+  animation: mission-current-pulse 2.4s ease-in-out infinite;
+}
+@keyframes mission-current-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0
+      color-mix(in oklab, var(--status-success) 28%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 6px
+      color-mix(in oklab, var(--status-success) 0%, transparent);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mission-current-pulse {
+    animation: none;
+  }
+}
+
+/* ── Mission spine: scroll container chrome ───
+ * Subtle top/bottom fade on the bounded mission spine so operators
+ * can tell content extends beyond the visible region. The fade is a
+ * mask-image so it works against any backdrop.
+ */
+.mission-spine-scroll {
+  mask-image: linear-gradient(
+    to bottom,
+    transparent 0,
+    black 28px,
+    black calc(100% - 28px),
+    transparent 100%
+  );
+}
