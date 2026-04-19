@@ -6,6 +6,7 @@ import {
   Bug,
   CheckCheck,
   Compass,
+  Crosshair,
   GitCommit,
   HelpCircle,
   Lightbulb,
@@ -449,6 +450,65 @@ export default function MissionMap({
   const [active, setActive] = useState<PhaseBlock | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
 
+  // Scroll plumbing for the bounded mission spine. The spine renders
+  // chronologically (oldest → newest → todos → forecast), so the
+  // "current" step lives near the bottom rather than the top. We pin
+  // the scroll container to a viewport-bounded height, scroll the
+  // current step into view on mount + when the session changes, and
+  // surface a "Jump to now" floating button when the current step
+  // scrolls out of view.
+  //
+  // The initial-scroll guard and the session id are both held in refs
+  // so the effect can read+write them without triggering its own
+  // re-run (a setState here would tilt into the
+  // react-hooks/set-state-in-effect cascade).
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const currentRef = useRef<HTMLLIElement | null>(null);
+  const didInitialScrollRef = useRef(false);
+  const lastSessionIdRef = useRef<string | null>(null);
+  const [currentInView, setCurrentInView] = useState(true);
+
+  const jumpToNow = useCallback(() => {
+    const el = currentRef.current;
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, []);
+
+  // Auto-scroll to the current step on first paint after the spine
+  // has populated, and on every session switch. Subsequent rerenders
+  // (poll ticks, recap landings) do not re-trigger this — operators
+  // who scrolled away on purpose would hate having the page yank back
+  // every 5 s.
+  useEffect(() => {
+    if (lastSessionIdRef.current !== sessionId) {
+      didInitialScrollRef.current = false;
+      lastSessionIdRef.current = sessionId;
+    }
+    if (didInitialScrollRef.current) return;
+    const el = currentRef.current;
+    if (!el) return;
+    el.scrollIntoView({ behavior: "auto", block: "center" });
+    didInitialScrollRef.current = true;
+  }, [sessionId, phases.length, activeTodos.length]);
+
+  // Track whether the current step is on screen so the "Jump to now"
+  // button can hide itself when no jump is needed. IntersectionObserver
+  // is bounded by the scroll container via `root: scrollRef.current` so
+  // we don't pick up arbitrary page scroll. setState inside the
+  // observer callback is asynchronous-from-React's-pov so it doesn't
+  // trip the set-state-in-effect rule.
+  useEffect(() => {
+    const el = currentRef.current;
+    const root = scrollRef.current;
+    if (!el || !root) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => setCurrentInView(entry.isIntersecting),
+      { root, threshold: 0.4 },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [phases.length, activeTodos.length]);
+
   // Narrative generation progress tracking. The tier-3 narrative worker
   // runs asynchronously — the POST returns 202 immediately, the actual
   // Sonnet call takes 5-30s in the background. We keep `generating` true
@@ -562,61 +622,116 @@ export default function MissionMap({
             </div>
           </div>
 
-          {/* The graph itself. Reverse chronological: newest phase
-              at the top so the operator sees "what just happened"
-              without scrolling, then older phases, then TodoWrite
-              plan items, then the forecast tail.
+          {/* The graph. Chronological order top → bottom: oldest
+              phase first, newest phase last, then TodoWrite "now" rows,
+              then the tier-3 forecast tail. The order matches how the
+              spine reads visually — past at the top, present in the
+              middle, future at the bottom — so the "Next" cards no
+              longer contradict the rest of the timeline.
 
-              Each row is a flex layout with a fixed-width graph
-              column on the left and a fluid card on the right. */}
-          <ol className="flex flex-col">
-            {[...phases].reverse().map((phase, i, arr) => {
-              // In reverse order the "newest" phase (originally the
-              // last one) is now at index 0. That is also where the
-              // running-turn pulse belongs unless a TodoRow is going
-              // to take over.
-              const isNewest = i === 0;
-              const isOldest = i === arr.length - 1;
-              const todoTakesOverPulse = activeTodos.some(
-                (t) => t.status === "in_progress",
-              );
-              return (
-                <PhaseRow
-                  key={phase.index}
-                  phase={phase}
-                  index={phases.length - 1 - i}
-                  isFirst={isNewest}
-                  isLast={
-                    isOldest &&
-                    activeTodos.length === 0 &&
-                    forecast.length === 0
-                  }
-                  branches={branchesByPhase.get(phases.length - 1 - i) ?? []}
-                  runningTurn={
-                    isNewest && !todoTakesOverPulse ? runningTurn : null
-                  }
-                  onClick={() => onPhaseClick(phase)}
-                />
-              );
-            })}
-            {activeTodos.map((todo, i) => (
-              <TodoRow
-                key={`todo-${i}-${todo.content}`}
-                todo={todo}
-                index={i}
-                isLast={i === activeTodos.length - 1 && forecast.length === 0}
-              />
-            ))}
-            {forecast.map((entry, i) => (
-              <ForecastRow
-                key={`forecast-${i}`}
-                entry={entry}
-                index={i}
-                isLast={i === forecast.length - 1}
-                hasPrior={i === 0}
-              />
-            ))}
-          </ol>
+              The whole spine sits inside a bounded-height scroll
+              container so the Mission card cannot push the rest of the
+              page when a session has many phases. We also scroll the
+              "current" step into view on mount and surface a
+              "Jump to now" button when the operator scrolls away from
+              it. */}
+          <div className="relative">
+            <div
+              ref={scrollRef}
+              className="mission-spine-scroll relative max-h-[60vh] overflow-y-auto pr-2"
+            >
+              <ol className="flex flex-col">
+                {phases.map((phase, i, arr) => {
+                  // The newest phase sits at the bottom in chronological
+                  // order. That is where the running-turn pulse belongs
+                  // unless a TodoRow is going to take over (an
+                  // in-progress todo is a stronger "now" signal than
+                  // the latest phase).
+                  const isOldest = i === 0;
+                  const isNewest = i === arr.length - 1;
+                  const todoTakesOverPulse = activeTodos.some(
+                    (t) => t.status === "in_progress",
+                  );
+                  const isCurrent =
+                    isNewest && !todoTakesOverPulse && runningTurn !== null;
+                  // Anchor the "current" ref to whichever phase is
+                  // pulsing. When no phase is pulsing (idle session or
+                  // an in-progress todo takes over), we anchor on the
+                  // newest phase as a sane fallback so the initial
+                  // scroll still lands at the most recent activity.
+                  const anchorHere =
+                    isCurrent ||
+                    (isNewest &&
+                      !todoTakesOverPulse &&
+                      activeTodos.length === 0);
+                  return (
+                    <PhaseRow
+                      key={phase.index}
+                      phase={phase}
+                      index={i}
+                      isFirst={isOldest}
+                      isLast={
+                        isNewest &&
+                        activeTodos.length === 0 &&
+                        forecast.length === 0
+                      }
+                      branches={branchesByPhase.get(i) ?? []}
+                      runningTurn={isCurrent ? runningTurn : null}
+                      isCurrent={isCurrent}
+                      currentRef={anchorHere ? currentRef : undefined}
+                      onClick={() => onPhaseClick(phase)}
+                    />
+                  );
+                })}
+                {activeTodos.map((todo, i) => {
+                  const inProgress = todo.status === "in_progress";
+                  // The first in-progress todo wins the "current"
+                  // anchor. If there are no in-progress todos but
+                  // pending ones, the anchor stays on the newest phase
+                  // (handled above).
+                  const firstInProgressIdx = activeTodos.findIndex(
+                    (t) => t.status === "in_progress",
+                  );
+                  const anchorHere = inProgress && i === firstInProgressIdx;
+                  return (
+                    <TodoRow
+                      key={`todo-${i}-${todo.content}`}
+                      todo={todo}
+                      index={i}
+                      isLast={
+                        i === activeTodos.length - 1 && forecast.length === 0
+                      }
+                      currentRef={anchorHere ? currentRef : undefined}
+                    />
+                  );
+                })}
+                {forecast.map((entry, i) => (
+                  <ForecastRow
+                    key={`forecast-${i}`}
+                    entry={entry}
+                    index={i}
+                    isLast={i === forecast.length - 1}
+                    hasPrior={i === 0}
+                  />
+                ))}
+              </ol>
+            </div>
+            {/* Jump-to-now floating button. Only renders when the
+                current step has scrolled out of view. Sits over the
+                spine's lower-right corner so it is reachable without
+                covering content. */}
+            {!currentInView && (
+              <button
+                type="button"
+                onClick={jumpToNow}
+                className="absolute bottom-3 right-4 z-20 inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--bg-overlay)]/90 px-3 py-1.5 font-display text-[10px] uppercase tracking-[0.14em] text-[var(--text-muted)] shadow-lg backdrop-blur transition-colors hover:border-[var(--artemis-earth)] hover:text-[var(--artemis-white)]"
+                title="Scroll back to the current step"
+              >
+                <Crosshair size={11} strokeWidth={1.75} />
+                Jump to now
+              </button>
+            )}
+          </div>
 
           {/* Legend — small, unobtrusive. */}
           <div className="mt-4 flex flex-wrap items-center gap-4 border-t border-[var(--border)] pt-3 font-mono text-[10px] text-[var(--text-muted)]">
@@ -673,6 +788,8 @@ function PhaseRow({
   isLast,
   branches,
   runningTurn,
+  isCurrent,
+  currentRef,
   onClick,
 }: {
   phase: PhaseBlock;
@@ -681,13 +798,15 @@ function PhaseRow({
   isLast: boolean;
   branches: Intervention[];
   runningTurn: Turn | null;
+  isCurrent?: boolean;
+  currentRef?: React.Ref<HTMLLIElement>;
   onClick: () => void;
 }) {
   const tone = KIND_TONE[phase.kind] ?? KIND_TONE.other;
   const Icon = KIND_ICON[phase.kind] ?? KIND_ICON.other;
 
   return (
-    <li className="flex min-h-[112px] gap-3">
+    <li ref={currentRef} className="flex min-h-[112px] gap-3">
       {/* Graph column — fixed width, full height. Draws the spine
           segment + the node circle + branches. */}
       <div className="relative flex-shrink-0" style={{ width: SPINE_X * 2 }}>
@@ -808,12 +927,20 @@ function PhaseRow({
         </div>
       </div>
 
-      {/* Right-hand card: phase content + any branch chips below. */}
+      {/* Right-hand card: phase content + any branch chips below.
+          When this row is the "current" step (running turn lives on
+          this phase, no in-progress todo), the card border softly
+          pulses so operators can spot the foothold even while
+          scrolling through a long timeline. */}
       <div className="flex flex-1 flex-col gap-2 pb-4">
         <button
           type="button"
           onClick={onClick}
-          className="group flex flex-col items-start gap-1 rounded border border-[var(--border)] bg-[var(--bg-raised)] p-3 text-left transition-colors hover:bg-[var(--bg-overlay)]"
+          className={`group flex flex-col items-start gap-1 rounded border bg-[var(--bg-raised)] p-3 text-left transition-colors hover:bg-[var(--bg-overlay)] ${
+            isCurrent
+              ? "mission-current-pulse border-[var(--status-success)]/60"
+              : "border-[var(--border)]"
+          }`}
         >
           <div className="flex w-full items-center justify-between gap-2">
             <span
@@ -906,10 +1033,12 @@ function TodoRow({
   todo,
   index,
   isLast,
+  currentRef,
 }: {
   todo: TodoItem;
   index: number;
   isLast: boolean;
+  currentRef?: React.Ref<HTMLLIElement>;
 }) {
   const inProgress = todo.status === "in_progress";
   const label = inProgress ? "In flight" : "Planned";
@@ -919,7 +1048,7 @@ function TodoRow({
     "(no content)";
 
   return (
-    <li className="flex min-h-[80px] gap-3">
+    <li ref={currentRef} className="flex min-h-[80px] gap-3">
       <div className="relative flex-shrink-0" style={{ width: SPINE_X * 2 }}>
         <svg
           className="h-full w-full"
@@ -1051,7 +1180,7 @@ function TodoRow({
         <div
           className={
             inProgress
-              ? "rounded border border-[var(--status-success)]/40 bg-[var(--status-success)]/10 p-3"
+              ? "mission-current-pulse rounded border border-[var(--status-success)]/60 bg-[var(--status-success)]/10 p-3"
               : "rounded border border-dashed border-[var(--artemis-earth)]/40 bg-[var(--bg-raised)]/60 p-3"
           }
         >
