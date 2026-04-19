@@ -43,6 +43,7 @@ func (s *Store) applyColumnAdditions(ctx context.Context) error {
 		{"turns", "recap_json", `ALTER TABLE turns ADD COLUMN recap_json VARCHAR`},
 		{"turns", "recap_generated_at", `ALTER TABLE turns ADD COLUMN recap_generated_at TIMESTAMP`},
 		{"turns", "recap_model", `ALTER TABLE turns ADD COLUMN recap_model VARCHAR`},
+		{"turns", "topic_id", `ALTER TABLE turns ADD COLUMN topic_id VARCHAR`},
 		{"sessions", "attention_state", `ALTER TABLE sessions ADD COLUMN attention_state VARCHAR`},
 		{"sessions", "attention_reason", `ALTER TABLE sessions ADD COLUMN attention_reason VARCHAR`},
 		{"sessions", "attention_score", `ALTER TABLE sessions ADD COLUMN attention_score DOUBLE`},

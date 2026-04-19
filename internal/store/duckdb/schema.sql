@@ -196,6 +196,48 @@ CREATE TABLE IF NOT EXISTS agent_summaries (
 CREATE INDEX IF NOT EXISTS idx_agent_summaries_session ON agent_summaries(session_id);
 CREATE INDEX IF NOT EXISTS idx_agent_summaries_generated ON agent_summaries(generated_at DESC);
 
+-- Session topics: a real Claude Code session often interleaves multiple
+-- distinct workstreams (e.g. docs work, then a UI bugfix sidequest, then
+-- back to docs). The summarizer's per-turn classifier emits a topic
+-- decision (new / continue / resume) and a topic id for every closed
+-- turn. Each row in this table is one topic node in the per-session
+-- topic tree -- parent_topic_id wires the tree, last_seen_at advances on
+-- every turn assigned to that topic, and closed_at is set when the
+-- session ends or the topic is explicitly closed by a downstream worker.
+-- Topic identity is reused across resumes: the second visit to a topic
+-- writes the same topic_id, just bumps last_seen_at and adds a
+-- topic_transitions row recording the resume.
+CREATE TABLE IF NOT EXISTS session_topics (
+  topic_id         VARCHAR PRIMARY KEY,
+  session_id       VARCHAR NOT NULL,
+  parent_topic_id  VARCHAR,
+  goal             VARCHAR NOT NULL,
+  opened_at        TIMESTAMP NOT NULL,
+  last_seen_at     TIMESTAMP NOT NULL,
+  closed_at        TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_session_topics_session ON session_topics(session_id, last_seen_at DESC);
+
+-- Topic transitions: append-only audit trail of every classifier
+-- decision. One row per closed turn whose recap carried a topic
+-- decision. We persist the raw decision JSON, the model alias, and
+-- the prompt version so a later re-run of the classifier can replay
+-- past decisions side-by-side with new ones for evaluation. kind is
+-- one of 'new' | 'continue' | 'resume' | 'unknown'.
+CREATE TABLE IF NOT EXISTS topic_transitions (
+  turn_id           VARCHAR PRIMARY KEY,
+  session_id        VARCHAR NOT NULL,
+  from_topic_id     VARCHAR,
+  to_topic_id       VARCHAR,
+  kind              VARCHAR NOT NULL,
+  confidence        DOUBLE,
+  model             VARCHAR NOT NULL,
+  prompt_version    VARCHAR NOT NULL,
+  decision_json     VARCHAR NOT NULL,
+  created_at        TIMESTAMP NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_topic_transitions_session ON topic_transitions(session_id, created_at DESC);
+
 -- Interventions: operator-initiated messages pushed into a live Claude Code
 -- session. The lifecycle is queued -> claimed -> delivered -> consumed,
 -- with cancelled / expired as terminal off-ramps. A claim is an atomic

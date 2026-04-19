@@ -2,10 +2,14 @@ package summarizer
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -257,10 +261,24 @@ func (w *Worker) process(ctx context.Context, workerID int, job Job) {
 		w.Availability(),
 	)
 
+	// Load the session's recent open topics so the recap classifier can
+	// decide whether this turn continues the most recent topic, opens
+	// a new branch, or resumes an earlier one. List failure is
+	// non-fatal — the recap still works without topic context, the
+	// classifier just degrades to "always new" which the worker then
+	// silently drops on the persistence path.
+	openTopics, err := w.store.ListOpenTopicsForSession(ctx, turn.SessionID, 5)
+	if err != nil {
+		w.logger.Warn("summarizer: load open topics",
+			"turn_id", job.TurnID, "session_id", turn.SessionID, "err", err)
+		openTopics = nil
+	}
+
 	prompt := BuildPrompt(PromptInput{
-		Turn:  *turn,
-		Spans: spans,
-		Logs:  logs,
+		Turn:       *turn,
+		Spans:      spans,
+		Logs:       logs,
+		OpenTopics: openTopics,
 	}, w.cfg.MaxSpanCount, w.cfg.MaxLogCount, prefs)
 
 	runCtx := ctx
@@ -312,6 +330,16 @@ func (w *Worker) process(ctx context.Context, workerID int, job Job) {
 	w.logger.Info("summarizer: recap written",
 		"turn_id", job.TurnID, "model", recap.Model,
 		"outcome", recap.Outcome, "phase_count", len(recap.Phases))
+
+	// Apply the topic decision (Phase 1 of the topic-branch tree feature).
+	// All branches degrade gracefully: the recap is already persisted at
+	// this point, so a topic-side failure never erases any work.
+	if recap.TopicDecision != nil {
+		if err := w.applyTopicDecision(ctx, *turn, recap, openTopics, now); err != nil {
+			w.logger.Warn("summarizer: apply topic decision",
+				"turn_id", job.TurnID, "err", err)
+		}
+	}
 
 	// Emit a post-hoc OTel enrichment span carrying the recap. This is
 	// idiomatic OTel for "data that arrived after the original span
@@ -374,4 +402,189 @@ func (w *Worker) emitRecapEnrichmentSpan(ctx context.Context, turn duckdb.Turn, 
 		return
 	}
 	span.End()
+}
+
+// applyTopicDecision resolves the LLM's topic_decision into actual
+// session_topics + topic_transitions rows and stamps turns.topic_id.
+// Failure paths log and return — the caller already persisted the
+// recap so the worst case is a turn that stays unassigned and shows
+// up as "unknown" on the topic spine. Idempotent on turn_id.
+func (w *Worker) applyTopicDecision(
+	ctx context.Context,
+	turn duckdb.Turn,
+	recap Recap,
+	openTopics []duckdb.SessionTopic,
+	now time.Time,
+) error {
+	td := recap.TopicDecision
+	if td == nil {
+		return nil
+	}
+	// Marshal the raw decision once — we always store it on the
+	// transition row regardless of resolution outcome so future
+	// re-runs of the classifier can replay history.
+	rawBlob, err := json.Marshal(td)
+	if err != nil {
+		return fmt.Errorf("marshal topic decision: %w", err)
+	}
+
+	// Resolution.
+	//
+	// kind = "new" or low confidence              → mint a fresh topic id
+	// kind = "continue" + at least one open topic → reuse openTopics[0]
+	// kind = "resume"  + valid target_topic_ref   → reuse that ref
+	// otherwise                                   → record as "unknown"
+	//                                               and skip persistence
+	var (
+		resolvedKind = string(td.Kind)
+		toTopicID    string
+		fromTopicID  string
+		newTopic     *duckdb.SessionTopic
+		updatedSeen  *duckdb.SessionTopic
+	)
+	if len(openTopics) > 0 {
+		fromTopicID = openTopics[0].TopicID
+	}
+
+	if td.Confidence < TopicMinConfidence {
+		resolvedKind = string(TopicKindUnknown)
+	} else {
+		switch td.Kind {
+		case TopicKindNew:
+			toTopicID = newTopicID(turn)
+			parent := sql.NullString{}
+			if fromTopicID != "" {
+				parent = sql.NullString{String: fromTopicID, Valid: true}
+			}
+			goal := strings.TrimSpace(td.Goal)
+			if goal == "" {
+				goal = recap.Headline
+			}
+			newTopic = &duckdb.SessionTopic{
+				TopicID:       toTopicID,
+				SessionID:     turn.SessionID,
+				ParentTopicID: parent,
+				Goal:          truncate(goal, 200),
+				OpenedAt:      now,
+				LastSeenAt:    now,
+			}
+		case TopicKindContinue:
+			if len(openTopics) == 0 {
+				// No prior topic to continue from — promote to a new one.
+				toTopicID = newTopicID(turn)
+				newTopic = &duckdb.SessionTopic{
+					TopicID:    toTopicID,
+					SessionID:  turn.SessionID,
+					Goal:       truncate(firstNonEmpty(td.Goal, recap.Headline), 200),
+					OpenedAt:   now,
+					LastSeenAt: now,
+				}
+				resolvedKind = string(TopicKindNew)
+			} else {
+				toTopicID = openTopics[0].TopicID
+				bumped := openTopics[0]
+				bumped.LastSeenAt = now
+				updatedSeen = &bumped
+			}
+		case TopicKindResume:
+			idx, ok := parseRecentRef(td.TargetTopicRef)
+			if !ok || idx < 0 || idx >= len(openTopics) {
+				// Unparseable / out-of-range reference. Treat as
+				// unknown rather than guess.
+				resolvedKind = string(TopicKindUnknown)
+			} else {
+				toTopicID = openTopics[idx].TopicID
+				bumped := openTopics[idx]
+				bumped.LastSeenAt = now
+				updatedSeen = &bumped
+			}
+		}
+	}
+
+	// Always write the transition row, including the unknown / dropped
+	// cases — the audit trail is the value here.
+	tr := duckdb.TopicTransition{
+		TurnID:        turn.TurnID,
+		SessionID:     turn.SessionID,
+		Kind:          resolvedKind,
+		Confidence:    sql.NullFloat64{Float64: td.Confidence, Valid: true},
+		Model:         recap.Model,
+		PromptVersion: TopicPromptVersion,
+		DecisionJSON:  string(rawBlob),
+		CreatedAt:     now,
+	}
+	if fromTopicID != "" {
+		tr.FromTopicID = sql.NullString{String: fromTopicID, Valid: true}
+	}
+	if toTopicID != "" {
+		tr.ToTopicID = sql.NullString{String: toTopicID, Valid: true}
+	}
+	if err := w.store.RecordTopicTransition(ctx, tr); err != nil {
+		return fmt.Errorf("record topic transition: %w", err)
+	}
+
+	// Skip the per-topic persistence path when the decision was
+	// rejected. The transition row above is enough breadcrumbs for the
+	// backfill CLI to retry later.
+	if resolvedKind == string(TopicKindUnknown) {
+		w.logger.Info("summarizer: topic decision rejected",
+			"turn_id", turn.TurnID,
+			"kind", td.Kind,
+			"confidence", td.Confidence)
+		return nil
+	}
+
+	if newTopic != nil {
+		if err := w.store.UpsertSessionTopic(ctx, *newTopic); err != nil {
+			return fmt.Errorf("upsert new topic: %w", err)
+		}
+	} else if updatedSeen != nil {
+		if err := w.store.UpsertSessionTopic(ctx, *updatedSeen); err != nil {
+			return fmt.Errorf("bump topic last_seen: %w", err)
+		}
+	}
+
+	if err := w.store.SetTurnTopic(ctx, turn.TurnID, toTopicID); err != nil {
+		return fmt.Errorf("stamp turn topic: %w", err)
+	}
+
+	w.logger.Info("summarizer: topic decision applied",
+		"turn_id", turn.TurnID,
+		"session_id", turn.SessionID,
+		"kind", resolvedKind,
+		"topic_id", toTopicID,
+		"confidence", td.Confidence)
+	return nil
+}
+
+// newTopicID mints a deterministic-ish topic id keyed on the turn.
+// We embed the turn id rather than a UUID so debugging is easier:
+// `grep <turn_id>` finds both the turn and its anchor topic.
+func newTopicID(turn duckdb.Turn) string {
+	return "topic-" + turn.TurnID
+}
+
+// parseRecentRef parses the "recent:N" form the LLM emits as
+// `target_topic_ref`. Tolerates a bare integer for forgiving parsing.
+func parseRecentRef(ref string) (int, bool) {
+	ref = strings.TrimSpace(ref)
+	if ref == "" {
+		return 0, false
+	}
+	rest := strings.TrimPrefix(ref, "recent:")
+	if rest == ref {
+		// No prefix — fall through to plain int parse.
+	}
+	n, err := strconv.Atoi(rest)
+	if err != nil {
+		return 0, false
+	}
+	return n, true
+}
+
+func firstNonEmpty(a, b string) string {
+	if v := strings.TrimSpace(a); v != "" {
+		return v
+	}
+	return b
 }
