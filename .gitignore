@@ -56,3 +56,8 @@ out/
 # running Claude Code against this repo can keep their own CLAUDE.md
 # without re-committing it by accident.
 CLAUDE.md
+
+# External reference PDFs (design guides, spec exports) — keep
+# locally for contributor reference without risking a third-party
+# copyright upload to the OSS repo.
+*.pdf

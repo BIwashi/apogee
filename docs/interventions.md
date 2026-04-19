@@ -94,7 +94,7 @@ deadline has passed to `expired`.
   "delivery_mode": "interrupt",
   "scope": "this_turn",
   "urgency": "normal",
-  "operator_id": "shota",
+  "operator_id": "op-alice",
   "notes": "",
   "ttl_seconds": 600
 }

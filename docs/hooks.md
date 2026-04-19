@@ -124,8 +124,8 @@ in order:
 
 This is why the default `apogee init` does NOT pin `--source-app`. One
 install at user scope automatically labels every project with its own repo
-name: starting `claude` in `~/work/newmo-backend` labels every event
-`source_app=newmo-backend`, and starting `claude` in `~/work/apogee` labels
+name: starting `claude` in `~/work/my-api` labels every event
+`source_app=my-api`, and starting `claude` in `~/work/apogee` labels
 every event `source_app=apogee`, with zero per-project configuration.
 
 Pinning a fixed label is still supported: `apogee init --source-app foo`
@@ -174,7 +174,7 @@ Every hook event produces one POST. The body is JSON and the shape matches
 
 ```json
 {
-  "source_app": "newmo-backend",
+  "source_app": "my-api",
   "session_id": "sess-01HXYZ...",
   "hook_event_type": "PreToolUse",
   "timestamp": 1713138123456,

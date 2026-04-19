@@ -99,7 +99,7 @@ apogee init --force        # 旧 python3 send_event.py 行もまとめて除去
 3. `basename $PWD` — そうでなければ現在ディレクトリ名。
 4. 最後の手段として `"unknown"` リテラル。
 
-これが、既定の `apogee init` が `--source-app` を固定しない理由です。user スコープに 1 回インストールすれば、各プロジェクトに自動的に正しいラベルが付きます。`~/work/newmo-backend` で `claude` を起動すれば `source_app=newmo-backend`、`~/work/apogee` で起動すれば `source_app=apogee` になり、プロジェクト設定は一切不要です。
+これが、既定の `apogee init` が `--source-app` を固定しない理由です。user スコープに 1 回インストールすれば、各プロジェクトに自動的に正しいラベルが付きます。`~/work/my-api` で `claude` を起動すれば `source_app=my-api`、`~/work/apogee` で起動すれば `source_app=apogee` になり、プロジェクト設定は一切不要です。
 
 固定ラベルも引き続き使えます。`apogee init --source-app foo` で各 hook コマンドに `--source-app foo` が書き込まれ、実行時導出はスキップされます。
 
@@ -131,7 +131,7 @@ apogee init --force        # 旧 python3 send_event.py 行もまとめて除去
 
 ```json
 {
-  "source_app": "newmo-backend",
+  "source_app": "my-api",
   "session_id": "sess-01HXYZ...",
   "hook_event_type": "PreToolUse",
   "timestamp": 1713138123456,

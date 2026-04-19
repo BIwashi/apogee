@@ -315,9 +315,9 @@ $ apogee doctor
 
 apogee doctor
 
-  ✓ /Users/shota/.apogee writable
-  ✓ claude CLI on PATH (/Users/shota/.local/bin/claude)
-  ✓ default db path /Users/shota/.apogee/apogee.duckdb
+  ✓ /Users/me/.apogee writable
+  ✓ claude CLI on PATH (/Users/me/.local/bin/claude)
+  ✓ default db path /Users/me/.apogee/apogee.duckdb
   ✓ no config file (defaults in use)
   ✓ DuckDB file is unlocked
   ✓ collector ok (http://127.0.0.1:4100/v1/healthz, 1 ms)
@@ -355,7 +355,7 @@ apogee menubar &         # もしくは手動でフォアグラウンド起動
 
 ```sh
 pkill -f "apogee serve"
-lsof /Users/shota/.apogee/apogee.duckdb   # 何も出ないことを確認
+lsof /Users/me/.apogee/apogee.duckdb   # 何も出ないことを確認
 apogee daemon restart
 ```
 
