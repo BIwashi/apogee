@@ -46,6 +46,11 @@ type Turn struct {
 	RecapJSON        string     `json:"recap_json,omitempty"`
 	RecapGeneratedAt *time.Time `json:"recap_generated_at,omitempty"`
 	RecapModel       string     `json:"recap_model,omitempty"`
+	// TopicID is the per-session topic this turn belongs to, written by
+	// the summarizer's per-turn topic classifier (or by the offline
+	// `apogee topics backfill` CLI). Empty string until a classifier
+	// run accepts a decision for this turn.
+	TopicID string `json:"topic_id,omitempty"`
 }
 
 // InsertTurn creates a new turn row. The caller is expected to have already
@@ -416,7 +421,8 @@ SELECT
   headline, outcome_summary,
   attention_state, attention_reason, attention_score, attention_tone,
   phase, phase_confidence, phase_since, attention_signals_json,
-  recap_json, recap_generated_at, recap_model
+  recap_json, recap_generated_at, recap_model,
+  topic_id
 FROM turns
 `
 
@@ -449,6 +455,7 @@ func scanTurn(r rowScanner) (*Turn, error) {
 		recapJSON       sql.NullString
 		recapGenerated  sql.NullTime
 		recapModel      sql.NullString
+		topicID         sql.NullString
 	)
 	if err := r.Scan(
 		&t.TurnID, &t.TraceID, &t.SessionID, &t.SourceApp, &t.StartedAt, &endedAt, &durationMs,
@@ -459,6 +466,7 @@ func scanTurn(r rowScanner) (*Turn, error) {
 		&attentionState, &attentionReas, &attentionScore, &attentionTone,
 		&phase, &phaseConfidence, &phaseSince, &attentionSignal,
 		&recapJSON, &recapGenerated, &recapModel,
+		&topicID,
 	); err != nil {
 		return nil, err
 	}
@@ -534,6 +542,9 @@ func scanTurn(r rowScanner) (*Turn, error) {
 	}
 	if recapModel.Valid {
 		t.RecapModel = recapModel.String
+	}
+	if topicID.Valid {
+		t.TopicID = topicID.String
 	}
 	return &t, nil
 }
