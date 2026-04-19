@@ -258,3 +258,154 @@ func (s *Store) SetTurnTopic(ctx context.Context, turnID, topicID string) error 
 	}
 	return nil
 }
+
+// SessionTopicSummary is one row of the per-session topic catalog
+// rendered by `apogee topics list`. The counters are aggregated
+// directly from session_topics + turns + topic_transitions in a
+// single grouped query so the CLI does not have to walk the forest
+// per session.
+type SessionTopicSummary struct {
+	SessionID          string
+	SourceApp          string
+	TopicCount         int
+	OpenTopicCount     int
+	TurnsTotal         int
+	TurnsClassified    int
+	TurnsLowConfidence int
+	ActiveTopicID      sql.NullString
+	ActiveGoal         sql.NullString
+	LastSeenAt         time.Time
+}
+
+// ListSessionTopicSummaries returns one summary row per session that
+// has at least one classified topic, ordered by last_seen DESC.
+// Caller passes limit=0 for "no limit" (typical for `topics list`).
+func (s *Store) ListSessionTopicSummaries(ctx context.Context, limit int) ([]SessionTopicSummary, error) {
+	limitClause := ""
+	args := []any{}
+	if limit > 0 {
+		limitClause = "LIMIT ?"
+		args = append(args, limit)
+	}
+	q := `
+WITH per_session AS (
+  SELECT
+    st.session_id,
+    COUNT(*)                                               AS topic_count,
+    SUM(CASE WHEN st.closed_at IS NULL THEN 1 ELSE 0 END)  AS open_count,
+    MAX(st.last_seen_at)                                   AS last_seen_at
+  FROM session_topics st
+  GROUP BY st.session_id
+), active AS (
+  SELECT st.session_id, st.topic_id, st.goal
+  FROM session_topics st
+  INNER JOIN per_session ps
+    ON ps.session_id = st.session_id AND ps.last_seen_at = st.last_seen_at
+), turn_counts AS (
+  SELECT
+    t.session_id,
+    COUNT(*) AS turns_total,
+    SUM(CASE WHEN t.topic_id IS NOT NULL AND t.topic_id <> '' THEN 1 ELSE 0 END) AS turns_classified
+  FROM turns t
+  WHERE t.session_id IN (SELECT session_id FROM per_session)
+  GROUP BY t.session_id
+), low_conf AS (
+  SELECT
+    tr.session_id,
+    COUNT(*) AS low_count
+  FROM topic_transitions tr
+  WHERE tr.kind = 'unknown'
+  GROUP BY tr.session_id
+)
+SELECT
+  ps.session_id,
+  COALESCE(s.source_app, ''),
+  ps.topic_count,
+  ps.open_count,
+  COALESCE(tc.turns_total, 0),
+  COALESCE(tc.turns_classified, 0),
+  COALESCE(lc.low_count, 0),
+  active.topic_id,
+  active.goal,
+  ps.last_seen_at
+FROM per_session ps
+LEFT JOIN turn_counts tc ON tc.session_id = ps.session_id
+LEFT JOIN low_conf     lc ON lc.session_id = ps.session_id
+LEFT JOIN active          ON active.session_id = ps.session_id
+LEFT JOIN sessions s      ON s.session_id = ps.session_id
+ORDER BY ps.last_seen_at DESC
+` + limitClause
+	rows, err := s.db.QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, fmt.Errorf("list session topic summaries: %w", err)
+	}
+	defer rows.Close()
+	var out []SessionTopicSummary
+	for rows.Next() {
+		var (
+			row       SessionTopicSummary
+			openCount sql.NullInt64
+		)
+		if err := rows.Scan(
+			&row.SessionID,
+			&row.SourceApp,
+			&row.TopicCount,
+			&openCount,
+			&row.TurnsTotal,
+			&row.TurnsClassified,
+			&row.TurnsLowConfidence,
+			&row.ActiveTopicID,
+			&row.ActiveGoal,
+			&row.LastSeenAt,
+		); err != nil {
+			return nil, fmt.Errorf("scan summary row: %w", err)
+		}
+		if openCount.Valid {
+			row.OpenTopicCount = int(openCount.Int64)
+		}
+		out = append(out, row)
+	}
+	return out, rows.Err()
+}
+
+// ListTopicTransitions returns the audit-trail rows for one session,
+// chronologically (oldest first). Used by `apogee topics show
+// <session-id>` so operators can sanity-check classifier output.
+func (s *Store) ListTopicTransitions(ctx context.Context, sessionID string, limit int) ([]TopicTransition, error) {
+	if limit <= 0 {
+		limit = 500
+	}
+	const q = `
+SELECT turn_id, session_id, from_topic_id, to_topic_id, kind, confidence,
+       model, prompt_version, decision_json, created_at
+FROM topic_transitions
+WHERE session_id = ?
+ORDER BY created_at ASC
+LIMIT ?
+`
+	rows, err := s.db.QueryContext(ctx, q, sessionID, limit)
+	if err != nil {
+		return nil, fmt.Errorf("list topic transitions: %w", err)
+	}
+	defer rows.Close()
+	var out []TopicTransition
+	for rows.Next() {
+		var t TopicTransition
+		if err := rows.Scan(
+			&t.TurnID,
+			&t.SessionID,
+			&t.FromTopicID,
+			&t.ToTopicID,
+			&t.Kind,
+			&t.Confidence,
+			&t.Model,
+			&t.PromptVersion,
+			&t.DecisionJSON,
+			&t.CreatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scan transition: %w", err)
+		}
+		out = append(out, t)
+	}
+	return out, rows.Err()
+}
