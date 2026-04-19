@@ -295,21 +295,21 @@ func topicBackfillInstructionBlock(language string, hasTopics bool) string {
 	switch language {
 	case LanguageJA:
 		if hasTopics {
-			return topicBackfillInstructionEN_NoOp + topicInstructionBlockJA
+			return topicBackfillInstructionIntro + topicInstructionBlockJA
 		}
-		return topicBackfillInstructionEN_NoOp + topicBackfillNoTopicsJA
+		return topicBackfillInstructionIntro + topicBackfillNoTopicsJA
 	default:
 		if hasTopics {
-			return topicBackfillInstructionEN_NoOp + topicInstructionBlockEN
+			return topicBackfillInstructionIntro + topicInstructionBlockEN
 		}
-		return topicBackfillInstructionEN_NoOp + topicBackfillNoTopicsEN
+		return topicBackfillInstructionIntro + topicBackfillNoTopicsEN
 	}
 }
 
-// topicBackfillInstructionEN_NoOp is the small intro reused for every
+// topicBackfillInstructionIntro is the small intro reused for every
 // language. It tells the model to emit only the topic_decision JSON
 // (no recap, no prose) so the parser only has to handle one shape.
-const topicBackfillInstructionEN_NoOp = `Respond with a JSON object that contains exactly one field, "topic_decision".
+const topicBackfillInstructionIntro = `Respond with a JSON object that contains exactly one field, "topic_decision".
 Schema and rules:
 `
 
