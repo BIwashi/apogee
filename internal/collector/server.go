@@ -407,6 +407,7 @@ func (s *Server) buildRouter() chi.Router {
 	r.Post("/v1/sessions/{id}/rollup", s.postSessionRollup)
 	r.Post("/v1/sessions/{id}/narrative", s.postSessionNarrative)
 	r.Get("/v1/sessions/{id}/todos", s.getSessionTodos)
+	r.Get("/v1/sessions/{id}/topics", s.getSessionTopics)
 	r.Get("/v1/turns/recent", s.listRecentTurns)
 	r.Get("/v1/turns/active", s.listActiveTurns)
 	r.Get("/v1/turns/{turn_id}", s.getTurn)

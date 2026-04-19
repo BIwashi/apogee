@@ -3,6 +3,7 @@ package duckdb
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -27,6 +28,38 @@ type SessionTopic struct {
 	OpenedAt      time.Time      `json:"opened_at"`
 	LastSeenAt    time.Time      `json:"last_seen_at"`
 	ClosedAt      sql.NullTime   `json:"-"`
+}
+
+// MarshalJSON projects SessionTopic into the on-the-wire shape.
+// parent_topic_id and closed_at become null when the underlying
+// SQL field is NULL so the typescript client can branch on a
+// stable null/value boundary.
+func (t SessionTopic) MarshalJSON() ([]byte, error) {
+	type alias struct {
+		TopicID       string     `json:"topic_id"`
+		SessionID     string     `json:"session_id"`
+		ParentTopicID *string    `json:"parent_topic_id"`
+		Goal          string     `json:"goal"`
+		OpenedAt      time.Time  `json:"opened_at"`
+		LastSeenAt    time.Time  `json:"last_seen_at"`
+		ClosedAt      *time.Time `json:"closed_at"`
+	}
+	out := alias{
+		TopicID:    t.TopicID,
+		SessionID:  t.SessionID,
+		Goal:       t.Goal,
+		OpenedAt:   t.OpenedAt,
+		LastSeenAt: t.LastSeenAt,
+	}
+	if t.ParentTopicID.Valid && t.ParentTopicID.String != "" {
+		s := t.ParentTopicID.String
+		out.ParentTopicID = &s
+	}
+	if t.ClosedAt.Valid {
+		v := t.ClosedAt.Time
+		out.ClosedAt = &v
+	}
+	return json.Marshal(out)
 }
 
 // UpsertSessionTopic inserts or refreshes a topic row. Goal,
@@ -82,6 +115,43 @@ WHERE topic_id = ?
 		return SessionTopic{}, false, fmt.Errorf("get session topic: %w", err)
 	}
 	return out, true, nil
+}
+
+// ListSessionTopics returns every topic in the session — open or
+// closed — ordered by opened_at ASC so callers can render the
+// per-topic Mission Goal banners in chronological order. Use this
+// for the "show me the whole topic forest" projection. The live
+// classifier uses ListOpenTopicsForSession (below) for the tighter
+// "what topics could this turn join?" question.
+func (s *Store) ListSessionTopics(ctx context.Context, sessionID string) ([]SessionTopic, error) {
+	const q = `
+SELECT topic_id, session_id, parent_topic_id, goal, opened_at, last_seen_at, closed_at
+FROM session_topics
+WHERE session_id = ?
+ORDER BY opened_at ASC
+`
+	rows, err := s.db.QueryContext(ctx, q, sessionID)
+	if err != nil {
+		return nil, fmt.Errorf("list session topics: %w", err)
+	}
+	defer rows.Close()
+	var out []SessionTopic
+	for rows.Next() {
+		var t SessionTopic
+		if err := rows.Scan(
+			&t.TopicID,
+			&t.SessionID,
+			&t.ParentTopicID,
+			&t.Goal,
+			&t.OpenedAt,
+			&t.LastSeenAt,
+			&t.ClosedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scan session topic: %w", err)
+		}
+		out = append(out, t)
+	}
+	return out, rows.Err()
 }
 
 // ListOpenTopicsForSession returns the most-recently-touched open

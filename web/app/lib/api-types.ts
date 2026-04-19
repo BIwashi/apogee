@@ -198,6 +198,28 @@ export interface SessionTodosResponse {
   span_id: string | null;
 }
 
+/**
+ * SessionTopic mirrors one node of the per-session topic forest written
+ * by the summarizer's per-turn topic classifier. Topics carry their own
+ * Mission Goal and lifecycle so the Mission UI can render one banner per
+ * topic instead of a single session-wide banner. parent_topic_id is null
+ * for the session's first topic and for any branch that the classifier
+ * minted before any predecessor existed.
+ */
+export interface SessionTopic {
+  topic_id: string;
+  session_id: string;
+  parent_topic_id: string | null;
+  goal: string;
+  opened_at: string;
+  last_seen_at: string;
+  closed_at: string | null;
+}
+
+export interface SessionTopicsResponse {
+  topics: SessionTopic[];
+}
+
 export interface Turn {
   turn_id: string;
   trace_id: string;
@@ -225,6 +247,12 @@ export interface Turn {
   phase?: Phase | string;
   phase_confidence?: number;
   phase_since?: string;
+  /**
+   * Per-session topic this turn belongs to, written by the per-turn
+   * topic classifier (or by the offline `apogee topics backfill` CLI).
+   * Empty / undefined when no classification has settled yet.
+   */
+  topic_id?: string;
 }
 
 export interface AttentionCounts {

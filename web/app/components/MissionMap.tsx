@@ -33,6 +33,8 @@ import type {
   RollupResponse,
   SessionPayload,
   SessionTodosResponse,
+  SessionTopic,
+  SessionTopicsResponse,
   TodoItem,
   Turn,
 } from "../lib/api-types";
@@ -416,6 +418,10 @@ export default function MissionMap({
     sessionId ? `/v1/sessions/${sessionId}/todos` : null,
     { refreshInterval: 5_000 },
   );
+  const { data: topicsData } = useApi<SessionTopicsResponse>(
+    sessionId ? `/v1/sessions/${sessionId}/topics` : null,
+    { refreshInterval: 10_000 },
+  );
 
   const rollup: Rollup | null = rollupData?.rollup ?? null;
   const phases: PhaseBlock[] = useMemo(() => rollup?.phases ?? [], [rollup]);
@@ -560,6 +566,19 @@ export default function MissionMap({
     rollup.narrative?.trim().slice(0, 120) ||
     "Mission goal not yet summarised";
 
+  // Per-session topic forest written by the per-turn topic classifier.
+  // When non-empty we render one Mission Goal banner per topic instead
+  // of the single session-wide rollup headline, since the rollup
+  // assumes one workstream per session and a multi-topic session
+  // breaks that assumption.
+  const topics: SessionTopic[] = topicsData?.topics ?? [];
+  const activeTopicID = topics.length
+    ? topics.reduce(
+        (acc, t) => (t.last_seen_at > acc.last_seen_at ? t : acc),
+        topics[0],
+      ).topic_id
+    : null;
+
   return (
     <div className="flex flex-col gap-4">
       <SectionHeader
@@ -599,28 +618,42 @@ export default function MissionMap({
         />
 
         <div className="relative z-10 flex flex-col gap-1 p-5">
-          {/* Mission goal banner — the Sun of the earlier design, now
-              a text header above the graph. Keeps the top-level intent
-              visible without a dedicated visualisation. */}
-          <div className="mb-3 flex items-start gap-3 rounded border border-[var(--border)] bg-[var(--bg-raised)] p-3">
-            <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-[var(--artemis-red)]/20 text-[var(--artemis-red)]">
-              <Sparkles size={14} strokeWidth={1.75} />
+          {/* Mission goal banner. When the per-turn topic classifier
+              has produced topics, render one banner per topic in
+              chronological order so multi-topic sessions show their
+              full intent stack. Otherwise fall back to the single
+              session-wide rollup headline. */}
+          {topics.length > 0 ? (
+            <div className="mb-3 flex flex-col gap-1.5">
+              {topics.map((t) => (
+                <TopicGoalBanner
+                  key={t.topic_id}
+                  topic={t}
+                  isActive={t.topic_id === activeTopicID}
+                />
+              ))}
             </div>
-            <div className="flex-1 min-w-0">
-              <p className="font-display text-[9px] uppercase tracking-[0.16em] text-[var(--artemis-red)]">
-                Mission goal
-              </p>
-              <p className="mt-1 text-[13px] leading-snug text-[var(--artemis-white)]">
-                {missionGoal}
-              </p>
-              {rollup.narrative_generated_at ? (
-                <p className="mt-1 font-mono text-[9px] text-[var(--text-muted)]">
-                  charted {timeAgo(rollup.narrative_generated_at)} ·{" "}
-                  {rollup.narrative_model || rollup.model}
+          ) : (
+            <div className="mb-3 flex items-start gap-3 rounded border border-[var(--border)] bg-[var(--bg-raised)] p-3">
+              <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-[var(--artemis-red)]/20 text-[var(--artemis-red)]">
+                <Sparkles size={14} strokeWidth={1.75} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-display text-[9px] uppercase tracking-[0.16em] text-[var(--artemis-red)]">
+                  Mission goal
                 </p>
-              ) : null}
+                <p className="mt-1 text-[13px] leading-snug text-[var(--artemis-white)]">
+                  {missionGoal}
+                </p>
+                {rollup.narrative_generated_at ? (
+                  <p className="mt-1 font-mono text-[9px] text-[var(--text-muted)]">
+                    charted {timeAgo(rollup.narrative_generated_at)} ·{" "}
+                    {rollup.narrative_model || rollup.model}
+                  </p>
+                ) : null}
+              </div>
             </div>
-          </div>
+          )}
 
           {/* The graph. Chronological order top → bottom: oldest
               phase first, newest phase last, then TodoWrite "now" rows,
@@ -1409,6 +1442,62 @@ function MissionEmpty({
           )}
         </div>
       </Card>
+    </div>
+  );
+}
+
+// TopicGoalBanner is one row in the per-session topic-goal stack. The
+// active topic (most-recent last_seen_at) gets a brighter accent so
+// the operator can tell which topic Claude is currently inside; the
+// rest fade slightly to read as past or paused branches. Branched
+// topics (parent_topic_id non-null) are inset and prefixed with a
+// "↳" connector so the parent / child relationship is obvious without
+// dragging in a full tree renderer (that lives in Phase 3b).
+function TopicGoalBanner({
+  topic,
+  isActive,
+}: {
+  topic: SessionTopic;
+  isActive: boolean;
+}) {
+  const branched = topic.parent_topic_id != null;
+  const closed = topic.closed_at != null;
+  return (
+    <div
+      className={`flex items-start gap-3 rounded border p-3 transition-colors ${
+        isActive
+          ? "border-[var(--artemis-red)]/60 bg-[var(--artemis-red)]/10"
+          : "border-[var(--border)] bg-[var(--bg-raised)]"
+      } ${branched ? "ml-5" : ""}`}
+      style={closed ? { opacity: 0.65 } : undefined}
+    >
+      <div
+        className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full ${
+          isActive
+            ? "bg-[var(--artemis-red)]/30 text-[var(--artemis-red)]"
+            : "bg-[var(--bg-overlay)] text-[var(--text-muted)]"
+        }`}
+        aria-hidden="true"
+      >
+        <Sparkles size={12} strokeWidth={1.75} />
+      </div>
+      <div className="flex-1 min-w-0">
+        <p
+          className={`font-display text-[9px] uppercase tracking-[0.16em] ${
+            isActive ? "text-[var(--artemis-red)]" : "text-[var(--text-muted)]"
+          }`}
+        >
+          {branched ? "↳ Branch goal" : "Mission goal"}
+          {isActive ? " · active" : closed ? " · closed" : null}
+        </p>
+        <p className="mt-1 text-[13px] leading-snug text-[var(--artemis-white)]">
+          {topic.goal || "Goal not set"}
+        </p>
+        <p className="mt-1 font-mono text-[9px] text-[var(--text-muted)]">
+          opened {timeAgo(topic.opened_at)} · last seen{" "}
+          {timeAgo(topic.last_seen_at)}
+        </p>
+      </div>
     </div>
   );
 }
