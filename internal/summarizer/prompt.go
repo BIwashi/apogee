@@ -12,10 +12,18 @@ import (
 // PromptInput is the per-turn bundle the prompt builder serialises. Turn
 // is the enriched row from the store; Spans and Logs are ordered oldest
 // first (matching ListLogsByTurn / GetSpansByTurn ordering).
+//
+// OpenTopics is the optional list of recently-touched open topics for
+// the session, newest first (typically the last 3-5). When non-empty
+// the recap prompt renders an OPEN TOPICS section and asks the LLM to
+// fill `topic_decision` so the worker can classify the turn into the
+// session's topic tree. Pass nil / empty to disable topic
+// classification for this turn — the recap still works.
 type PromptInput struct {
-	Turn  duckdb.Turn
-	Spans []duckdb.SpanRow
-	Logs  []duckdb.LogRow
+	Turn       duckdb.Turn
+	Spans      []duckdb.SpanRow
+	Logs       []duckdb.LogRow
+	OpenTopics []duckdb.SessionTopic
 }
 
 // hookEventsForLog is the allow-list of log-record hook_event values the
@@ -50,24 +58,58 @@ func BuildPrompt(input PromptInput, maxSpans, maxLogs int, prefs Preferences) st
 	sb.WriteString("\n")
 	writeEventLog(&sb, input.Logs, maxLogs)
 	sb.WriteString("\n")
+	writeOpenTopics(&sb, input.OpenTopics)
 	if extra := strings.TrimSpace(prefs.RecapSystemPrompt); extra != "" {
 		sb.WriteString("# User system prompt\n")
 		sb.WriteString(extra)
 		sb.WriteString("\n\n")
 	}
-	sb.WriteString(recapInstructionBlock(prefs.Language))
+	sb.WriteString(recapInstructionBlock(prefs.Language, len(input.OpenTopics) > 0))
 	return sb.String()
 }
 
-// recapInstructionBlock returns the recap instruction text for the given
-// language. Unknown / empty language falls back to English. The TypeScript
-// schema block is identical across languages — only the prose rules change
-// so the model still sees the canonical Recap type.
-func recapInstructionBlock(language string) string {
+// writeOpenTopics renders the per-session open topic list the topic
+// classifier picks `target_topic_ref` against. Each line carries an
+// index, the topic goal, and a relative last_seen marker. The empty
+// section is skipped — the classifier instruction block decides
+// whether to ask for a topic decision based on the same nil check.
+func writeOpenTopics(sb *strings.Builder, topics []duckdb.SessionTopic) {
+	if len(topics) == 0 {
+		return
+	}
+	sb.WriteString("OPEN TOPICS (most recent first; reference as `recent:N` in topic_decision)\n")
+	for i, t := range topics {
+		fmt.Fprintf(sb, "[recent:%d] goal=%q last_seen=%s opened=%s\n",
+			i,
+			truncate(t.Goal, 140),
+			formatTime(t.LastSeenAt),
+			formatTime(t.OpenedAt),
+		)
+	}
+	sb.WriteString("\n")
+}
+
+// recapInstructionBlock returns the recap instruction text for the
+// given language. Unknown / empty language falls back to English. The
+// TypeScript schema block is identical across languages — only the
+// prose rules change so the model still sees the canonical Recap type.
+//
+// withTopic toggles the topic_decision schema and rules. When true the
+// model is asked to classify the turn against the OPEN TOPICS list the
+// caller already rendered above. When false the classifier section is
+// omitted so older sessions / topic-disabled paths still get a clean
+// recap prompt.
+func recapInstructionBlock(language string, withTopic bool) string {
 	switch language {
 	case LanguageJA:
+		if withTopic {
+			return recapInstructionBlockJA + topicInstructionBlockJA
+		}
 		return recapInstructionBlockJA
 	default:
+		if withTopic {
+			return recapInstructionBlockEN + topicInstructionBlockEN
+		}
 		return recapInstructionBlockEN
 	}
 }
@@ -135,6 +177,84 @@ type Recap = {
 - 完了前に外部からターンが停止された場合は "aborted" を使用してください。
 - すべてのテキストフィールド (headline, summary, key_steps, failure_cause,
   notable_events) は日本語で記述してください。
+
+JSON オブジェクトのみを出力してください。
+`
+
+// topicInstructionBlockEN is appended to recapInstructionBlockEN when
+// the caller passed at least one open topic. It extends the schema
+// with a `topic_decision` field and asks the model to classify the
+// current turn against the OPEN TOPICS list. We keep the schema
+// strictly typed and the resolution rules explicit so the worker can
+// safely turn `target_topic_ref` into a real session_topics row.
+const topicInstructionBlockEN = `
+ALSO add a "topic_decision" field to the JSON object using this schema:
+
+type TopicDecision = {
+  kind: "new" | "continue" | "resume";
+  // For "new"      → omit, the worker mints a fresh topic id.
+  // For "continue" → omit, the worker reuses the most recent open topic
+  //                   (= recent:0 above).
+  // For "resume"   → reference the OPEN TOPICS index ("recent:N") of the
+  //                   topic this turn returns to.
+  target_topic_ref?: string;
+  confidence: number; // 0.0 to 1.0; how sure you are about the decision
+  goal: string;       // mandatory for "new"; short, ≤ 80 chars; the
+                      //   operator-readable mission goal of the topic
+                      //   this turn now belongs to. For "continue" /
+                      //   "resume" you may copy the existing goal so
+                      //   the worker can validate the match.
+  reason?: string;    // ≤ 200 chars; one-sentence explanation. Helps
+                      //   future debugging.
+};
+
+Topic rules:
+- Use "continue" by default. Only switch to "new" when the prompt
+  introduces a clearly different workstream (different files, different
+  domain, no causal link to the previous turn). Sessions usually stay
+  on one topic — over-classifying as "new" creates noise.
+- Use "resume" when the prompt explicitly returns to an earlier topic
+  (e.g. "back to the docs work", "now let's finish the migration we
+  paused"), or when the prompt's content matches one of the OPEN TOPICS
+  better than the most recent one.
+- If you are uncertain (confidence < 0.6), still emit the field with
+  your best guess — the worker will skip persisting low-confidence
+  decisions and the recap remains useful.
+
+Output ONLY the JSON object.
+`
+
+// topicInstructionBlockJA mirrors topicInstructionBlockEN. The schema
+// itself is rendered in TypeScript / English so the canonical type
+// definition stays unambiguous.
+const topicInstructionBlockJA = `
+さらに JSON オブジェクトに "topic_decision" フィールドを追加してください
+（スキーマは以下の TypeScript 型に従います）:
+
+type TopicDecision = {
+  kind: "new" | "continue" | "resume";
+  // "new"      → 省略可。worker 側で新しい topic id を採番します。
+  // "continue" → 省略可。worker は直近の open topic (= recent:0) を再利用します。
+  // "resume"   → 復帰先の OPEN TOPICS インデックス ("recent:N") を指定します。
+  target_topic_ref?: string;
+  confidence: number; // 0.0 〜 1.0、判定への自信度
+  goal: string;       // "new" では必須、80 文字以内。このターンが属する
+                      //   トピックのオペレーター向け mission goal。
+                      //   "continue" / "resume" では既存 goal を写してもよい。
+  reason?: string;    // 200 文字以内、判定の根拠を一文で。後の調査用。
+};
+
+トピック判定ルール:
+- 既定は "continue"。プロンプトが明らかに別のワークストリーム
+  （別ファイル、別ドメイン、前ターンと因果が切れている）を始める場合のみ
+  "new" に切り替えてください。セッションは通常 1 つのトピックに留まります。
+  過剰な "new" 判定はノイズになります。
+- "resume" はプロンプトが明示的に過去トピックへ戻る場合
+  （「ドキュメントの話に戻ろう」「保留してた migration の続き」など）、
+  または OPEN TOPICS のいずれかが直近トピックよりよく合致する場合に
+  使用してください。
+- 自信が低い (confidence < 0.6) 場合でもフィールドは必ず出力してください。
+  worker 側で低信頼の判定は保存しません。
 
 JSON オブジェクトのみを出力してください。
 `

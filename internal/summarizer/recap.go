@@ -38,18 +38,81 @@ type RecapPhase struct {
 
 // Recap is the structured summary of a turn. It is persisted as JSON on
 // the turns row and consumed by the web dashboard.
+//
+// TopicDecision is the optional output of the per-turn topic classifier
+// (Phase 1 of the topic-branch tree feature). When present and the
+// confidence clears the threshold, the worker resolves it into an
+// actual session_topics row and stamps turns.topic_id. When omitted
+// (older recap blobs, classifier disabled, or decision rejected) the
+// turn just stays unassigned and the Mission UI falls back to the
+// linear spine.
 type Recap struct {
-	Headline      string       `json:"headline"`
-	Outcome       RecapOutcome `json:"outcome"`
-	Phases        []RecapPhase `json:"phases"`
-	KeySteps      []string     `json:"key_steps"`
-	FailureCause  *string      `json:"failure_cause"`
-	NotableEvents []string     `json:"notable_events"`
-	GeneratedAt   time.Time    `json:"generated_at"`
-	Model         string       `json:"model"`
-	PromptTokens  int          `json:"prompt_tokens,omitempty"`
-	OutputTokens  int          `json:"output_tokens,omitempty"`
+	Headline      string         `json:"headline"`
+	Outcome       RecapOutcome   `json:"outcome"`
+	Phases        []RecapPhase   `json:"phases"`
+	KeySteps      []string       `json:"key_steps"`
+	FailureCause  *string        `json:"failure_cause"`
+	NotableEvents []string       `json:"notable_events"`
+	TopicDecision *TopicDecision `json:"topic_decision,omitempty"`
+	GeneratedAt   time.Time      `json:"generated_at"`
+	Model         string         `json:"model"`
+	PromptTokens  int            `json:"prompt_tokens,omitempty"`
+	OutputTokens  int            `json:"output_tokens,omitempty"`
 }
+
+// TopicKind is the three-way classifier output. "unknown" is reserved
+// for the worker-side resolution path when confidence is below the
+// threshold or the LLM fails to emit a parseable decision; the LLM
+// itself only emits new / continue / resume.
+type TopicKind string
+
+const (
+	TopicKindNew      TopicKind = "new"
+	TopicKindContinue TopicKind = "continue"
+	TopicKindResume   TopicKind = "resume"
+	TopicKindUnknown  TopicKind = "unknown"
+)
+
+// IsValid reports whether the kind is one of the four enum values.
+// Used by the worker to reject malformed decisions before storage.
+func (k TopicKind) IsValid() bool {
+	switch k {
+	case TopicKindNew, TopicKindContinue, TopicKindResume, TopicKindUnknown:
+		return true
+	}
+	return false
+}
+
+// TopicDecision is the LLM-emitted topic classification for one turn.
+// The schema is intentionally tight: we hand the LLM a numbered list
+// of recent open topics in the prompt, and `target_topic_ref` references
+// that list ("recent:0", "recent:1", ...) rather than a topic UUID we
+// would have to trust the model not to hallucinate. The worker
+// resolves the ref into a real topic_id during persistence.
+//
+// Goal is the operator-readable mission-goal string for the topic the
+// turn belongs to. For "new" decisions it is mandatory (it seeds the
+// new session_topics row). For "continue" and "resume" it is allowed
+// but optional — the worker uses it only when no goal exists yet.
+type TopicDecision struct {
+	Kind           TopicKind `json:"kind"`
+	TargetTopicRef string    `json:"target_topic_ref,omitempty"`
+	Confidence     float64   `json:"confidence"`
+	Goal           string    `json:"goal,omitempty"`
+	Reason         string    `json:"reason,omitempty"`
+}
+
+// TopicMinConfidence is the threshold below which the worker treats a
+// decision as "unknown" — the turn stays without a topic and the
+// recap is still stored, but no session_topics / topic_transitions
+// rows are written. Tunable; 0.6 is a starting point that matches the
+// Codex review's recommendation.
+const TopicMinConfidence = 0.6
+
+// TopicPromptVersion is the version tag stamped on every
+// topic_transitions row. Bump it whenever the classifier prompt or
+// schema changes so backfill jobs can decide whether to redo work.
+const TopicPromptVersion = "topic-v1"
 
 // Parse tolerates common LLM output quirks (leading/trailing prose,
 // triple-backtick fences) before unmarshalling. spanCount is used for the
@@ -116,6 +179,32 @@ func validate(r Recap, spanCount int) (Recap, error) {
 			r.FailureCause = nil
 		} else {
 			r.FailureCause = &trimmed
+		}
+	}
+
+	// TopicDecision validation. Reject silently (drop the field) if the
+	// kind is invalid or the confidence is out of range — the recap
+	// itself is still useful even if the topic classifier misfires.
+	if r.TopicDecision != nil {
+		td := r.TopicDecision
+		if !td.Kind.IsValid() {
+			r.TopicDecision = nil
+		} else {
+			if td.Confidence < 0 {
+				td.Confidence = 0
+			}
+			if td.Confidence > 1 {
+				td.Confidence = 1
+			}
+			td.Goal = strings.TrimSpace(td.Goal)
+			if len(td.Goal) > 200 {
+				td.Goal = td.Goal[:200]
+			}
+			td.Reason = strings.TrimSpace(td.Reason)
+			if len(td.Reason) > 200 {
+				td.Reason = td.Reason[:200]
+			}
+			td.TargetTopicRef = strings.TrimSpace(td.TargetTopicRef)
 		}
 	}
 
