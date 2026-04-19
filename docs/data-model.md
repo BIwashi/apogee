@@ -59,7 +59,7 @@ reconstructor whenever a new session id appears; never deleted except via
 | `current_phase` | VARCHAR NULL | Phase heuristic label (`implement` / `debug` / …) of the representative turn. |
 | `live_state` | VARCHAR NULL | `live` when a running turn exists, `idle` when only closed turns exist. |
 | `live_status_text` | VARCHAR NULL | One-line "currently &lt;verb&gt;-ing &lt;noun&gt;" blurb produced by the tier-4 live-status worker. |
-| `live_status_at` | TIMESTAMP NULL | Timestamp of the last live-status write — drives the 10 s debounce and `narrative_staleness` skip. |
+| `live_status_at` | TIMESTAMP NULL | Timestamp of the last live-status write — drives the 10 s live-status debounce (`Config.LiveStatusDebounce`). |
 | `live_status_model` | VARCHAR NULL | Model alias that produced `live_status_text`. |
 
 **Writers:** reconstructor (insert on first event, update on every event; `bubbleSessionLive` helper after every turn-level attention rescore), tier-4 live-status worker (`live_status_*` columns).

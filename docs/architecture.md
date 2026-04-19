@@ -244,13 +244,18 @@ and context apply.
   `sessions.live_status_text` so the Sessions catalog and Live triage rail
   can describe each running terminal without opening it. Guarded by
   `sessions.live_state = 'live'` so idle sessions do not burn Haiku calls.
-- **Agent-summary worker** — per-`(agent_id, session_id)`, Haiku. Queues jobs
-  from the reconstructor whenever an agent's invocation count grows past the
-  last summary snapshot or when the summary ages past the 5-minute staleness
-  floor. Produces a structured title/role/focus blob written to the
-  `agent_summaries` table. Manual trigger:
-  `POST /v1/agents/{id}/summarize`. The `/agents` catalog leads with this
-  title instead of the literal `agent_type`.
+- **Agent-summary worker** — per-`(agent_id, session_id)`, Haiku. Enqueue
+  sources are: session end (collector fires
+  `EnqueueAgentSummariesForSession` on `SessionEnd`), tier-2 rollup
+  completion (the summarizer service re-scans the session for candidate
+  agents after a rollup lands), and manual refresh via
+  `POST /v1/agents/{id}/summarize`. Inside `process()` the worker applies
+  two skip guards: the agent's invocation count must have grown past
+  `invocation_count_at_generation` *or* the existing summary must be
+  older than the 5-minute staleness floor. Produces a structured
+  title/role/focus blob written to the `agent_summaries` table. The
+  `/agents` catalog leads with this title instead of the literal
+  `agent_type`.
 
 Every worker shares a feedback-loop guard: the summarizer sets
 `APOGEE_HOOK_SKIP=1` on its `claude` subprocess so the apogee hook

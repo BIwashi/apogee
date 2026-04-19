@@ -39,9 +39,10 @@ job. Two ways to manage them:
   with a language toggle, recap / rollup / narrative model override inputs,
   and three system-prompt textareas (recap / rollup / narrative, 2048 char
   limit each).
-- A compact **EN / JA language picker** on the top ribbon flips the recap +
-  rollup output language in one click — e.g. `EN ▸ JA` switches every new
-  recap to Japanese without touching the schema.
+- A compact **EN / JA language picker** on the top ribbon flips the
+  summarizer output language across every tier (recap / rollup / narrative
+  / live-status / agent-summary) in one click — e.g. `EN ▸ JA` switches
+  every new LLM write to Japanese without touching the schema.
 
 Both controls write to the same `PATCH /v1/preferences` endpoint, so
 scripted rollouts work too. See [`docs/cli.md`](docs/cli.md#summarizer-preferences)
@@ -49,7 +50,9 @@ for the full HTTP contract and validation rules.
 
 The **phase narrative** (tier 3) ships its own preference keys —
 `summarizer.narrative_system_prompt` and `summarizer.narrative_model`
-(default `claude-sonnet-4-6`) — and a manual refresh route at
+(defaults to an empty string, letting the model resolver pick the
+cheapest available narrative model from the catalog; currently
+Sonnet 4.6) — and a manual refresh route at
 `POST /v1/sessions/:id/narrative`. See [`docs/narrative.md`](docs/narrative.md)
 for the schema, chaining, staleness guards, and cost estimate.
 

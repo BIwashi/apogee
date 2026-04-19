@@ -34,11 +34,11 @@ apogee は、マルチエージェントの [Claude Code](https://docs.claude.co
 サマライザは出力言語、任意のオペレーター用システムプロンプト、任意のモデルオーバーライドを `user_preferences` DuckDB テーブルからジョブごとに読みます。管理方法は 2 つあります:
 
 - **設定ページ** (`/settings`) には専用の **Summarizer** セクションがあり、言語トグル、recap / rollup / narrative のモデルオーバーライド入力、3 つのシステムプロンプトテキストエリア（recap / rollup / narrative、各 2048 文字まで）が並びます。
-- トップリボンのコンパクトな **EN / JA 言語ピッカー**で、recap + rollup の出力言語をワンクリックで切り替えられます。`EN ▸ JA` にすればスキーマを変えずに次の recap から日本語になります。
+- トップリボンのコンパクトな **EN / JA 言語ピッカー**で、summarizer の全 tier（recap / rollup / narrative / live-status / agent-summary）出力言語をワンクリックで切り替えられます。`EN ▸ JA` にすればスキーマを変えずに次回以降の LLM 書き込みが日本語になります。
 
 どちらの操作も同じ `PATCH /v1/preferences` エンドポイントに書き込むので、スクリプトでの一括設定にも対応しています。HTTP の完全な仕様と検証ルールは [`docs/cli_ja.md`](docs/cli_ja.md#summarizer-設定) を参照してください。
 
-**フェーズナラティブ** (tier 3) は専用の設定キー — `summarizer.narrative_system_prompt` と `summarizer.narrative_model`（既定値 `claude-sonnet-4-6`）— と、`POST /v1/sessions/:id/narrative` の手動再生成ルートを備えています。スキーマ、チェイニング、陳腐化ガード、コスト見積もりの詳細は [`docs/narrative_ja.md`](docs/narrative_ja.md) を参照してください。
+**フェーズナラティブ** (tier 3) は専用の設定キー — `summarizer.narrative_system_prompt` と `summarizer.narrative_model`（既定の override は空文字。実効モデルはリゾルバが動的にカタログから選択し、現状は Sonnet 4.6）— と、`POST /v1/sessions/:id/narrative` の手動再生成ルートを備えています。スキーマ、チェイニング、陳腐化ガード、コスト見積もりの詳細は [`docs/narrative_ja.md`](docs/narrative_ja.md) を参照してください。
 
 ---
 

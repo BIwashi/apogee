@@ -51,7 +51,7 @@ user_preferences  汎用 K/V（summarizer の言語 / system prompt / model over
 | `current_phase` | VARCHAR NULL | 代表ターンの phase ヒューリスティックラベル（`implement` / `debug` / …）。 |
 | `live_state` | VARCHAR NULL | 実行中ターンがあれば `live`、クローズ済みのみなら `idle`。 |
 | `live_status_text` | VARCHAR NULL | tier-4 live-status ワーカーが生成する "currently &lt;verb&gt;-ing &lt;noun&gt;" の 1 行ブラブ。 |
-| `live_status_at` | TIMESTAMP NULL | 最後の live-status 書き込み時刻。10 秒 debounce と staleness skip を制御する。 |
+| `live_status_at` | TIMESTAMP NULL | 最後の live-status 書き込み時刻。tier-4 live-status ワーカーの 10 秒 debounce（`Config.LiveStatusDebounce`）を制御する。 |
 | `live_status_model` | VARCHAR NULL | `live_status_text` を生成したモデルエイリアス。 |
 
 **Writers:** reconstructor（初回 insert、各イベントで update。ターン単位の attention 再評価のたびに `bubbleSessionLive` ヘルパーが `attention_*` / `current_*` / `live_state` を書き戻す）、tier-4 live-status ワーカー（`live_status_*` カラム）。
