@@ -404,11 +404,10 @@ func (w *Worker) emitRecapEnrichmentSpan(ctx context.Context, turn duckdb.Turn, 
 	span.End()
 }
 
-// applyTopicDecision resolves the LLM's topic_decision into actual
-// session_topics + topic_transitions rows and stamps turns.topic_id.
-// Failure paths log and return — the caller already persisted the
-// recap so the worst case is a turn that stays unassigned and shows
-// up as "unknown" on the topic spine. Idempotent on turn_id.
+// applyTopicDecision is the Worker-side wrapper around the package
+// helper. The actual resolution + persistence lives in
+// ApplyTopicDecision so the backfill CLI (which has no Worker
+// instance) can reuse the exact same logic.
 func (w *Worker) applyTopicDecision(
 	ctx context.Context,
 	turn duckdb.Turn,
@@ -416,6 +415,34 @@ func (w *Worker) applyTopicDecision(
 	openTopics []duckdb.SessionTopic,
 	now time.Time,
 ) error {
+	return ApplyTopicDecision(ctx, w.store, w.logger, turn, recap, openTopics, now)
+}
+
+// ApplyTopicDecision resolves an LLM topic_decision into actual
+// session_topics + topic_transitions rows and stamps turns.topic_id.
+// Both the live recap worker and the offline backfill CLI go through
+// this single function so the resolution rules stay in lockstep.
+//
+// `now` is the wall clock to stamp on the transition row + the
+// session_topics last_seen / opened_at columns. Callers pass the
+// turn's ended_at for backfill (so audit timestamps reflect the
+// historical event) and time.Now for the live path.
+//
+// Failure paths log and return — the caller has already persisted
+// the recap so the worst case is a turn that stays unassigned and
+// shows up as "unknown" on the topic spine. Idempotent on turn_id.
+func ApplyTopicDecision(
+	ctx context.Context,
+	store *duckdb.Store,
+	logger *slog.Logger,
+	turn duckdb.Turn,
+	recap Recap,
+	openTopics []duckdb.SessionTopic,
+	now time.Time,
+) error {
+	if logger == nil {
+		logger = slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{Level: slog.LevelError}))
+	}
 	td := recap.TopicDecision
 	if td == nil {
 		return nil
@@ -519,7 +546,7 @@ func (w *Worker) applyTopicDecision(
 	if toTopicID != "" {
 		tr.ToTopicID = sql.NullString{String: toTopicID, Valid: true}
 	}
-	if err := w.store.RecordTopicTransition(ctx, tr); err != nil {
+	if err := store.RecordTopicTransition(ctx, tr); err != nil {
 		return fmt.Errorf("record topic transition: %w", err)
 	}
 
@@ -527,7 +554,7 @@ func (w *Worker) applyTopicDecision(
 	// rejected. The transition row above is enough breadcrumbs for the
 	// backfill CLI to retry later.
 	if resolvedKind == string(TopicKindUnknown) {
-		w.logger.Info("summarizer: topic decision rejected",
+		logger.Info("summarizer: topic decision rejected",
 			"turn_id", turn.TurnID,
 			"kind", td.Kind,
 			"confidence", td.Confidence)
@@ -535,20 +562,20 @@ func (w *Worker) applyTopicDecision(
 	}
 
 	if newTopic != nil {
-		if err := w.store.UpsertSessionTopic(ctx, *newTopic); err != nil {
+		if err := store.UpsertSessionTopic(ctx, *newTopic); err != nil {
 			return fmt.Errorf("upsert new topic: %w", err)
 		}
 	} else if updatedSeen != nil {
-		if err := w.store.UpsertSessionTopic(ctx, *updatedSeen); err != nil {
+		if err := store.UpsertSessionTopic(ctx, *updatedSeen); err != nil {
 			return fmt.Errorf("bump topic last_seen: %w", err)
 		}
 	}
 
-	if err := w.store.SetTurnTopic(ctx, turn.TurnID, toTopicID); err != nil {
+	if err := store.SetTurnTopic(ctx, turn.TurnID, toTopicID); err != nil {
 		return fmt.Errorf("stamp turn topic: %w", err)
 	}
 
-	w.logger.Info("summarizer: topic decision applied",
+	logger.Info("summarizer: topic decision applied",
 		"turn_id", turn.TurnID,
 		"session_id", turn.SessionID,
 		"kind", resolvedKind,
