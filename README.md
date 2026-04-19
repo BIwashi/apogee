@@ -27,7 +27,7 @@ Running multi-agent Claude Code workflows means losing sight of what each agent 
 
 - **Where should I look right now?** A rule-based attention engine buckets every running turn into `healthy / watchlist / watch / intervene_now` and sorts the live list accordingly, so the noisiest thing is always at the top.
 - **What is this turn doing at this exact moment?** Phase heuristics (plan / explore / edit / test / commit / delegate) and a live swim lane render every tool, subagent, and HITL request on a shared time axis.
-- **What just happened across the whole session?** A three-tier LLM summarizer fills in a per-turn recap (Haiku), a per-session narrative rollup (Sonnet), and a tier-3 **phase narrative** that groups the turns into semantic chunks (implement / review / debug / plan / test / commit / delegate / explore) with a headline, 1–3 sentence narrative, and key steps per phase. Everything goes through the local `claude` CLI — no extra API key required. The default model is no longer hardcoded; apogee picks the cheapest currently-available model per tier from a static catalog that you can override from the Settings page or the `apogee onboard` wizard.
+- **What just happened across the whole session?** A four-tier LLM summarizer fills in a per-turn recap (Haiku), a per-session narrative rollup (Sonnet), a tier-3 **phase narrative** that groups the turns into semantic chunks (implement / review / debug / plan / test / commit / delegate / explore) with a headline, 1–3 sentence narrative, and key steps per phase, and a tier-4 **live-status** blurb (Haiku, session-scoped) that keeps a one-line "currently doing X" sentence fresh on the Sessions catalog while a session is still running. Everything goes through the local `claude` CLI — no extra API key required. The default model is no longer hardcoded; apogee picks the cheapest currently-available model per tier from a static catalog that you can override from the Settings page or the `apogee onboard` wizard.
 
 ### Customising the summarizer
 
@@ -36,11 +36,13 @@ optional model overrides from the `user_preferences` DuckDB table on every
 job. Two ways to manage them:
 
 - The **Settings** page (`/settings`) has a dedicated **Summarizer** section
-  with a language toggle, recap / rollup model override inputs, and two
-  system-prompt textareas (2048 char limit each).
-- A compact **EN / JA language picker** on the top ribbon flips the recap +
-  rollup output language in one click — e.g. `EN ▸ JA` switches every new
-  recap to Japanese without touching the schema.
+  with a language toggle, recap / rollup / narrative model override inputs,
+  and three system-prompt textareas (recap / rollup / narrative, 2048 char
+  limit each).
+- A compact **EN / JA language picker** on the top ribbon flips the
+  summarizer output language across every tier (recap / rollup / narrative
+  / live-status / agent-summary) in one click — e.g. `EN ▸ JA` switches
+  every new LLM write to Japanese without touching the schema.
 
 Both controls write to the same `PATCH /v1/preferences` endpoint, so
 scripted rollouts work too. See [`docs/cli.md`](docs/cli.md#summarizer-preferences)
@@ -48,7 +50,9 @@ for the full HTTP contract and validation rules.
 
 The **phase narrative** (tier 3) ships its own preference keys —
 `summarizer.narrative_system_prompt` and `summarizer.narrative_model`
-(default `claude-sonnet-4-6`) — and a manual refresh route at
+(defaults to an empty string, letting the model resolver pick the
+cheapest available narrative model from the catalog; currently
+Sonnet 4.6) — and a manual refresh route at
 `POST /v1/sessions/:id/narrative`. See [`docs/narrative.md`](docs/narrative.md)
 for the schema, chaining, staleness guards, and cost estimate.
 
@@ -58,19 +62,21 @@ for the schema, chaining, staleness guards, and cost estimate.
 
 | Surface | What you get |
 |---|---|
-| Live page | Focus-card driven landing view — the running turn is the hero, with its flame graph, recap headline, phase + current tool, and a CTA to the full turn detail page. A vertical triage rail lists every session with running turns, sorted by attention. |
-| Sessions catalog | Searchable, filterable table of every session the collector has seen (Datadog Service Catalog analogue). |
-| Agents | Per-agent view with main vs subagent split, invocation counts, rolling duration, parent→child tree. |
+| Live page | Focus-card driven landing view — the running turn is the hero, with its flame graph, recap headline, phase + current tool, and a CTA to the full turn detail page. A vertical triage rail lists every session with running turns, sorted by attention. The focused session's Mission git graph is embedded below the grid so operators see "where are we in the plan" without navigating away. |
+| Sessions catalog | Searchable, filterable table of every session the collector has seen (Datadog Service Catalog analogue). The tier-4 live-status worker fills a one-line "currently doing X" blurb for every running session so the catalog stays useful without opening each row. |
+| Agents | Per-agent view with main vs subagent split, invocation counts, rolling duration, parent→child tree. Every row leads with an LLM-generated title and role (Haiku) so five parallel main agents in the same session stop looking identical; open the drawer for the full title / role / focus blob with a regenerate button. |
 | Insights | Aggregate analytics — error rate, duration percentiles, top tools, top phases, watchlist sessions (last 24h). |
 | Events browser | `/events/` — paginated table of every stored hook event (50 per page, Prev / Next, URL-backed page number, side-drawer JSON inspector). The Live dashboard's event ticker is now height-capped at 180 px with internal scroll, so new events no longer push the page around. |
 | Cross-cutting drawers | Datadog-style row-click pattern across `/agents`, `/sessions`, the session detail Turns tab, and the turn detail span tree. Plain click slides a detail drawer in from the right edge with the entity bundle (no navigation away); `Cmd+Click` still opens the full page in a new tab. State lives in `?drawer=…` so deep links and the back button work. See [`docs/drawer.md`](docs/drawer.md). |
 | Settings | Collector build metadata + OTel exporter status; config path and daemon/hook install flows surfaced inline. |
-| Session detail | Timeline tab (phase narrative) as the default, plus per-session rollup, scoped KPIs, and every turn ordered by attention |
+| Session detail | Mission tab (git graph of the session arc) as the default, plus per-session rollup, scoped KPIs, and every turn ordered by attention. The Mission tab consolidated what used to be a separate Timeline tab — phase nodes, operator-intervention branches, TodoWrite plan rows, and the tier-3 forecast tail all render on one spine, newest phase on top, with the running-turn pulse on the active foothold. |
 | Turn detail | Swim lane, span tree, recap panels, attention reasoning, HITL queue |
 | Command palette | Fuzzy search across sessions, scopes, and recent prompts (⌘K) |
 | Recap worker | Per-turn structured recap via the local `claude` CLI (Haiku) |
 | Rollup worker | Per-session narrative digest via the local `claude` CLI (Sonnet) |
-| Phase narrative | Tier-3 worker that groups every closed turn into semantic phases with a headline, 1–3 sentence narrative, key steps, kind chip, duration, and tool summary — rendered as a clickable Timeline tab with a side-drawer detail view on `/session` |
+| Phase narrative | Tier-3 worker that groups every closed turn into semantic phases with a headline, 1–3 sentence narrative, key steps, kind chip, duration, and tool summary — rendered as clickable nodes on the Mission git graph with a side-drawer detail view on `/session`. The `Re-chart` button surfaces a live spinner and elapsed-seconds counter (plus a 150 s safety timeout) while the Sonnet call is in flight. |
+| Live-status worker | Tier-4 worker (Haiku, session-scoped) that keeps a one-line "currently &lt;verb&gt;-ing &lt;noun&gt;" blurb fresh on every running session. Fires on every span insert with a 10 s debounce so operators can tell at a glance what each terminal is doing right now. |
+| Agent summary worker | Per-agent tier that writes an LLM-generated title and role (Haiku) into a dedicated `agent_summaries` table keyed by `(agent_id, session_id)`. The `/agents` catalog leads with the title instead of the literal `agent_type` so parallel main agents stop looking identical. Refresh via `POST /v1/agents/{id}/summarize`. |
 | HITL queue | Permission requests as first-class records with operator decisions |
 | Operator interventions | Push text into a live Claude Code session; next `PreToolUse` or `UserPromptSubmit` hook delivers it as `{"decision":"block","reason":...}` or additional context |
 | Watchdog anomaly detector | Background worker compares a 60s window against a 24h baseline and flags `|z|>3` deviations on the four fleet metrics — surfaced as a header-bar bell with an unread badge and a side-drawer signal list. See [`docs/watchdog.md`](docs/watchdog.md). |
@@ -108,8 +114,8 @@ for the schema, chaining, staleness guards, and cost estimate.
                                 │  ┌─ store/duckdb ─▼──────────────────────┐   │
                                 │  │ sessions · turns · spans · logs ·      │   │
                                 │  │ metric_points · hitl_events ·          │   │
-                                │  │ session_rollups · interventions ·      │   │
-                                │  │ task_type_history                      │   │
+                                │  │ session_rollups · agent_summaries ·    │   │
+                                │  │ interventions · task_type_history      │   │
                                 │  └────────────────┬──────────────────────┘   │
                                 │                   │                           │
                                 │  ┌─ attention ────▼──────────────────────┐   │
@@ -118,8 +124,11 @@ for the schema, chaining, staleness guards, and cost estimate.
                                 │  └────────────────┬──────────────────────┘   │
                                 │                   │                           │
                                 │  ┌─ summarizer ───▼──────────────────────┐   │
-                                │  │ recap worker   (Haiku, per turn)       │   │
-                                │  │ rollup worker  (Sonnet, per session)   │   │
+                                │  │ recap worker        (Haiku, per turn)  │   │
+                                │  │ rollup worker       (Sonnet, per sess) │   │
+                                │  │ narrative worker    (Sonnet, tier-3)   │   │
+                                │  │ live-status worker  (Haiku, tier-4)    │   │
+                                │  │ agent-summary work. (Haiku, per agent) │   │
                                 │  └────────────────┬──────────────────────┘   │
                                 │                   │                           │
                                 │  ┌─ interventions ▼──────────────────────┐   │
@@ -171,7 +180,7 @@ trace = claude_code.turn  (root span, opens at UserPromptSubmit, closes at Stop)
 └── span event  claude_code.notification
 ```
 
-Backing storage is DuckDB with OTel-shaped tables for `spans`, `logs`, `metric_points`, plus denormalized `sessions`, `turns`, `hitl_events`, and `session_rollups` for fast dashboard reads. The `turns` row also holds the derived `attention_state`, `attention_reason`, `phase`, and `recap_json` columns. See [`docs/architecture.md`](docs/architecture.md) and [`internal/store/duckdb/schema.sql`](internal/store/duckdb/schema.sql).
+Backing storage is DuckDB with OTel-shaped tables for `spans`, `logs`, `metric_points`, plus denormalized `sessions`, `turns`, `hitl_events`, `session_rollups`, and `agent_summaries` for fast dashboard reads. The `turns` row holds the derived `attention_state`, `attention_reason`, `phase`, and `recap_json` columns; the `sessions` row carries session-scoped attention + fleet-view fields (`attention_state`, `current_turn_id`, `current_phase`, `live_state`, `live_status_text`) that the tier-4 live-status worker refreshes while a session is running. See [`docs/architecture.md`](docs/architecture.md) and [`internal/store/duckdb/schema.sql`](internal/store/duckdb/schema.sql).
 
 ---
 
@@ -185,6 +194,11 @@ Backing storage is DuckDB with OTel-shaped tables for `spans`, `logs`, `metric_p
 | Attention engine + KPI strip | shipped |
 | Turn detail + swim lane + filter chips | shipped |
 | LLM summarizer (Haiku per turn, Sonnet per session) | shipped |
+| Tier-3 phase narrative + forecast | shipped |
+| Tier-4 live-status worker (per-session "currently doing X") | shipped |
+| Per-agent LLM title + role summary worker | shipped |
+| Mission git graph (replaces Timeline tab) | shipped |
+| Session-scoped attention + `/v1/sessions/active` fleet endpoint | shipped |
 | HITL as structured record | shipped |
 | OpenTelemetry semconv registry + OTLP export | shipped |
 | Embedded frontend + CLI distribution | shipped |
@@ -305,7 +319,7 @@ Within a second or two the dashboard lights up:
 
 - **Live page** (`/`): a **Triage Rail** on the left lists every running turn sorted by attention state; a **Focus Card** on the right renders the selected turn's flame graph, current phase, current tool, and a headline from the per-turn recap the moment it lands. The event ticker above runs at a fixed height and does not push the page as new events arrive.
 - **Top ribbon**: the **LIVE** dot stays green because the SSE connection is hoisted into the app-level provider and survives every route navigation. Four selectors live here — source_app, session, time range, language (EN / JA) — plus a theme toggle (System / Light / Dark).
-- **Session detail** (`/session/?id=<id>`): opens the **Timeline** tab by default. The timeline renders LLM-generated phases (implement / review / debug / plan / test / commit / delegate / explore / other) as clickable cards. Hover a card for a 350 ms preview; click to open a side drawer with the full narrative, key steps, tool summary bar chart, and the list of turns inside the phase.
+- **Session detail** (`/session/?id=<id>`): opens the **Mission** tab by default. The Mission tab renders the session as a vertical git graph with the newest phase at the top — each LLM-generated phase (implement / review / debug / plan / test / commit / delegate / explore / other) is a node on the spine, operator interventions fork off as branches, the TodoWrite plan surfaces as upcoming nodes, and the tier-3 forecast hangs off the tail as a dashed extension. Click any phase node to open a side drawer with the full narrative, key steps, tool summary bar chart, and the list of turns inside the phase.
 - **Turn detail** (`/turn/?sess=<sess>&turn=<turn>`): swim lane + span tree + the three-panel recap + HITL queue + the operator intervention composer.
 - **Sessions / Agents / Insights / Events / Settings** pages in the sidebar.
 
@@ -438,7 +452,10 @@ internal/
   otel/             OTel-shaped Go models
   sse/              fan-out hub + event envelopes
   store/duckdb/     DuckDB schema + queries + migrations
-  summarizer/       recap worker (Haiku) + rollup worker (Sonnet)
+  summarizer/       recap (Haiku, per-turn), rollup (Sonnet, per-session),
+                    narrative (Sonnet, tier-3 phase narrative),
+                    live-status (Haiku, tier-4 "currently doing X"),
+                    agent-summary (Haiku, per-agent title+role) workers
   telemetry/        OTel SDK provider, OTLP exporter
   webassets/        embed.FS for the Next.js static export
   version/          build-version constant

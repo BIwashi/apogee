@@ -24,8 +24,14 @@ sessions         one row per Claude Code session
         └── logs             raw hook log rows scoped to the turn
 
 session_rollups  one row per session, Sonnet-tier narrative digest
+                 (tier-2 rollup + tier-3 phases[]/forecast[])
+agent_summaries  one row per (agent_id, session_id), Haiku-tier title/role
 task_type_history rolling success/failure counts keyed by tool signature
 metric_points    OTel metric points (time series)
+watchdog_signals anomaly detections flagged by the watchdog worker
+model_availability cache of Claude model aliases the local `claude` CLI accepts
+user_preferences  generic K/V table (summarizer language, system prompts,
+                  model overrides, UI knobs)
 ```
 
 ---
@@ -46,10 +52,21 @@ reconstructor whenever a new session id appears; never deleted except via
 | `turn_count` | INTEGER | Denormalised count of turns under this session |
 | `model` | VARCHAR NULL | Last-seen Claude Code model alias |
 | `machine_id` | VARCHAR NULL | Optional machine identifier |
+| `attention_state` | VARCHAR NULL | Session-scoped attention bubble-up from the representative turn (`intervene_now` / `watch` / `watchlist` / `healthy`). Written by `bubbleSessionLive` in the reconstructor. |
+| `attention_reason` | VARCHAR NULL | Human-readable attention reason copied from the representative turn. |
+| `attention_score` | DOUBLE NULL | Numeric tiebreaker for the sessions-centric sort. |
+| `current_turn_id` | VARCHAR NULL | Turn the Sessions catalog's session card should deep-link to. |
+| `current_phase` | VARCHAR NULL | Phase heuristic label (`implement` / `debug` / …) of the representative turn. |
+| `live_state` | VARCHAR NULL | `live` when a running turn exists, `idle` when only closed turns exist. |
+| `live_status_text` | VARCHAR NULL | One-line "currently &lt;verb&gt;-ing &lt;noun&gt;" blurb produced by the tier-4 live-status worker. |
+| `live_status_at` | TIMESTAMP NULL | Timestamp of the last live-status write — drives the 10 s live-status debounce (`Config.LiveStatusDebounce`). |
+| `live_status_model` | VARCHAR NULL | Model alias that produced `live_status_text`. |
 
-**Writers:** reconstructor (insert on first event, update on every event).
+**Writers:** reconstructor (insert on first event, update on every event; `bubbleSessionLive` helper after every turn-level attention rescore), tier-4 live-status worker (`live_status_*` columns).
 **Readers:** sessions catalog, session detail page, interventions service
-(scoping), summarizer rollup worker, command palette.
+(scoping), summarizer rollup worker, fleet view endpoints
+(`GET /v1/sessions/active`, `GET /v1/sessions/attention/counts`), command
+palette.
 
 ---
 
@@ -310,7 +327,38 @@ contract.
 **Writers:** `internal/summarizer/rollup.go` (tier 2),
 `internal/summarizer/narrative.go` (tier 3).
 **Readers:** session detail page Overview tab (rollup panel) and
-Timeline tab (phase timeline), sessions catalog tooltip.
+Mission tab (git-graph phase spine), sessions catalog tooltip, Live page
+(embedded Mission graph for the focused session).
+
+---
+
+## `agent_summaries`
+
+One row per `(agent_id, session_id)` — the LLM-generated per-agent
+identity card produced by `internal/summarizer/agent_summary.go`
+(Haiku). Written when the worker notices the agent's invocation count
+has grown past its last summary snapshot, or when the summary ages
+past the 5-minute staleness floor. Manual refresh via
+`POST /v1/agents/{id}/summarize`.
+
+| Column | Type | Purpose |
+| --- | --- | --- |
+| `agent_id` | VARCHAR | Stable agent identifier |
+| `session_id` | VARCHAR | Parent session — same agent in different sessions gets separate summaries |
+| `title` | VARCHAR | Short label like "Investigating CI failures" (leads the `/agents` row) |
+| `role` | VARCHAR | One-sentence responsibility description (second line) |
+| `summary_json` | VARCHAR | Full structured blob (`title`, `role`, `focus`, generator metadata) |
+| `invocation_count_at_generation` | INTEGER | Guard for the incremental-refresh trigger |
+| `generated_at` | TIMESTAMP | When the summary was written |
+| `model` | VARCHAR | Model alias that produced the summary |
+
+The primary key is `(agent_id, session_id)` so `UpsertAgentSummary`
+replaces in place on every refresh.
+
+**Writers:** `internal/summarizer/agent_summary.go`.
+**Readers:** `/v1/agents/recent` (TreeView + flat table lead with `title`,
+`role` rendered as a second line), `/v1/agents/{id}/detail` (AgentDrawer
+summary section with regenerate CTA).
 
 ---
 
@@ -393,11 +441,13 @@ Documented summarizer keys (more may be added later without a migration):
 
 | Key | Default | Meaning |
 | --- | --- | --- |
-| `summarizer.language` | `"en"` | Output language for the recap + rollup workers. `"en"` or `"ja"`. |
-| `summarizer.recap_system_prompt` | `""` | Free text appended to the Haiku recap instruction block, max 2048 chars. |
-| `summarizer.rollup_system_prompt` | `""` | Free text appended to the Sonnet rollup instruction block, max 2048 chars. |
-| `summarizer.recap_model` | `""` | Override for the recap model alias. Empty → fall back to `[summarizer] recap_model` in `~/.apogee/config.toml`. |
-| `summarizer.rollup_model` | `""` | Override for the rollup model alias. Empty → fall back to the config file. |
+| `summarizer.language` | `"en"` | Output language for every summarizer tier. `"en"` or `"ja"`. |
+| `summarizer.recap_system_prompt` | `""` | Free text appended to the tier-1 Haiku recap instruction block, max 2048 chars. |
+| `summarizer.rollup_system_prompt` | `""` | Free text appended to the tier-2 Sonnet rollup instruction block, max 2048 chars. |
+| `summarizer.narrative_system_prompt` | `""` | Free text appended to the tier-3 Sonnet phase-narrative instruction block, max 2048 chars. |
+| `summarizer.recap_model` | `""` | Override for the tier-1 recap model alias. Empty → fall back to `[summarizer] recap_model` in `~/.apogee/config.toml`. |
+| `summarizer.rollup_model` | `""` | Override for the tier-2 rollup model alias. Empty → fall back to the config file. |
+| `summarizer.narrative_model` | `""` | Override for the tier-3 narrative model alias. Empty → fall back to the config file. |
 
 **Writers:** `PATCH /v1/preferences`, `DELETE /v1/preferences`.
 **Readers:** the summarizer worker pool reloads at the top of every job so
