@@ -48,14 +48,30 @@ share one SWR cache key so the network only sees one request per id.
 
 ## Backend
 
-Two new read-only routes feed the drawers:
+Two read-only routes plus one write-trigger route feed the drawers:
 
 - `GET /v1/agents/:id/detail` — returns the agent row plus its parent and
   direct children, the last 20 turns the agent participated in, and a
-  per-tool histogram of its span activity.
+  per-tool histogram of its span activity. The `agent` field on the
+  response now carries the LLM-generated `title` / `role` /
+  `summary_model` / `summary_at` fields pulled from `agent_summaries`.
+- `POST /v1/agents/:id/summarize` — enqueues a manual run of the per-
+  agent Haiku title/role worker. Returns `202 Accepted`; the drawer's
+  Summary section revalidates via the `session.updated` SSE broadcast.
 - `GET /v1/spans/:trace_id/:span_id/detail` — returns a single span plus
   its parent (nil for trace roots) and direct children so the drawer's
   Parent tab can render click-through navigation in one round-trip.
 
-Both endpoints are pure aggregates over the existing `spans` and `turns`
-tables; no schema migration is required.
+Both read endpoints aggregate over the existing `spans`, `turns`, and
+the new `agent_summaries` table; no schema migration is required on
+top of PR #100's additions.
+
+## AgentDrawer summary section
+
+PR #100 adds a Summary section at the top of the AgentDrawer that leads
+with the agent's LLM-generated title, renders the role as a secondary
+line, and shows the generator metadata (`generated_at`, `model`) next to
+a `Regenerate` button that hits `POST /v1/agents/:id/summarize`. The
+`/agents` catalog mirrors this — each row leads with the `title`
+instead of the literal `agent_type` so parallel main agents in the same
+session stop looking identical.

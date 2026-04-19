@@ -20,8 +20,9 @@ apogee is a single Go binary that:
    Claude Code user turn = one trace), persists them to an embedded DuckDB
    database, and mirrors the spans to an optional OTLP exporter.
 3. Fans live updates out to the embedded Next.js dashboard over SSE.
-4. Drives two LLM summarizer tiers (per-turn recap + per-session rollup)
-   through the local `claude` CLI.
+4. Drives four LLM summarizer tiers (per-turn recap, per-session rollup,
+   tier-3 phase narrative, tier-4 live-status) plus a per-agent summary
+   worker through the local `claude` CLI.
 5. Accepts operator interventions — free-form messages that the next hook
    firing relays back into the live Claude Code session as a hook decision.
 6. Runs as a background service (launchd on macOS, systemd `--user` on Linux)
@@ -39,7 +40,7 @@ product with zero Node or Python dependency.
 Claude Code ──► apogee hook --event X ──► POST /v1/events ──► ingest ──► reconstructor ──► duckdb
                         │                                         │                            │
                         │                                         ├── attention engine ────────┤
-                        │                                         ├── summarizer (recap/rollup)┤
+                        │                                         ├── summarizer (recap/rollup/narrative/live-status/agent-summary)
                         │                                         ├── interventions.Service ───┤
                         │                                         ├── hitl.Service ────────────┤
                         │                                         └── sse.Hub ─────────────────┤
@@ -61,11 +62,15 @@ collector serves:
   /v1/turns/{turn_id}/recap              GET / POST (regenerate) the per-turn recap
   /v1/sessions/recent                    recent session list
   /v1/sessions/search                    fuzzy search across sessions
+  /v1/sessions/active                    fleet view: one row per running session (sessions-centric triage)
+  /v1/sessions/attention/counts          attention bucket histogram keyed on sessions (not turns)
   /v1/sessions/{id}                      single-session detail
   /v1/sessions/{id}/summary              denormalized header card
   /v1/sessions/{id}/turns                turn list for a session
   /v1/sessions/{id}/logs                 raw hook log tail for a session
   /v1/sessions/{id}/rollup               GET / POST (regenerate) the per-session rollup
+  /v1/sessions/{id}/narrative            POST regenerate the tier-3 phase narrative
+  /v1/sessions/{id}/todos                latest TodoWrite payload parsed as a typed checklist
   /v1/attention/counts                   scoped attention bucket histogram
   /v1/metrics/series                     scoped KPI series for the sparkline strip
   /v1/filter-options                     sidebar scopes (source_app, model, ...)
@@ -83,7 +88,9 @@ collector serves:
   /v1/sessions/{id}/interventions/pending GET pending-for-session
   /v1/sessions/{id}/interventions/claim  POST atomic "give me one" (hook side)
   /v1/turns/{turn_id}/interventions      GET pending-for-turn
-  /v1/agents/recent                      recent agents (main + subagent) with invocation counts
+  /v1/agents/recent                      recent agents (main + subagent) with invocation counts + LLM title/role
+  /v1/agents/{id}/detail                 agent bundle for the cross-cutting drawer (agent + parent + children + turns + tool_counts + summary)
+  /v1/agents/{id}/summarize              POST re-run the per-agent Haiku title/role worker
   /v1/insights/overview                  aggregate analytics landing page
   /v1/info                               collector build metadata
   /v1/telemetry/status                   OTel exporter config + counters
@@ -168,15 +175,19 @@ is declared in
 
 | Table | Purpose |
 |---|---|
-| `sessions` | one row per Claude Code session |
+| `sessions` | one row per Claude Code session. Session-scoped attention + fleet-view columns (`attention_state`, `attention_reason`, `attention_score`, `current_turn_id`, `current_phase`, `live_state`, `live_status_text`, `live_status_at`, `live_status_model`) are bubble-written by the reconstructor's `bubbleSessionLive` helper after every turn-level attention rescore, and by the tier-4 live-status worker. |
 | `turns` | one row per user turn (= trace root), includes derived `attention_*`, `phase_*`, `recap_json` |
 | `spans` | OTel-shaped spans; `attributes_json`, `events_json` carry the rest |
 | `logs` | one log per hook event (the raw hook log, lossless) |
 | `metric_points` | OTel metric data, write-optimized columnar |
 | `hitl_events` | HITL lifecycle rows |
-| `session_rollups` | per-session narrative digest (Sonnet tier) |
+| `session_rollups` | per-session narrative digest (Sonnet tier-2 rollup; tier-3 narrative worker appends `phases[]` + `forecast[]` into the same JSON blob) |
+| `agent_summaries` | per-`(agent_id, session_id)` LLM-generated title + role + summary blob from the agent-summary worker (Haiku). Keeps parallel main agents in the same session visually distinct on `/agents`. |
 | `interventions` | operator-initiated messages; queued → claimed → delivered → consumed |
 | `task_type_history` | rolling per-tool-signature success/failure counts used by the watchlist bucket |
+| `watchdog_signals` | anomaly detections emitted by the background watchdog worker |
+| `model_availability` | cache of which Claude model aliases the local `claude` CLI accepts |
+| `user_preferences` | generic K/V table for summarizer language, system prompts, model overrides, and UI knobs |
 
 See [`data-model.md`](data-model.md) for every column and which subsystem
 writes vs reads it.
@@ -205,23 +216,47 @@ State transitions are written back onto the `turns` row
 and broadcast as `turn.updated` SSE events so the dashboard re-sorts without a
 refetch.
 
-### `internal/summarizer` — two-tier LLM summarizer
+### `internal/summarizer` — four-tier LLM summarizer + per-agent worker
 
 apogee never talks to the Anthropic API directly. It shells out to the local
 `claude` CLI for every LLM call, so the operator's existing auth, rate limits,
 and context apply.
 
-- **Recap worker** — per-turn, Haiku tier. Fires on `Stop`. Produces a
+- **Tier 1 — recap worker** — per-turn, Haiku. Fires on `Stop`. Produces a
   structured recap JSON (`headline`, `key_steps`, `outcome`, `failure_cause`,
   ...) that is written back onto the `turns.recap_json` column and emitted as
   a post-hoc `claude_code.turn.recap` OTel enrichment span linked to the turn
   root.
-- **Rollup worker** — per-session, Sonnet tier. Fires on `SessionEnd` and on a
-  scheduled background cadence. Produces a narrative digest written to
-  `session_rollups`. The dashboard's session detail page reads from this row.
+- **Tier 2 — rollup worker** — per-session, Sonnet. Fires on `SessionEnd` and
+  on a scheduled background cadence. Produces a narrative digest written to
+  `session_rollups.rollup_json` (`headline`, `narrative`, `highlights`,
+  `patterns`, `open_threads`). The dashboard's session detail page reads from
+  this row. See [`narrative.md`](narrative.md) for the chaining contract.
+- **Tier 3 — narrative worker** — per-session, Sonnet. Chains off the tier-2
+  rollup; groups every closed turn into semantic phases (implement / review /
+  debug / plan / test / commit / delegate / explore / other) and produces
+  `phases[]` + `forecast[]` appended to the same `session_rollups` JSON blob.
+  Manual trigger: `POST /v1/sessions/:id/narrative`. The Mission git graph on
+  `/session` renders from this output.
+- **Tier 4 — live-status worker** — per-session, Haiku. Fires on every span
+  insert with a 10 s debounce (`Config.LiveStatusDebounce`). Produces a
+  one-line "currently <verb>-ing <noun>" blurb written to
+  `sessions.live_status_text` so the Sessions catalog and Live triage rail
+  can describe each running terminal without opening it. Guarded by
+  `sessions.live_state = 'live'` so idle sessions do not burn Haiku calls.
+- **Agent-summary worker** — per-`(agent_id, session_id)`, Haiku. Queues jobs
+  from the reconstructor whenever an agent's invocation count grows past the
+  last summary snapshot or when the summary ages past the 5-minute staleness
+  floor. Produces a structured title/role/focus blob written to the
+  `agent_summaries` table. Manual trigger:
+  `POST /v1/agents/{id}/summarize`. The `/agents` catalog leads with this
+  title instead of the literal `agent_type`.
 
-Both workers degrade gracefully when `claude` is not on `PATH`: they log once
-and skip, and the dashboard shows an empty recap panel rather than a broken UI.
+Every worker shares a feedback-loop guard: the summarizer sets
+`APOGEE_HOOK_SKIP=1` on its `claude` subprocess so the apogee hook
+short-circuits and does not re-ingest its own telemetry. All workers degrade
+gracefully when `claude` is not on `PATH`: they log once and skip, and the
+dashboard shows an empty panel rather than a broken UI.
 
 ### `internal/hitl` — Human-In-The-Loop service
 
