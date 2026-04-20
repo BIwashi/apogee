@@ -5,6 +5,10 @@ All notable changes to apogee will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.1.26](https://github.com/BIwashi/apogee/compare/v0.1.25...v0.1.26) - 2026-04-20
+- refactor(mission-map): split MissionMap.tsx into per-row sub-modules by @BIwashi in https://github.com/BIwashi/apogee/pull/111
+- fix: Sessions filter scope, Mission scroll affordances, agent label coverage, triage placeholder by @BIwashi in https://github.com/BIwashi/apogee/pull/113
+
 ## [v0.1.25](https://github.com/BIwashi/apogee/compare/v0.1.24...v0.1.25) - 2026-04-19
 - docs: sync README + docs with Mission git graph, tier-4 summarizer, fleet endpoints by @BIwashi in https://github.com/BIwashi/apogee/pull/102
 - fix(mission): chronological spine, bounded scroll, jump-to-now, current-step pulse by @BIwashi in https://github.com/BIwashi/apogee/pull/101
