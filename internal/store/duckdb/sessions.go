@@ -546,9 +546,20 @@ type SessionSearchHit struct {
 	AttentionState      string    `json:"attention_state,omitempty"`
 }
 
-// SearchSessions returns up to limit sessions matching q. Empty q returns
-// the most-recent sessions unfiltered.
-func (s *Store) SearchSessions(ctx context.Context, q string, limit int) ([]SessionSearchHit, error) {
+// SessionSearchFilter is the optional scope passed into SearchSessions.
+// Zero-value fields are treated as "no constraint" so the legacy
+// callers that only used `q` keep working unchanged.
+type SessionSearchFilter struct {
+	SourceApp string
+	Since     *time.Time
+	Until     *time.Time
+}
+
+// SearchSessions returns up to limit sessions matching q. Empty q
+// returns the most-recent sessions unfiltered. The filter argument
+// applies the top-ribbon scope (env / time range) on top of the text
+// query so the Sessions catalog respects "Last 15m" and friends.
+func (s *Store) SearchSessions(ctx context.Context, q string, filter SessionSearchFilter, limit int) ([]SessionSearchHit, error) {
 	if limit <= 0 {
 		limit = 50
 	}
@@ -591,6 +602,18 @@ WHERE s.source_app NOT LIKE '.%'
 		like := "%" + q + "%"
 		prefix := q + "%"
 		args = append(args, prefix, like, like, like)
+	}
+	if filter.SourceApp != "" {
+		query += ` AND s.source_app = ?`
+		args = append(args, filter.SourceApp)
+	}
+	if filter.Since != nil {
+		query += ` AND s.last_seen_at >= ?`
+		args = append(args, *filter.Since)
+	}
+	if filter.Until != nil {
+		query += ` AND s.last_seen_at <= ?`
+		args = append(args, *filter.Until)
 	}
 	query += ` ORDER BY s.last_seen_at DESC LIMIT ?`
 	args = append(args, limit)

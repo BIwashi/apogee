@@ -82,11 +82,12 @@ export default function FocusCard({
     return <FocusCardEmpty />;
   }
 
+  const phaseHint = turn.phase ? `${turn.phase}` : "running";
   const headline =
     recap?.recap?.headline ||
     turn.headline ||
     turn.prompt_text?.slice(0, 140) ||
-    `Turn ${shortId(turn.turn_id)}`;
+    `Awaiting prompt · ${phaseHint}`;
 
   const turnHref = `/turn/?sess=${turn.session_id}&turn=${turn.turn_id}`;
 

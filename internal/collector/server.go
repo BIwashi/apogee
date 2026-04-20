@@ -96,6 +96,23 @@ func New(cfg Config, store *duckdb.Store, logger *slog.Logger) *Server {
 	summarizerSvc := summarizer.NewService(summarizerCfg, store, hub, logger)
 	rec.OnTurnClosed = func(turnID string) {
 		summarizerSvc.Enqueue(turnID, summarizer.ReasonTurnClosed)
+		// Also fan out agent-summary jobs for the session this turn
+		// belongs to. Without this, an active session that hasn't
+		// hit the rollup cadence yet (≥ 2 closed turns AND > 30min
+		// since last rollup) leaves every agent on the /agents page
+		// labelled "main" with no LLM-generated title — exactly the
+		// problem PR #100 was meant to fix. The
+		// ListAgentSummaryCandidates query inside EnqueueSession
+		// already filters out agents whose summary is fresh (5 min
+		// staleness floor) so the per-turn fan-out is safe to fire
+		// on every close.
+		ctx := context.Background()
+		turn, err := store.GetTurn(ctx, turnID)
+		if err != nil || turn == nil || turn.SessionID == "" {
+			return
+		}
+		summarizerSvc.EnqueueAgentSummariesForSession(
+			ctx, turn.SessionID, summarizer.AgentSummaryReasonScheduled)
 	}
 	rec.OnSessionEnded = func(sessionID string) {
 		summarizerSvc.EnqueueRollup(sessionID, summarizer.RollupReasonSessionEnd)
@@ -667,7 +684,18 @@ func (s *Server) getAttentionCounts(w http.ResponseWriter, r *http.Request) {
 func (s *Server) searchSessions(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	limit := parseLimit(r, 50, 200)
-	hits, err := s.store.SearchSessions(r.Context(), q.Get("q"), limit)
+	filter := duckdb.SessionSearchFilter{SourceApp: q.Get("source_app")}
+	if v := q.Get("since"); v != "" {
+		if t, err := time.Parse(time.RFC3339, v); err == nil {
+			filter.Since = &t
+		}
+	}
+	if v := q.Get("until"); v != "" {
+		if t, err := time.Parse(time.RFC3339, v); err == nil {
+			filter.Until = &t
+		}
+	}
+	hits, err := s.store.SearchSessions(r.Context(), q.Get("q"), filter, limit)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, err.Error())
 		return

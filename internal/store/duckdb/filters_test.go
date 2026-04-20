@@ -162,19 +162,19 @@ func TestSearchSessions_FuzzyMatch(t *testing.T) {
 	}))
 
 	// Session id prefix.
-	hits, err := s.SearchSessions(ctx, "019d", 10)
+	hits, err := s.SearchSessions(ctx, "019d", SessionSearchFilter{}, 10)
 	require.NoError(t, err)
 	require.Len(t, hits, 1)
 	require.Equal(t, "019d8a000001", hits[0].SessionID)
 
 	// Source app match.
-	hits, err = s.SearchSessions(ctx, "orch", 10)
+	hits, err = s.SearchSessions(ctx, "orch", SessionSearchFilter{}, 10)
 	require.NoError(t, err)
 	require.Len(t, hits, 1)
 	require.Equal(t, "019d8a000001", hits[0].SessionID)
 
 	// Prompt text match.
-	hits, err = s.SearchSessions(ctx, "auth", 10)
+	hits, err = s.SearchSessions(ctx, "auth", SessionSearchFilter{}, 10)
 	require.NoError(t, err)
 	require.Len(t, hits, 1)
 	require.Equal(t, "019d8a000001", hits[0].SessionID)
