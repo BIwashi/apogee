@@ -122,10 +122,18 @@ export default function TriageRail({
         {turns.map((turn, idx) => {
           const selected = turn.turn_id === selectedTurnId;
           const attention = normaliseAttention(turn);
+          // Prefer the recap headline, then the user's prompt text.
+          // For brand-new running turns whose recap hasn't landed
+          // and whose prompt hasn't been ingested yet, the older
+          // fallback rendered "Turn 019da8ae" — a UUID prefix that
+          // operators can't act on. Surface a phase-aware
+          // placeholder instead so the row still tells the operator
+          // *what* this turn is doing while the data hydrates.
+          const phaseHint = turn.phase ? `${turn.phase}` : "running";
           const headline =
             turn.headline ||
             turn.prompt_text ||
-            `Turn ${shortId(turn.turn_id)}`;
+            `Awaiting prompt · ${phaseHint}`;
           return (
             <li
               key={turn.turn_id}

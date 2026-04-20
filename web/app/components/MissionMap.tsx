@@ -1,7 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Crosshair, Loader, Radio, Sparkles, Square } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronUp,
+  Crosshair,
+  Loader,
+  Radio,
+  Sparkles,
+  Square,
+} from "lucide-react";
 import type {
   ForecastPhase,
   InterventionListResponse,
@@ -119,51 +127,70 @@ export default function MissionMap({
 
   // Scroll plumbing for the bounded mission spine. The spine renders
   // chronologically (oldest → newest → todos → forecast), so the
-  // "current" step lives near the bottom rather than the top. We pin
-  // the scroll container to a viewport-bounded height, scroll the
-  // current step into view on mount + when the session changes, and
-  // surface a "Jump to now" floating button when the current step
-  // scrolls out of view.
+  // "current" step lives near the bottom rather than the top.
   //
-  // The initial-scroll guard and the session id are both held in refs
-  // so the effect can read+write them without triggering its own
-  // re-run (a setState here would tilt into the
-  // react-hooks/set-state-in-effect cascade).
+  // Behaviour:
+  //  - On mount + session switch + when new phases land, the
+  //    container auto-scrolls the current step into view as long as
+  //    the user has not manually scrolled. The auto-scroll guard
+  //    (autoScrollRef) is set to false the first time we observe a
+  //    user scroll event and restored when the operator clicks
+  //    "Current mission".
+  //  - "Current mission" button is always visible (renders even when
+  //    auto-scroll is engaged so the operator can see at a glance
+  //    whether they are on the live foothold).
+  //  - Edge fades on the scroll container (via .mission-spine-scroll
+  //    in globals.css) plus per-edge "more above / more below" chips
+  //    that appear only when content is hidden in that direction —
+  //    so the scroll surface advertises that more spine exists past
+  //    the visible viewport.
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const currentRef = useRef<HTMLLIElement | null>(null);
-  const didInitialScrollRef = useRef(false);
   const lastSessionIdRef = useRef<string | null>(null);
+  // True while we are still allowed to drive scrollTop. Flips to
+  // false on the first user-initiated scroll; "Current mission"
+  // restores it.
+  const autoScrollRef = useRef(true);
+  // Set to true while we are programmatically scrolling so the
+  // scroll-event listener does not interpret our own scroll as a
+  // user gesture.
+  const programmaticScrollRef = useRef(false);
   const [currentInView, setCurrentInView] = useState(true);
+  const [hasOverflowAbove, setHasOverflowAbove] = useState(false);
+  const [hasOverflowBelow, setHasOverflowBelow] = useState(false);
 
-  const jumpToNow = useCallback(() => {
+  const scrollToCurrent = useCallback((behavior: ScrollBehavior = "auto") => {
     const el = currentRef.current;
     if (!el) return;
-    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    programmaticScrollRef.current = true;
+    el.scrollIntoView({ behavior, block: "center" });
+    // Release the gate on the next macrotask so the user can
+    // disengage the auto-scroll right after the animation lands.
+    window.setTimeout(() => {
+      programmaticScrollRef.current = false;
+    }, 350);
   }, []);
 
-  // Auto-scroll to the current step on first paint after the spine
-  // has populated, and on every session switch. Subsequent rerenders
-  // (poll ticks, recap landings) do not re-trigger this — operators
-  // who scrolled away on purpose would hate having the page yank
-  // back every 5 s.
+  const jumpToNow = useCallback(() => {
+    autoScrollRef.current = true;
+    scrollToCurrent("smooth");
+  }, [scrollToCurrent]);
+
+  // Auto-scroll to the current step on session switch and whenever
+  // the spine grows. The autoScrollRef gate keeps us off the
+  // operator's heels once they have manually scrolled.
   useEffect(() => {
     if (lastSessionIdRef.current !== sessionId) {
-      didInitialScrollRef.current = false;
+      autoScrollRef.current = true;
       lastSessionIdRef.current = sessionId;
     }
-    if (didInitialScrollRef.current) return;
-    const el = currentRef.current;
-    if (!el) return;
-    el.scrollIntoView({ behavior: "auto", block: "center" });
-    didInitialScrollRef.current = true;
-  }, [sessionId, phases.length, activeTodos.length]);
+    if (!autoScrollRef.current) return;
+    scrollToCurrent("auto");
+  }, [sessionId, phases.length, activeTodos.length, scrollToCurrent]);
 
-  // Track whether the current step is on screen so the "Jump to now"
-  // button can hide itself when no jump is needed. IntersectionObserver
-  // is bounded by the scroll container via `root: scrollRef.current` so
-  // we don't pick up arbitrary page scroll. setState inside the
-  // observer callback is asynchronous-from-React's-pov so it doesn't
-  // trip the set-state-in-effect rule.
+  // Track whether the current step is on screen so the "Current
+  // mission" pill can flip into a "scroll back" call to action when
+  // the operator has paged away.
   useEffect(() => {
     const el = currentRef.current;
     const root = scrollRef.current;
@@ -175,6 +202,27 @@ export default function MissionMap({
     observer.observe(el);
     return () => observer.disconnect();
   }, [phases.length, activeTodos.length]);
+
+  // User-scroll detector: any scroll event that did not originate
+  // from our own scrollIntoView call disengages auto-scroll. Also
+  // recomputes the top/bottom overflow indicators so the "more
+  // above / below" chips can show/hide.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const update = () => {
+      setHasOverflowAbove(el.scrollTop > 4);
+      setHasOverflowBelow(el.scrollTop + el.clientHeight < el.scrollHeight - 4);
+      if (!programmaticScrollRef.current) {
+        autoScrollRef.current = false;
+      }
+    };
+    update();
+    el.addEventListener("scroll", update, { passive: true });
+    return () => {
+      el.removeEventListener("scroll", update);
+    };
+  }, [phases.length, activeTodos.length, forecast.length]);
 
   // Narrative generation progress tracking. The tier-3 narrative
   // worker runs asynchronously: POST returns 202 immediately, the
@@ -315,6 +363,22 @@ export default function MissionMap({
               Mission card cannot push the rest of the page when a
               session has many phases. */}
           <div className="relative">
+            {/* "More above" peek strip — appears when there is
+                content scrolled past the top edge. The chevron and
+                the gradient strip together advertise that the spine
+                continues upward. */}
+            {hasOverflowAbove && (
+              <div
+                aria-hidden="true"
+                className="pointer-events-none absolute inset-x-0 top-0 z-10 flex h-12 items-start justify-center"
+              >
+                <div className="absolute inset-0 bg-gradient-to-b from-[var(--bg-deepspace)] to-transparent" />
+                <span className="relative mt-1 inline-flex items-center gap-1 rounded-full border border-[var(--border)] bg-[var(--bg-overlay)]/85 px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.14em] text-[var(--text-muted)] backdrop-blur">
+                  <ChevronUp size={10} strokeWidth={1.75} />
+                  earlier phases
+                </span>
+              </div>
+            )}
             <div
               ref={scrollRef}
               className="mission-spine-scroll relative max-h-[60vh] overflow-y-auto pr-2"
@@ -389,19 +453,43 @@ export default function MissionMap({
                 ))}
               </ol>
             </div>
-            {/* Jump-to-now floating button. Only renders when the
-                current step has scrolled out of view. */}
-            {!currentInView && (
-              <button
-                type="button"
-                onClick={jumpToNow}
-                className="absolute bottom-3 right-4 z-20 inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--bg-overlay)]/90 px-3 py-1.5 font-display text-[10px] uppercase tracking-[0.14em] text-[var(--text-muted)] shadow-lg backdrop-blur transition-colors hover:border-[var(--artemis-earth)] hover:text-[var(--artemis-white)]"
-                title="Scroll back to the current step"
+            {/* "More below" peek strip — symmetric with the top
+                strip above. */}
+            {hasOverflowBelow && (
+              <div
+                aria-hidden="true"
+                className="pointer-events-none absolute inset-x-0 bottom-0 z-10 flex h-12 items-end justify-center"
               >
-                <Crosshair size={11} strokeWidth={1.75} />
-                Jump to now
-              </button>
+                <div className="absolute inset-0 bg-gradient-to-t from-[var(--bg-deepspace)] to-transparent" />
+                <span className="relative mb-1 inline-flex items-center gap-1 rounded-full border border-[var(--border)] bg-[var(--bg-overlay)]/85 px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.14em] text-[var(--text-muted)] backdrop-blur">
+                  <ChevronDown size={10} strokeWidth={1.75} />
+                  more below
+                </span>
+              </div>
             )}
+            {/* "Current mission" pill — always rendered so the
+                operator sees at a glance whether they are on the
+                live foothold. When the current step is visible, the
+                pill is a subtle "you're here" indicator; when it
+                has scrolled out of view, the pill brightens, picks
+                up a pulse, and acts as the snap-back button. */}
+            <button
+              type="button"
+              onClick={jumpToNow}
+              className={`absolute bottom-3 right-4 z-20 inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 font-display text-[10px] uppercase tracking-[0.14em] shadow-lg backdrop-blur transition-colors ${
+                currentInView
+                  ? "border-[var(--border)] bg-[var(--bg-overlay)]/70 text-[var(--text-muted)] hover:border-[var(--artemis-earth)] hover:text-[var(--artemis-white)]"
+                  : "mission-current-pulse border-[var(--status-success)]/60 bg-[var(--status-success)]/15 text-[var(--artemis-white)] hover:bg-[var(--status-success)]/25"
+              }`}
+              title={
+                currentInView
+                  ? "You're on the current mission step"
+                  : "Scroll back to the current mission step"
+              }
+            >
+              <Crosshair size={11} strokeWidth={1.75} />
+              Current mission
+            </button>
           </div>
 
           {/* Legend — small, unobtrusive. */}

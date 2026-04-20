@@ -14,7 +14,7 @@ import type {
 import { drawerLinkProps, useDrawerState } from "../lib/drawer";
 import { useApi } from "../lib/swr";
 import { timeAgo } from "../lib/time";
-import { useSelection } from "../lib/url-state";
+import { buildQuery, useSelection } from "../lib/url-state";
 
 /**
  * `/sessions` — the Datadog "Service Catalog" equivalent. A searchable,
@@ -24,25 +24,34 @@ import { useSelection } from "../lib/url-state";
  */
 
 export default function SessionsPage() {
-  const { setSelection } = useSelection();
+  const { setSelection, apiParams } = useSelection();
   const { open } = useDrawerState();
   const [query, setQuery] = useState("");
   const [env, setEnv] = useState<string | null>(null);
 
   const { data: filterOpts } = useApi<FilterOptions>("/v1/filter-options");
-  const params = new URLSearchParams();
-  if (query) params.set("q", query);
-  params.set("limit", "200");
+  // Thread the top-ribbon scope (source_app + since/until) into the
+  // search query so "Last 15m" + env filter actually constrain the
+  // catalog. The local env dropdown takes precedence over the ribbon
+  // env when set, so users can browse a different source_app without
+  // clearing the global filter.
+  const queryString = useMemo(() => {
+    const extras: Record<string, string | number | null | undefined> = {
+      limit: 200,
+    };
+    if (query) extras.q = query;
+    if (env) extras.source_app = env;
+    return buildQuery(apiParams, extras);
+  }, [apiParams, query, env]);
   const { data, error, isLoading } = useApi<SessionSearchResponse>(
-    `/v1/sessions/search?${params.toString()}`,
+    `/v1/sessions/search${queryString}`,
     { refreshInterval: 5_000 },
   );
 
-  const sessions: SessionSearchHit[] = useMemo(() => {
-    const rows = data?.sessions ?? [];
-    if (!env) return rows;
-    return rows.filter((r) => r.source_app === env);
-  }, [data, env]);
+  const sessions: SessionSearchHit[] = useMemo(
+    () => data?.sessions ?? [],
+    [data],
+  );
 
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-6">
